@@ -6,6 +6,7 @@ import { getLead, markLeadAsRead } from "@/actions/lead.actions";
 import { getLeadNotes } from "@/actions/note.actions";
 import { getLeadEvents } from "@/services/activity-log.service";
 import { evaluateReferral } from "@/services/referral.service";
+import { getActivePartners } from "@/actions/partner.actions";
 import { StatusBadge, TierBadge, ScoreBadge } from "@/components/shared/status-badge";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
@@ -115,6 +116,8 @@ export default async function LeadDetailPage({ params }: PageProps) {
   if (!lead.isRead) {
     await markLeadAsRead(id);
   }
+
+  const activePartners = await getActivePartners();
 
   const allTemplates = await prisma.emailTemplate.findMany({
     where: { active: true },
@@ -430,6 +433,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 notesFromForm: lead.notesFromForm,
               }}
               assignedUserName={session?.user.name ?? "ACB Team"}
+              referralPartners={activePartners}
             />
 
             {/* CRM Status */}

@@ -29,6 +29,22 @@ interface EmailTemplate {
   bodyTemplate: string;
 }
 
+interface ReferralPartnerInfo {
+  id: string;
+  name: string;
+  contactName: string | null;
+  email: string | null;
+  emails: string[] | null;
+  phone: string | null;
+  website: string | null;
+  statesServed: string[] | null;
+  specialties: string[] | null;
+  industries: string[] | null;
+  minimumClaimSize: number | null;
+  maximumClaimSize: number | null;
+  notes: string | null;
+}
+
 interface LeadActionsProps {
   leadId: string;
   email: string | null;
@@ -36,6 +52,7 @@ interface LeadActionsProps {
   currentStatus: LeadStatus;
   mailtoLink?: string;
   templates?: EmailTemplate[];
+  referralPartners?: ReferralPartnerInfo[];
   leadData?: {
     fullName?: string | null;
     companyName?: string | null;
@@ -54,6 +71,7 @@ export function LeadActions({
   currentStatus,
   mailtoLink,
   templates = [],
+  referralPartners = [],
   leadData,
   assignedUserName,
 }: LeadActionsProps) {
@@ -312,6 +330,7 @@ export function LeadActions({
           }}
           templates={templates}
           assignedUserName={assignedUserName}
+          referralPartners={referralPartners}
         />
       )}
     </div>
