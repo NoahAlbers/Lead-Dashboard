@@ -17,11 +17,37 @@ interface LeadData {
   id: string;
   email: string;
   fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   companyName?: string | null;
+  title?: string | null;
   phone?: string | null;
+  alternatePhone?: string | null;
+  address1?: string | null;
+  address2?: string | null;
+  city?: string | null;
   state?: string | null;
+  zip?: string | null;
+  country?: string | null;
   industry?: string | null;
+  debtType?: string | null;
+  balanceAmount?: number | null;
+  estimatedClaimValue?: number | null;
+  accountVolume?: string | null;
+  serviceRequested?: string | null;
   notesFromForm?: string | null;
+  urgency?: string | null;
+  businessType?: string | null;
+  geographicScope?: string | null;
+  leadSource?: string | null;
+  sourcePage?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  score?: number | null;
+  qualityTier?: string | null;
+  status?: string | null;
+  createdAt?: string | null;
 }
 
 interface ReferralPartner {
@@ -55,25 +81,58 @@ function renderTemplate(
   assignedUserName: string,
   partner?: ReferralPartner | null
 ): string {
-  let result = template
-    .replaceAll("{{full_name}}", lead.fullName ?? "")
-    .replaceAll("{{company_name}}", lead.companyName ?? "")
-    .replaceAll("{{email}}", lead.email ?? "")
-    .replaceAll("{{phone}}", lead.phone ?? "")
-    .replaceAll("{{state}}", lead.state ?? "")
-    .replaceAll("{{industry}}", lead.industry ?? "")
-    .replaceAll("{{notes_from_form}}", lead.notesFromForm ?? "")
-    .replaceAll("{{assigned_user_name}}", assignedUserName);
+  const replacements: Record<string, string> = {
+    // Contact
+    "{{first_name}}": lead.firstName ?? "",
+    "{{last_name}}": lead.lastName ?? "",
+    "{{full_name}}": lead.fullName ?? "",
+    "{{company_name}}": lead.companyName ?? "",
+    "{{title}}": lead.title ?? "",
+    "{{email}}": lead.email ?? "",
+    "{{phone}}": lead.phone ?? "",
+    "{{alternate_phone}}": lead.alternatePhone ?? "",
+    // Location
+    "{{address_1}}": lead.address1 ?? "",
+    "{{address_2}}": lead.address2 ?? "",
+    "{{city}}": lead.city ?? "",
+    "{{state}}": lead.state ?? "",
+    "{{zip}}": lead.zip ?? "",
+    "{{country}}": lead.country ?? "",
+    // Business
+    "{{industry}}": lead.industry ?? "",
+    "{{debt_type}}": lead.debtType ?? "",
+    "{{balance_amount}}": lead.balanceAmount != null ? `$${lead.balanceAmount.toLocaleString()}` : "",
+    "{{estimated_claim_value}}": lead.estimatedClaimValue != null ? `$${lead.estimatedClaimValue.toLocaleString()}` : "",
+    "{{units}}": lead.accountVolume ?? "",
+    "{{service_requested}}": lead.serviceRequested ?? "",
+    "{{notes_from_form}}": lead.notesFromForm ?? "",
+    "{{urgency}}": lead.urgency ?? "",
+    "{{business_type}}": lead.businessType ?? "",
+    "{{geographic_scope}}": lead.geographicScope ?? "",
+    // Metadata
+    "{{lead_source}}": lead.leadSource ?? "",
+    "{{source_page}}": lead.sourcePage ?? "",
+    "{{utm_source}}": lead.utmSource ?? "",
+    "{{utm_medium}}": lead.utmMedium ?? "",
+    "{{utm_campaign}}": lead.utmCampaign ?? "",
+    // System
+    "{{score}}": lead.score != null ? String(lead.score) : "",
+    "{{quality_tier}}": lead.qualityTier ?? "",
+    "{{status}}": lead.status ?? "",
+    "{{assigned_user_name}}": assignedUserName,
+    "{{created_at}}": lead.createdAt ?? "",
+    // Referral Partner
+    "{{referral_partner_name}}": partner?.name ?? "",
+    "{{referral_partner_contact_name}}": partner?.contactName ?? "",
+    "{{referral_partner_email}}": partner?.email ?? "",
+    "{{referral_partner_phone}}": partner?.phone ?? "",
+    "{{referral_partner_website}}": partner?.website ?? "",
+  };
 
-  if (partner) {
-    result = result
-      .replaceAll("{{referral_partner_name}}", partner.name)
-      .replaceAll("{{referral_partner_email}}", partner.email ?? "")
-      .replaceAll("{{referral_partner_phone}}", partner.phone ?? "")
-      .replaceAll("{{referral_partner_website}}", partner.website ?? "")
-      .replaceAll("{{referral_partner_contact_name}}", partner.contactName ?? "");
+  let result = template;
+  for (const [key, val] of Object.entries(replacements)) {
+    result = result.replaceAll(key, val);
   }
-
   return result;
 }
 

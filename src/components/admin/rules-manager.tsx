@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createRule, updateRule, deleteRule, toggleRule } from "@/actions/rule.actions";
 import { Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface RuleCondition {
   field: string;
@@ -44,7 +45,7 @@ const OPERATORS = [
 ];
 
 const LEAD_FIELDS = [
-  "state", "email", "phone", "companyName", "fullName", "industry",
+  "state", "state_classification", "email", "phone", "companyName", "fullName", "industry",
   "debtType", "serviceRequested", "urgency", "businessType",
   "accountVolume", "city", "zip",
 ];
@@ -56,6 +57,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
   const [isCreating, setIsCreating] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [recalculating, setRecalculating] = useState(false);
+  const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
 
   // Form state
   const [name, setName] = useState("");
@@ -134,13 +136,16 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
   }
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this rule?")) return;
-    setRecalculating(true);
-    startTransition(async () => {
-      const result = await deleteRule(id);
-      setRules(rules.filter((r) => r.id !== id));
-      setRecalculating(false);
-      showRecalcToast(result.recalculatedCount);
+    setConfirmState({
+      action: () => {
+        setRecalculating(true);
+        startTransition(async () => {
+          const result = await deleteRule(id);
+          setRules(rules.filter((r) => r.id !== id));
+          setRecalculating(false);
+          showRecalcToast(result.recalculatedCount);
+        });
+      },
     });
   }
 
@@ -412,6 +417,16 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
           Add Scoring Rule
         </button>
       )}
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title="Delete Rule"
+        message="Are you sure you want to delete this scoring rule? All lead scores will be recalculated."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => { confirmState?.action(); setConfirmState(null); }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }

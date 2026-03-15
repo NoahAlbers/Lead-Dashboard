@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { logEvent } from "./activity-log.service";
 import type { Lead } from "@prisma/client";
+import { getStateClassificationMap } from "@/actions/state-classification.actions";
 
 interface RuleCondition {
   field: string;
@@ -36,8 +37,36 @@ function getLeadFieldValue(lead: Record<string, unknown>, field: string): unknow
 
 function evaluateCondition(
   lead: Record<string, unknown>,
-  condition: RuleCondition
+  condition: RuleCondition,
+  stateClassMap?: Record<string, string>
 ): boolean {
+  // Handle state_classification virtual field
+  if (condition.field === "state_classification" && stateClassMap) {
+    const statesArr = lead["states"];
+    const singleState = lead["state"];
+    const allStates: string[] = [];
+
+    if (Array.isArray(statesArr) && statesArr.length > 0) {
+      allStates.push(...statesArr.map((s: unknown) => String(s).toUpperCase()));
+    } else if (singleState) {
+      allStates.push(...String(singleState).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
+    }
+
+    if (allStates.length === 0) return false;
+
+    const condVal = String(condition.value).toLowerCase();
+    switch (condition.operator) {
+      case "equals":
+        // True if ANY state has this classification
+        return allStates.some((s) => (stateClassMap[s] ?? "unknown") === condVal);
+      case "not_equals":
+        // True if NO state has this classification
+        return !allStates.some((s) => (stateClassMap[s] ?? "unknown") === condVal);
+      default:
+        return false;
+    }
+  }
+
   let value = getLeadFieldValue(lead, condition.field);
 
   // For the "state" field, also check the "states" array so rules can match any selected state
@@ -123,10 +152,11 @@ function evaluateCondition(
 
 function evaluateRule(
   lead: Record<string, unknown>,
-  conditions: RuleCondition[]
+  conditions: RuleCondition[],
+  stateClassMap?: Record<string, string>
 ): boolean {
   // All conditions must match (AND logic)
-  return conditions.every((cond) => evaluateCondition(lead, cond));
+  return conditions.every((cond) => evaluateCondition(lead, cond, stateClassMap));
 }
 
 const DEFAULT_TIER_RANGES: TierRange[] = [
@@ -183,12 +213,13 @@ export async function scoreLead(lead: Lead): Promise<{
   recommendedAction: string;
   appliedRules: AppliedRule[];
 }> {
-  const [rules, tierRanges] = await Promise.all([
+  const [rules, tierRanges, stateClassMap] = await Promise.all([
     prisma.scoringRule.findMany({
       where: { enabled: true },
       orderBy: { priority: "asc" },
     }),
     getTierRangesFromDB(),
+    getStateClassificationMap(),
   ]);
 
   const leadData = lead as unknown as Record<string, unknown>;
@@ -207,7 +238,7 @@ export async function scoreLead(lead: Lead): Promise<{
     const conditions = rule.conditionsJson as unknown as RuleCondition[];
     const outcomes = rule.outcomesJson as unknown as RuleOutcome;
 
-    if (evaluateRule(leadData, conditions)) {
+    if (evaluateRule(leadData, conditions, stateClassMap)) {
       score += outcomes.scoreAdjustment;
       appliedRules.push({
         ruleName: rule.name,

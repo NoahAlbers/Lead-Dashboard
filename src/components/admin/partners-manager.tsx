@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createPartner, updatePartner, deletePartner } from "@/actions/partner.actions";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Partner {
   id: string;
@@ -30,6 +31,7 @@ export function PartnersManager({ initialPartners }: { initialPartners: Partner[
   const [editing, setEditing] = useState<Partner | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -145,10 +147,13 @@ export function PartnersManager({ initialPartners }: { initialPartners: Partner[
   }
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this partner?")) return;
-    startTransition(async () => {
-      await deletePartner(id);
-      setPartners(partners.filter((p) => p.id !== id));
+    setConfirmState({
+      action: () => {
+        startTransition(async () => {
+          await deletePartner(id);
+          setPartners(partners.filter((p) => p.id !== id));
+        });
+      },
     });
   }
 
@@ -361,6 +366,16 @@ export function PartnersManager({ initialPartners }: { initialPartners: Partner[
           Add Referral Partner
         </button>
       )}
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title="Delete Partner"
+        message="Are you sure you want to delete this referral partner? This action cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => { confirmState?.action(); setConfirmState(null); }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }

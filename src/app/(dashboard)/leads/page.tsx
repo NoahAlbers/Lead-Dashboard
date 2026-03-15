@@ -1,15 +1,10 @@
 import { Suspense } from "react";
-import { getLeads, getLeadStats } from "@/actions/lead.actions";
+import { getLeads, getLeadStats, getWidgetMetrics } from "@/actions/lead.actions";
+import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { prisma } from "@/lib/db";
 import { LeadTable } from "@/components/leads/lead-table";
 import { LeadFilters } from "@/components/leads/lead-filters";
-import { StatCard } from "@/components/layout/stat-card";
-import {
-  Inbox,
-  PhoneOff,
-  Star,
-  Clock,
-} from "lucide-react";
+import { InboxWidgets } from "@/components/leads/inbox-widget-config";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -37,13 +32,23 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     sortDirection: (params.sortDirection as "asc" | "desc") ?? "desc",
   };
 
-  const [result, stats, emailTemplates] = await Promise.all([
+  // Fetch all possible widget metrics so client can pick from them
+  const allMetricIds = [
+    "new_today", "new_week", "new_month", "total", "uncontacted", "unread",
+    "a_leads", "b_leads", "c_leads", "poor_leads", "follow_up", "referred",
+    "contacted", "disqualified", "duplicates", "avg_score", "good_states",
+    "bad_states", "total_value", "total_units",
+  ];
+
+  const [result, stats, emailTemplates, stateClassifications, widgetMetrics] = await Promise.all([
     getLeads(filters),
     getLeadStats(),
     prisma.emailTemplate.findMany({
       where: { active: true },
       orderBy: { type: "asc" },
     }),
+    getStateClassificationMap(),
+    getWidgetMetrics(allMetricIds),
   ]);
 
   const serializedLeads = result.leads.map((l) => ({
@@ -70,17 +75,8 @@ export default async function LeadsPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="New Today" value={stats.newToday} icon={Inbox} />
-        <StatCard label="Uncontacted" value={stats.uncontacted} icon={PhoneOff} />
-        <StatCard label="High Quality" value={stats.highQuality} icon={Star} />
-        <StatCard
-          label="Follow-Up"
-          value={stats.followUpNeeded}
-          icon={Clock}
-        />
-      </div>
+      {/* Quick Stats — configurable */}
+      <InboxWidgets metrics={widgetMetrics} />
 
       {/* Filters */}
       <Suspense fallback={null}>
@@ -98,6 +94,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
           sortField={filters.sortField}
           sortDirection={filters.sortDirection}
           emailTemplates={serializedTemplates}
+          stateClassifications={stateClassifications}
         />
       </Suspense>
     </div>

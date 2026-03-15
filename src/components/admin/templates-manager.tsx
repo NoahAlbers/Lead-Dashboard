@@ -10,6 +10,7 @@ import {
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { toast } from "@/components/ui/use-toast";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 interface Template {
   id: string;
@@ -22,7 +23,14 @@ interface Template {
   updatedAt: string;
 }
 
-const TEMPLATE_TYPES = [
+interface EmailTypeItem {
+  id: string;
+  name: string;
+  color: string;
+  isReferral: boolean;
+}
+
+const FALLBACK_TYPES = [
   { value: "intro", label: "Intro Email" },
   { value: "referral", label: "Referral Email" },
   { value: "follow_up", label: "Follow-Up Email" },
@@ -31,14 +39,21 @@ const TEMPLATE_TYPES = [
 
 export function TemplatesManager({
   initialTemplates,
+  emailTypes,
 }: {
   initialTemplates: Template[];
+  emailTypes?: EmailTypeItem[];
 }) {
   const router = useRouter();
   const [templates, setTemplates] = useState(initialTemplates);
   const [editing, setEditing] = useState<Template | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
+
+  const templateTypes = emailTypes && emailTypes.length > 0
+    ? emailTypes.map((et) => ({ value: et.name.toLowerCase().replace(/\s+/g, "_"), label: et.name }))
+    : FALLBACK_TYPES;
 
   const [form, setForm] = useState({
     name: "",
@@ -87,11 +102,14 @@ export function TemplatesManager({
   }
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this template?")) return;
-    startTransition(async () => {
-      await deleteTemplate(id);
-      setTemplates(templates.filter((t) => t.id !== id));
-      toast({ title: "Template deleted" });
+    setConfirmState({
+      action: () => {
+        startTransition(async () => {
+          await deleteTemplate(id);
+          setTemplates(templates.filter((t) => t.id !== id));
+          toast({ title: "Template deleted" });
+        });
+      },
     });
   }
 
@@ -111,9 +129,17 @@ export function TemplatesManager({
               <div>
                 <div className="flex items-center gap-2">
                   <p className="font-medium">{tmpl.name}</p>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
-                    {tmpl.type.replace(/_/g, " ")}
-                  </span>
+                  {(() => {
+                    const et = emailTypes?.find((e) => e.name.toLowerCase().replace(/\s+/g, "_") === tmpl.type);
+                    return (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={et ? { backgroundColor: et.color + "30", color: et.color } : undefined}
+                      >
+                        {tmpl.type.replace(/_/g, " ")}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
                   Subject: {tmpl.subjectTemplate}
@@ -159,9 +185,9 @@ export function TemplatesManager({
               <select
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
-                className={inputClass}
+                className={`${inputClass} font-[inherit]`}
               >
-                {TEMPLATE_TYPES.map((t) => (
+                {templateTypes.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
                   </option>
@@ -232,6 +258,16 @@ export function TemplatesManager({
           Add Email Template
         </button>
       )}
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title="Delete Template"
+        message="Are you sure you want to delete this template? This action cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => { confirmState?.action(); setConfirmState(null); }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }

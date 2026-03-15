@@ -23,6 +23,7 @@ import { RentDistribution } from "@/components/reports/rent-distribution";
 import { ResponseTime } from "@/components/reports/response-time";
 import { ActivityFeed } from "@/components/reports/activity-feed";
 import { CustomChartManager } from "@/components/reports/custom-chart-builder";
+import { getStateClassificationMap } from "@/actions/state-classification.actions";
 
 import {
   getReportKPIs,
@@ -97,7 +98,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
   const [
     kpis, volumeByDay, tierDist, statusBreakdown, byState, sources,
     funnel, avgScoreTime, ruleStats, recentLeads, topLeads, followUps,
-    responseTime, unitDist, rentDist, activity, sparkline,
+    responseTime, unitDist, rentDist, activity, sparkline, stateClassifications,
   ] = await Promise.all([
     getReportKPIs(dateRange),
     getLeadVolumeByDay(dateRange),
@@ -116,6 +117,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getRentDistribution(dateRange),
     getRecentActivity(20),
     getDailyLeadCounts(dateRange),
+    getStateClassificationMap(),
   ]);
 
   // Serialize dateRange for client component
@@ -162,7 +164,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
         {/* Geography */}
         <DashboardWidget title="Geographic Heatmap" subtitle="Lead density by state">
-          <GeoHeatmap data={byState} />
+          <GeoHeatmap data={byState} stateClassifications={stateClassifications} />
         </DashboardWidget>
         <DashboardWidget title="Lead Sources" subtitle="Where leads come from">
           <LeadSources data={sources} />

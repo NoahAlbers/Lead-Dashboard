@@ -1,121 +1,224 @@
-Multiple improvements needed across email templates, referral partners, UI branding, and favicon system. Read all before starting, then plan.
+Multiple fixes and features needed. Read everything, plan, then implement.
 
-## EMAIL TEMPLATE EDITOR — Major Overhaul
+## FIX 1: Replace ALL remaining browser popups with CSS modals
+- The delete template confirmation is still using a browser confirm() dialog — replace with a custom styled modal matching the app's design system
+- Audit the ENTIRE app for any remaining browser alert(), confirm(), or prompt() calls and replace ALL of them with custom CSS modals
+- Every confirmation dialog should have clear Cancel/Confirm buttons styled consistently
 
-### Fix broken toolbar buttons
-- Bullet point buttons (ordered and unordered lists) don't work — fix them
-- Header buttons (H1, H2, H3) don't work — fix them
-- Bold, italic, underline should all work properly
-- Alignment buttons should work
-- The link button popup is currently a browser prompt — replace with a custom CSS modal
-- The image button currently asks for a URL via browser prompt — replace with a custom CSS modal that supports BOTH image URL input AND direct image upload from the user's computer. Uploaded images should be stored and served from our system.
+## FIX 2: Email template rich text editor — toolbar buttons broken
+The H1, H2, H3, bullet list, numbered list buttons are not working. The editor needs to be fully functional. Options:
+- If using contentEditable + execCommand: that API is deprecated and unreliable. Switch to a proper rich text editor library.
+- Recommended: Replace the current editor with Tiptap (headless, built on ProseMirror) or React-Quill. Tiptap is preferred because it's more customizable and actively maintained.
+- The editor MUST support:
+  - Bold, italic, underline, strikethrough
+  - H1, H2, H3 headings (visually render in the editor AND in the output)
+  - Bullet lists (unordered)
+  - Numbered lists (ordered)
+  - Text alignment (left, center, right, justify)
+  - Link insertion via custom CSS modal (not browser prompt)
+  - Image insertion: both URL and file upload (see Fix 3)
+  - Code/HTML view toggle (the </> button)
+  - Merge variable insertion (Insert Field dropdown)
+  - Lead summary table insertion
+- The toolbar buttons should show active/pressed state when the cursor is in formatted text
+- Output should be clean HTML suitable for email clients
 
-### Fix font consistency
-- The email Type dropdown is not using the Outfit font. Ensure Outfit is applied consistently across all form elements in the template editor, including selects/dropdowns.
+## FIX 3: Image upload in email templates
+- The image upload feature isn't working
+- Implement a proper image upload flow:
+  1. User clicks image button in toolbar
+  2. Custom CSS modal appears with two tabs: "Upload" and "URL"
+  3. Upload tab: file picker, preview, uploads to our server, inserts the served URL into the editor
+  4. URL tab: paste an image URL, preview it, insert into editor
+  5. Store uploaded images in a persistent location (public/uploads/ or a dedicated image storage path)
+  6. Create an API endpoint for image uploads (POST /api/uploads/images)
+  7. Return the served URL after upload
+  8. Insert the image into the editor at cursor position
 
-### Custom email types system
-- Move email types out of a hardcoded list and into an admin-configurable system
-- In admin settings, add an "Email Types" management section where admins can:
-  - Create new email types with a custom name
-  - Assign a color to each type (color picker)
-  - Mark whether the type is a "referral" type or not (boolean flag)
-  - Edit and delete custom types
-  - Default types (Intro, Follow-Up, Referral, Internal Handoff) should be pre-seeded but editable
-- The color assigned to each type should be reflected:
-  - In the type badge shown in the template list
-  - In the email template selection popup/modal on the lead detail page
-  - Anywhere else the type badge appears
+## FIX 4: Insert Field and Summary Table — must include ALL lead intake form fields
+The Insert Field dropdown and the summary table must include every field that comes from the lead intake form. Here is the complete list — make sure ALL of these are available as merge variables:
 
-### Referral type email enhancements
-- If an email type is flagged as "referral" type, show a "Referral" badge in the email selection popup
-- When a user selects a referral-type template from the lead detail page:
-  1. First prompt them to select which Referral Partner they're referring to
-  2. Show the referral partners in a selectable list with key info visible (name, states served, specialties, claim size range)
-  3. Allow the user to click an "expand" or "more info" button on any partner to see ALL partner details (full contact info, all emails, industries, exclusions, notes, etc.) in a slide-out panel or modal — without losing their place in the selection flow
-  4. After selecting a partner, populate the email template with both lead fields AND referral partner fields
-  5. The referral partner's email(s) should auto-populate as the recipient
+Contact fields:
+- {{first_name}}
+- {{last_name}}
+- {{full_name}}
+- {{company_name}}
+- {{title}}
+- {{email}}
+- {{phone}}
+- {{alternate_phone}}
 
-### Lead field variables in templates
-- ALL lead fields should be available as merge variables in email templates, not just the current subset
-- Add these to the "Insert Field" dropdown in the template editor:
-  - {{units}} (account volume / number of units)
-  - {{states}} (all states the lead selected)
-  - {{debt_type}}
-  - {{service_requested}}
-  - {{balance_amount}}
-  - {{industry}}
-  - {{urgency}}
-  - {{notes_from_form}}
-  - {{lead_source}}
-  - Any other lead fields that aren't already available
-- Also add referral partner variables for referral templates:
-  - {{referral_partner_name}}
-  - {{referral_partner_email}}
-  - {{referral_partner_phone}}
-  - {{referral_partner_website}}
-  - {{referral_partner_contact_name}}
+Location fields:
+- {{address_1}}
+- {{address_2}}
+- {{city}}
+- {{state}} (all states selected)
+- {{zip}}
+- {{country}}
 
-### Lead data table insertion in emails
-- Add an "Insert Lead Summary Table" button in the template editor toolbar
-- This inserts a formatted HTML table into the email body containing selected lead fields
-- The user should be able to choose which fields to include in the table when inserting
-- The table should render properly when the email is opened in the mail client
-- Alternatively, support a special variable like {{lead_summary_table}} that auto-generates a table of key lead fields, and let admins configure which fields appear in that table
+Business/case fields:
+- {{industry}}
+- {{debt_type}}
+- {{balance_amount}}
+- {{estimated_claim_value}}
+- {{account_volume}} / {{units}}
+- {{service_requested}}
+- {{notes_from_form}}
+- {{urgency}}
+- {{business_type}}
+- {{geographic_scope}}
 
-## REFERRAL PARTNERS — Enhancements
+Property management specific fields (from Webflow form):
+- {{pm_software}}
+- {{listing_locations}}
+- {{property_types}}
+- {{number_of_units}}
+- {{number_of_properties}}
+(Add any other fields that exist in the lead intake form — check the Webflow form field mapping)
 
-### Multiple emails support
-- Change the email field from a single text input to support multiple emails
-- UI should allow adding/removing email entries (+ button to add another, X to remove)
-- Store as an array in the database
-- When populating a referral email, use the first/primary email as default recipient but let the user choose which email to send to if multiple exist
+Metadata fields:
+- {{lead_source}}
+- {{source_page}}
+- {{utm_source}}
+- {{utm_medium}}
+- {{utm_campaign}}
 
-### Custom fields
-- Add an admin-configurable custom fields system for referral partners
-- Admins can define custom fields with a name, field type (text, number, URL, boolean, multi-select), and optional default value
-- Custom field values should be visible in the partner detail view and the expanded partner info modal during referral selection
-- Store custom field definitions in a separate table, and custom field values as JSON on the partner record or in a related table
+Internal/system fields:
+- {{score}}
+- {{quality_tier}}
+- {{status}}
+- {{assigned_user_name}}
+- {{created_at}}
 
-## UI / BRANDING FIXES
+Referral partner fields (for referral-type templates):
+- {{referral_partner_name}}
+- {{referral_partner_contact_name}}
+- {{referral_partner_email}}
+- {{referral_partner_phone}}
+- {{referral_partner_website}}
 
-### Logo fix
-- The ACB logo in the top-left of the sidebar is currently squished/distorted
-- Fix the aspect ratio — ensure it displays at its natural proportions
-- If needed, adjust the sidebar width or logo container to accommodate the correct aspect ratio
-- The logo should look clean and professional
+Organize these into grouped sections in the Insert Field dropdown (Contact, Location, Business, Metadata, System, Referral Partner).
 
-### Sidebar color/theme
-- The current dark navy sidebar doesn't match ACB's branding
-- Look at the ACB logo colors and the overall app theme (which uses light grays, whites, and accent colors)
-- Change the sidebar to better match ACB branding — options:
-  - A clean white or light gray sidebar with dark text (matching the rest of the app's light theme)
-  - Or pull the primary brand color from the ACB logo and use that as a subtle accent
-- Make sure active/selected nav items are clearly distinguished
-- Keep the sidebar professional and clean, not heavy/dark
+For the Lead Summary Table insertion, let users pick which fields to include from this same list.
 
-## FAVICON — Dynamic unread count
+## FIX 5: Email type dropdown font
+The Type dropdown in the email template editor is STILL not using the Outfit font. This has been flagged before. Find the specific select/dropdown element for email type selection and force Outfit font on it. Check:
+- The select element itself
+- The option elements inside it
+- Any custom dropdown wrapper
+- Apply: font-family: 'Outfit', sans-serif !important if needed
+- Test in Chrome and make sure it renders correctly
 
-### Implementation
-- I have a folder of pre-made favicon images that need to be added to the project:
-  - default.webp — no unread leads (normal favicon)
-  - 1-unread.webp through 19-unread.webp — favicons showing unread count 1-19
-  - 19+-unread.webp — used when unread count is 20 or more
-- Add these images to the public assets
-- Implement a favicon manager that:
-  1. Polls or subscribes to the current unread lead count
-  2. Swaps the favicon dynamically based on the count:
-     - 0 unread → default.webp
-     - 1-19 unread → corresponding numbered favicon
-     - 20+ unread → 19+-unread.webp
-  3. Updates in near-real-time (poll every 30-60 seconds, or use websocket/SSE if already available)
-- The favicon should update across all open tabs
-- Convert webp files to .ico or .png if browsers don't support webp favicons well, or serve both formats
+## FEATURE 1: Email Types management in Admin Settings
+Create a new admin settings section: "Email Types"
+- List all existing email types with their name, color, and referral flag
+- Add new email type: name (text), color (color picker), is_referral (boolean toggle)
+- Edit existing types: change name, color, referral flag
+- Delete custom types (prevent deletion if templates are using that type)
+- Pre-seed defaults: Intro Email (keep current color), Follow-Up Email, Referral Email (flagged as referral), Internal Handoff
+- Store email types in a database table: id, name, color (hex), is_referral (boolean), sort_order, created_at, updated_at
+- The color should be reflected everywhere the type badge appears:
+  - Template list page badges
+  - Email selection popup on lead detail page
+  - Template editor Type dropdown
+- The email template editor Type dropdown should pull from this database table, not a hardcoded list
+- When is_referral is true, show "Referral" badge in the email selection popup
 
-Plan this out, then implement in this order:
-1. UI/branding fixes (logo, sidebar) — quick wins
-2. Favicon system
-3. Email type configuration system (admin settings)
-4. Email template editor toolbar fixes
-5. Referral partner enhancements (multiple emails, custom fields)
-6. Referral email flow improvements (partner selection, expanded info)
-7. Lead field variables and summary table insertion
+## FEATURE 2: Customizable Lead Inbox widget boxes
+The 4 stat boxes at the top of the Lead Inbox (currently New Today, Uncontacted, High Quality, Follow-Up) need to become fully customizable widgets:
+
+- Each box should have a settings gear icon that opens a configuration modal
+- Users can select what metric/data each box displays from a list of options including:
+  - New Today (count)
+  - New This Week (count)
+  - New This Month (count)
+  - Total Leads (count)
+  - Uncontacted (count)
+  - Unread (count)
+  - High Quality / A Leads (count)
+  - B Leads (count)
+  - C Leads (count)
+  - Poor Fit (count)
+  - Follow-Up Needed (count)
+  - Referred Out (count)
+  - Contacted (count)
+  - Disqualified (count)
+  - Duplicates (count)
+  - Average Score (number)
+  - Contact Rate (percentage)
+  - Leads in Good States (count)
+  - Leads in Bad States (count)
+  - Total Estimated Value (sum of balance_amount)
+  - Total Units (sum of units)
+  - Mini chart: Leads by tier (small bar/donut)
+  - Mini chart: Leads by status (small bar/donut)
+  - Mini chart: Daily lead volume (sparkline)
+  - Mini chart: Score distribution (small histogram)
+- Each widget box should support:
+  - The metric value (big number)
+  - A label
+  - An icon
+  - Optional mini chart/sparkline
+  - Optional trend indicator (up/down vs previous period)
+  - Optional color coding
+- Save widget configuration per user
+- Include a "Reset to Default" option
+- Allow users to also change the number of widget boxes (4, 5, or 6) if screen width allows
+
+## FEATURE 3: State Management System in Admin Settings
+Create a new admin settings section: "State Configuration"
+
+### Default state classifications (pre-seed these):
+
+GOOD STATES (green):
+AL, AR, FL, GA, IL, KS, KY, LA, MI, MS, MO, MT, NE, NJ, NM, OH, OK, PA, SC, TN, TX, UT, VT, VA, WI
+
+BAD/BANNED STATES (red/orange):
+AK, AZ, CA, CO, CT, DE, DC, HI, ID, IN, IA, ME, MD, MA, MN, NV, NH, NY, NC, ND, OR, RI, SD, WA, WV, WY
+
+Some banned states have notes like "Can Collect, No Solicit" — store this as a note/sub-status.
+
+### Admin UI:
+- Show all 50 states + DC in a table or grid
+- Each state has:
+  - Abbreviation
+  - Full name
+  - Classification: Good / Banned / Unknown (dropdown or toggle)
+  - Sub-status/note: free text (e.g., "Can Collect, No Solicit", "Open except NY City, Buffalo & Yonkers")
+  - Active toggle
+- Color-coded: green rows for good, red/orange rows for banned
+- Bulk actions: select multiple states and change classification
+- Search/filter
+
+### Integration with Scoring Rules:
+- Scoring rules should be able to reference state classification
+- Example rules the system should support:
+  - "If ALL lead states are Good states: +15"
+  - "If ANY lead state is a Banned state: -20"
+  - "If more than 50% of lead states are Banned: disqualify"
+  - "If lead has states in both Good and Banned: flag for manual review"
+- Add state classification as a condition type in the scoring rules engine
+
+### State pills throughout the app:
+- Everywhere a state is displayed (lead inbox, lead detail, referral partners, etc.):
+  - Good states: green pill/badge
+  - Banned states: red or orange pill/badge
+  - Unknown/unclassified states: default blue pill/badge
+- This applies to:
+  - Lead inbox State column
+  - Lead detail page state display
+  - Referral partner "States Served" display
+  - Any filters or dropdowns showing states
+  - Geographic heatmap (use green/red coloring)
+
+## Implementation order:
+1. Replace all browser popups with CSS modals (quick, touches everything)
+2. Email type management system in admin settings (foundational for template editor)
+3. State management system in admin settings (foundational for scoring and display)
+4. Rich text editor replacement (Tiptap or equivalent)
+5. Image upload system
+6. Insert Field complete list + summary table
+7. Email type dropdown font fix
+8. Customizable inbox widget boxes
+9. State pill colors throughout the app
+10. Scoring rules state classification integration

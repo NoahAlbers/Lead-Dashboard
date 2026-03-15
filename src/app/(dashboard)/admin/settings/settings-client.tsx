@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useTransition, useCallback } from "react";
-import { Trash2, Plus, RotateCcw, Save, GripVertical } from "lucide-react";
+import { Trash2, Plus, RotateCcw, Save, GripVertical, Search } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { createCustomStatus, deleteCustomStatus, saveTierRanges } from "@/actions/status.actions";
 import { unarchiveLead } from "@/actions/lead.actions";
 import { createEmailType, updateEmailType, deleteEmailType } from "@/actions/email-type.actions";
+import { updateStateClassification, bulkUpdateClassification } from "@/actions/state-classification.actions";
 import { format } from "date-fns";
 import { toast } from "@/components/ui/use-toast";
 import {
@@ -63,11 +65,21 @@ interface EmailTypeItem {
   isDefault: boolean;
 }
 
+interface StateClassItem {
+  id: string;
+  stateAbbrev: string;
+  stateName: string;
+  classification: string;
+  note: string | null;
+  active: boolean;
+}
+
 interface SettingsClientProps {
   statuses: StatusItem[];
   tiers: TierItem[];
   archivedLeads: ArchivedLead[];
   emailTypes: EmailTypeItem[];
+  stateClassifications?: StateClassItem[];
 }
 
 // --- Status List (for lead statuses only) ---
@@ -248,7 +260,7 @@ function SortableTierCard({
       </div>
 
       <button
-        onClick={() => { if (confirm("Delete this tier?")) onDelete(tier.id); }}
+        onClick={() => onDelete(tier.id)}
         disabled={disabled}
         className="rounded p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
       >
@@ -263,6 +275,7 @@ function SortableTierCard({
 function UnifiedTierManager({ initialTiers }: { initialTiers: TierItem[] }) {
   const [tiers, setTiers] = useState(initialTiers);
   const [isPending, startTransition] = useTransition();
+  const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -274,7 +287,9 @@ function UnifiedTierManager({ initialTiers }: { initialTiers: TierItem[] }) {
   }
 
   function handleDelete(id: string) {
-    setTiers((prev) => prev.filter((t) => t.id !== id));
+    setConfirmState({
+      action: () => setTiers((prev) => prev.filter((t) => t.id !== id)),
+    });
   }
 
   function handleAdd() {
@@ -343,6 +358,16 @@ function UnifiedTierManager({ initialTiers }: { initialTiers: TierItem[] }) {
           Save Tiers
         </button>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title="Delete Tier"
+        message="Are you sure you want to delete this quality tier?"
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => { confirmState?.action(); setConfirmState(null); }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }
@@ -354,6 +379,7 @@ function UnifiedTierManager({ initialTiers }: { initialTiers: TierItem[] }) {
 function EmailTypeManager({ initialTypes }: { initialTypes: EmailTypeItem[] }) {
   const [types, setTypes] = useState(initialTypes);
   const [isPending, startTransition] = useTransition();
+  const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(PASTEL_COLORS[0]);
@@ -370,10 +396,13 @@ function EmailTypeManager({ initialTypes }: { initialTypes: EmailTypeItem[] }) {
   }
 
   function handleDelete(id: string) {
-    if (!confirm("Delete this email type?")) return;
-    startTransition(async () => {
-      await deleteEmailType(id);
-      setTypes((prev) => prev.filter((t) => t.id !== id));
+    setConfirmState({
+      action: () => {
+        startTransition(async () => {
+          await deleteEmailType(id);
+          setTypes((prev) => prev.filter((t) => t.id !== id));
+        });
+      },
     });
   }
 
@@ -435,11 +464,200 @@ function EmailTypeManager({ initialTypes }: { initialTypes: EmailTypeItem[] }) {
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title="Delete Email Type"
+        message="Are you sure you want to delete this email type? Templates using this type will not be affected."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => { confirmState?.action(); setConfirmState(null); }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }
 
-export function SettingsClient({ statuses, tiers, archivedLeads, emailTypes }: SettingsClientProps) {
+// --- State Classification Manager ---
+
+function StateClassificationManager({ initialStates }: { initialStates: StateClassItem[] }) {
+  const [states, setStates] = useState(initialStates);
+  const [isPending, startTransition] = useTransition();
+  const [searchFilter, setSearchFilter] = useState("");
+  const [classFilter, setClassFilter] = useState<string>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const filtered = states.filter((s) => {
+    const matchesSearch = !searchFilter ||
+      s.stateAbbrev.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      s.stateName.toLowerCase().includes(searchFilter.toLowerCase());
+    const matchesClass = classFilter === "all" || s.classification === classFilter;
+    return matchesSearch && matchesClass;
+  });
+
+  function handleClassChange(id: string, classification: string) {
+    setStates((prev) => prev.map((s) => (s.id === id ? { ...s, classification } : s)));
+    startTransition(async () => {
+      await updateStateClassification(id, { classification });
+    });
+  }
+
+  function handleNoteChange(id: string, note: string) {
+    setStates((prev) => prev.map((s) => (s.id === id ? { ...s, note: note || null } : s)));
+    // Debounce save — just update state immediately, save on blur
+  }
+
+  function handleNoteSave(id: string, note: string) {
+    startTransition(async () => {
+      await updateStateClassification(id, { note: note || undefined });
+    });
+  }
+
+  function handleBulkChange(classification: string) {
+    if (selected.size === 0) return;
+    const abbrevs = Array.from(selected);
+    setStates((prev) => prev.map((s) => (abbrevs.includes(s.stateAbbrev) ? { ...s, classification } : s)));
+    setSelected(new Set());
+    startTransition(async () => {
+      await bulkUpdateClassification(abbrevs, classification);
+    });
+  }
+
+  function toggleSelect(abbrev: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(abbrev)) next.delete(abbrev); else next.add(abbrev);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set(filtered.map((s) => s.stateAbbrev)));
+  }
+
+  const classColors: Record<string, string> = {
+    good: "bg-green-50 border-green-200",
+    banned: "bg-red-50 border-red-200",
+    unknown: "",
+  };
+
+  const badgeColors: Record<string, string> = {
+    good: "bg-green-100 text-green-700",
+    banned: "bg-red-100 text-red-700",
+    unknown: "bg-muted text-muted-foreground",
+  };
+
+  return (
+    <div>
+      <h2 className="font-semibold mb-1">State Configuration</h2>
+      <p className="text-sm text-muted-foreground mb-3">
+        Classify states as good (can collect), banned (cannot collect/solicit), or unknown.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            placeholder="Search states..."
+            className="w-full rounded-md border border-input bg-card pl-8 pr-3 py-1.5 text-sm"
+          />
+        </div>
+        <select
+          value={classFilter}
+          onChange={(e) => setClassFilter(e.target.value)}
+          className="rounded-md border border-input bg-card px-2 py-1.5 text-sm font-[inherit]"
+        >
+          <option value="all">All</option>
+          <option value="good">Good</option>
+          <option value="banned">Banned</option>
+          <option value="unknown">Unknown</option>
+        </select>
+        {selected.size > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{selected.size} selected:</span>
+            <button onClick={() => handleBulkChange("good")} className="rounded px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200">Good</button>
+            <button onClick={() => handleBulkChange("banned")} className="rounded px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200">Banned</button>
+            <button onClick={() => handleBulkChange("unknown")} className="rounded px-2 py-1 text-xs bg-muted text-muted-foreground hover:bg-muted/80">Unknown</button>
+            <button onClick={() => setSelected(new Set())} className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted">Clear</button>
+          </div>
+        )}
+        {selected.size === 0 && (
+          <button onClick={selectAll} className="text-xs text-primary hover:underline">Select all visible</button>
+        )}
+      </div>
+
+      <div className="rounded-md border overflow-hidden max-h-[400px] overflow-y-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
+            <tr className="border-b">
+              <th className="px-3 py-2 text-left w-8">
+                <input
+                  type="checkbox"
+                  checked={selected.size > 0 && selected.size === filtered.length}
+                  onChange={() => selected.size === filtered.length ? setSelected(new Set()) : selectAll()}
+                  className="rounded border-gray-300"
+                />
+              </th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground w-16">Abbrev</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground w-32">Classification</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((s) => (
+              <tr key={s.id} className={`border-b last:border-0 transition-colors ${classColors[s.classification] ?? ""}`}>
+                <td className="px-3 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(s.stateAbbrev)}
+                    onChange={() => toggleSelect(s.stateAbbrev)}
+                    className="rounded border-gray-300"
+                  />
+                </td>
+                <td className="px-3 py-1.5 font-mono font-medium">{s.stateAbbrev}</td>
+                <td className="px-3 py-1.5">{s.stateName}</td>
+                <td className="px-3 py-1.5">
+                  <select
+                    value={s.classification}
+                    onChange={(e) => handleClassChange(s.id, e.target.value)}
+                    disabled={isPending}
+                    className={`rounded-md border px-2 py-1 text-xs font-medium font-[inherit] ${badgeColors[s.classification] ?? ""}`}
+                  >
+                    <option value="good">Good</option>
+                    <option value="banned">Banned</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </td>
+                <td className="px-3 py-1.5">
+                  <input
+                    type="text"
+                    value={s.note ?? ""}
+                    onChange={(e) => handleNoteChange(s.id, e.target.value)}
+                    onBlur={(e) => handleNoteSave(s.id, e.target.value)}
+                    placeholder="e.g. Can Collect, No Solicit"
+                    className="w-full rounded border border-input bg-card/50 px-2 py-1 text-xs"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-100 border border-green-200" /> Good: {states.filter((s) => s.classification === "good").length}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-100 border border-red-200" /> Banned: {states.filter((s) => s.classification === "banned").length}</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-muted border" /> Unknown: {states.filter((s) => s.classification === "unknown").length}</span>
+      </div>
+    </div>
+  );
+}
+
+export function SettingsClient({ statuses, tiers, archivedLeads, emailTypes, stateClassifications = [] }: SettingsClientProps) {
   const [isPending, startTransition] = useTransition();
 
   function handleRestore(leadId: string) {
@@ -455,6 +673,12 @@ export function SettingsClient({ statuses, tiers, archivedLeads, emailTypes }: S
         <UnifiedTierManager initialTiers={tiers} />
         <EmailTypeManager initialTypes={emailTypes} />
       </div>
+
+      {stateClassifications.length > 0 && (
+        <div className="rounded-lg border bg-card p-5">
+          <StateClassificationManager initialStates={stateClassifications} />
+        </div>
+      )}
 
       {/* Archived Leads */}
       <div className="rounded-lg border bg-card p-5">

@@ -8,6 +8,8 @@ import { getLeadEvents } from "@/services/activity-log.service";
 import { evaluateReferral } from "@/services/referral.service";
 import { getActivePartners } from "@/actions/partner.actions";
 import { StatusBadge, TierBadge, ScoreBadge } from "@/components/shared/status-badge";
+import { getStateClassificationMap } from "@/actions/state-classification.actions";
+import { getStateColor } from "@/lib/state-colors";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { LeadNotes } from "@/components/leads/lead-notes";
@@ -44,18 +46,29 @@ function SectionCard({ title, children, defaultOpen = true }: { title: string; c
   );
 }
 
-function TagList({ items, customItems }: { items: string; customItems?: string }) {
+function TagList({ items, customItems, stateClassMap }: { items: string; customItems?: string; stateClassMap?: Record<string, string> }) {
   if (!items && !customItems) return <span className="text-muted-foreground">—</span>;
   const tags = items.split(",").map(s => s.trim()).filter(Boolean);
   const customTags = customItems ? customItems.split(",").map(s => s.trim()).filter(Boolean) : [];
   if (tags.length === 0 && customTags.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="flex flex-wrap gap-1">
-      {tags.map((tag, i) => (
-        <span key={i} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
-          {tag}
-        </span>
-      ))}
+      {tags.map((tag, i) => {
+        if (stateClassMap) {
+          const cls = stateClassMap[tag.toUpperCase()] ?? "unknown";
+          const colors = getStateColor(cls);
+          return (
+            <span key={i} className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors.bg} ${colors.text}`}>
+              {tag}
+            </span>
+          );
+        }
+        return (
+          <span key={i} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+            {tag}
+          </span>
+        );
+      })}
       {customTags.map((tag, i) => (
         <span key={`c-${i}`} className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium italic">
           {tag}
@@ -105,10 +118,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events] = await Promise.all([
+  const [lead, notes, events, stateClassMap] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
+    getStateClassificationMap(),
   ]);
 
   if (!lead) notFound();
@@ -217,7 +231,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
               {displayStates && (
                 <div className="py-1.5 sm:col-span-2">
                   <p className="text-sm text-muted-foreground mb-1">States</p>
-                  <TagList items={displayStates} />
+                  <TagList items={displayStates} stateClassMap={stateClassMap} />
                 </div>
               )}
             </div>

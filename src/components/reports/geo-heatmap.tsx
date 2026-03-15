@@ -3,11 +3,17 @@
 import { useState } from "react";
 import { US_STATE_PATHS, STATE_ABBREV_TO_NAME } from "@/lib/us-states";
 import { EmptyState } from "./dashboard-widget";
+import { getStateFillColor } from "@/lib/state-colors";
 
 interface StateData {
   state: string;
   count: number;
   units: number;
+}
+
+interface GeoHeatmapProps {
+  data: StateData[];
+  stateClassifications?: Record<string, string>;
 }
 
 // Build reverse map: full name → abbreviation for SVG lookup
@@ -26,7 +32,7 @@ function getColor(count: number, max: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-export function GeoHeatmap({ data }: { data: StateData[] }) {
+export function GeoHeatmap({ data, stateClassifications = {} }: GeoHeatmapProps) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
 
   if (data.length === 0) return <EmptyState />;
@@ -52,7 +58,10 @@ export function GeoHeatmap({ data }: { data: StateData[] }) {
             <path
               key={abbrev}
               d={path}
-              fill={getColor(count, maxCount)}
+              fill={Object.keys(stateClassifications).length > 0
+                ? getStateFillColor(stateClassifications[abbrev] ?? "unknown", count, maxCount)
+                : getColor(count, maxCount)
+              }
               stroke="#fff"
               strokeWidth={1}
               className="transition-colors cursor-pointer hover:opacity-80"

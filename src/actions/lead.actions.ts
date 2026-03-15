@@ -303,6 +303,88 @@ export async function getLeadStats() {
   };
 }
 
+export async function getWidgetMetrics(metricIds: string[]): Promise<Record<string, number | string>> {
+  const today = estStartOfDay();
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const monthAgo = new Date(today);
+  monthAgo.setDate(monthAgo.getDate() - 30);
+
+  const notArchived = { status: { not: "ARCHIVED" as LeadStatus } };
+
+  const results: Record<string, number | string> = {};
+
+  const fetchers: Record<string, () => Promise<number | string>> = {
+    new_today: () => prisma.lead.count({ where: { createdAt: { gte: today }, status: "NEW" } }),
+    new_week: () => prisma.lead.count({ where: { createdAt: { gte: weekAgo }, ...notArchived } }),
+    new_month: () => prisma.lead.count({ where: { createdAt: { gte: monthAgo }, ...notArchived } }),
+    total: () => prisma.lead.count({ where: notArchived }),
+    uncontacted: () => prisma.lead.count({ where: { status: { in: ["NEW", "REVIEWED"] } } }),
+    unread: () => prisma.lead.count({ where: { isRead: false, ...notArchived } }),
+    follow_up: () => prisma.lead.count({ where: { status: "FOLLOW_UP_NEEDED" } }),
+    contacted: () => prisma.lead.count({ where: { status: "CONTACTED" } }),
+    referred: () => prisma.lead.count({ where: { status: "REFERRED_OUT" } }),
+    disqualified: () => prisma.lead.count({ where: { status: "DISQUALIFIED" } }),
+    duplicates: () => prisma.lead.count({ where: { status: "DUPLICATE" } }),
+    a_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "A", mode: "insensitive" }, ...notArchived } }),
+    b_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "B", mode: "insensitive" }, ...notArchived } }),
+    c_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "C", mode: "insensitive" }, ...notArchived } }),
+    poor_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "Poor", mode: "insensitive" }, ...notArchived } }),
+    avg_score: async () => {
+      const result = await prisma.lead.aggregate({ where: { score: { not: null }, ...notArchived }, _avg: { score: true } });
+      return result._avg.score != null ? Math.round(result._avg.score) : 0;
+    },
+    good_states: async () => {
+      // Count leads where any state is classified as good
+      try {
+        const { getStateClassificationMap } = await import("@/actions/state-classification.actions");
+        const classMap = await getStateClassificationMap();
+        const goodAbbrevs = Object.entries(classMap).filter(([, c]) => c === "good").map(([a]) => a);
+        // Count leads with state in good states
+        return prisma.lead.count({
+          where: {
+            ...notArchived,
+            OR: goodAbbrevs.map((s) => ({ state: { equals: s, mode: "insensitive" as const } })),
+          },
+        });
+      } catch { return 0; }
+    },
+    bad_states: async () => {
+      try {
+        const { getStateClassificationMap } = await import("@/actions/state-classification.actions");
+        const classMap = await getStateClassificationMap();
+        const bannedAbbrevs = Object.entries(classMap).filter(([, c]) => c === "banned").map(([a]) => a);
+        return prisma.lead.count({
+          where: {
+            ...notArchived,
+            OR: bannedAbbrevs.map((s) => ({ state: { equals: s, mode: "insensitive" as const } })),
+          },
+        });
+      } catch { return 0; }
+    },
+    total_value: async () => {
+      const result = await prisma.lead.aggregate({ where: notArchived, _sum: { balanceAmount: true } });
+      const val = result._sum.balanceAmount ? Number(result._sum.balanceAmount) : 0;
+      return `$${Math.round(val).toLocaleString()}`;
+    },
+    total_units: async () => {
+      // Sum accountVolume which is stored as string
+      const leads = await prisma.lead.findMany({ where: { accountVolume: { not: null }, ...notArchived }, select: { accountVolume: true } });
+      return leads.reduce((sum, l) => sum + (parseInt(l.accountVolume ?? "0", 10) || 0), 0);
+    },
+  };
+
+  const promises = metricIds.map(async (id) => {
+    const fetcher = fetchers[id];
+    if (fetcher) {
+      results[id] = await fetcher();
+    }
+  });
+
+  await Promise.all(promises);
+  return results;
+}
+
 export async function markLeadAsRead(leadId: string) {
   await prisma.lead.update({
     where: { id: leadId },

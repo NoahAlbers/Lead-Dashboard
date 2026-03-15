@@ -1,8 +1,12 @@
 import { getTemplates } from "@/actions/template.actions";
 import { TemplatesManager } from "@/components/admin/templates-manager";
+import { prisma } from "@/lib/db";
 
 export default async function TemplatesPage() {
-  const templates = await getTemplates();
+  const [templates, emailTypes] = await Promise.all([
+    getTemplates(),
+    prisma.emailType.findMany({ orderBy: { sortOrder: "asc" } }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -17,6 +21,12 @@ export default async function TemplatesPage() {
           ...t,
           createdAt: t.createdAt.toISOString(),
           updatedAt: t.updatedAt.toISOString(),
+        }))}
+        emailTypes={emailTypes.map((et) => ({
+          id: et.id,
+          name: et.name,
+          color: et.color,
+          isReferral: et.isReferral,
         }))}
       />
     </div>

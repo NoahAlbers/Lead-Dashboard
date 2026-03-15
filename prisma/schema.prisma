@@ -294,6 +294,17 @@ model CrmExport {
   @@map("crm_exports")
 }
 
+model StateClassification {
+  id             String  @id @default(cuid())
+  stateAbbrev    String  @unique @map("state_abbrev")
+  stateName      String  @map("state_name")
+  classification String  @default("unknown") // "good", "banned", "unknown"
+  note           String? @db.Text
+  active         Boolean @default(true)
+
+  @@map("state_classifications")
+}
+
 model CustomStatus {
   id        String   @id @default(cuid())
   name      String

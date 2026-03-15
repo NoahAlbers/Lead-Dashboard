@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createUser, updateUser, deleteUser } from "@/actions/user.actions";
 import { Plus, Pencil, Trash2, UserX } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { Role } from "@prisma/client";
 
 interface UserItem {
@@ -26,6 +27,8 @@ export function UsersManager({ initialUsers }: { initialUsers: UserItem[] }) {
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -74,10 +77,13 @@ export function UsersManager({ initialUsers }: { initialUsers: UserItem[] }) {
   }
 
   function handleDeactivate(id: string) {
-    if (!confirm("Deactivate this user?")) return;
-    startTransition(async () => {
-      await deleteUser(id);
-      setUsers(users.map((u) => (u.id === id ? { ...u, active: false } : u)));
+    setConfirmState({
+      action: () => {
+        startTransition(async () => {
+          await deleteUser(id);
+          setUsers(users.map((u) => (u.id === id ? { ...u, active: false } : u)));
+        });
+      },
     });
   }
 
@@ -251,6 +257,15 @@ export function UsersManager({ initialUsers }: { initialUsers: UserItem[] }) {
           Add User
         </button>
       )}
+      <ConfirmDialog
+        open={!!confirmState}
+        title="Deactivate User"
+        message="Are you sure you want to deactivate this user?"
+        confirmLabel="Deactivate"
+        destructive
+        onConfirm={() => { confirmState?.action(); setConfirmState(null); }}
+        onCancel={() => setConfirmState(null)}
+      />
     </div>
   );
 }
