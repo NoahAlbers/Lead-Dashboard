@@ -148,108 +148,113 @@ export function LeadActions({
     });
   }
 
-  const actionBtnClass =
-    "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50";
+  const actionBtn =
+    "flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50";
+  const prominentBtn =
+    "flex w-full items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium transition-colors hover:bg-primary/10 disabled:opacity-50";
 
   return (
-    <div className="space-y-4">
-      <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+    <div className="space-y-3">
+      <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">
         Actions
       </h3>
 
-      <div className="grid grid-cols-2 gap-2">
+      {/* Communication */}
+      <div className="space-y-1.5">
         <button
           onClick={handleEmailAction}
           disabled={!email || isPending}
-          className={actionBtnClass}
+          className={prominentBtn}
         >
           <Mail className="h-4 w-4 text-blue-500" />
           Email Lead
         </button>
-
         <button
           onClick={handleCallAction}
           disabled={!phone || isPending}
-          className={actionBtnClass}
+          className={prominentBtn}
         >
           <Phone className="h-4 w-4 text-green-500" />
           Call Lead
         </button>
+      </div>
 
+      <div className="border-t" />
+
+      {/* Status Actions */}
+      <div className="space-y-1.5">
         <button
           onClick={() => handleQuickLog("contacted_email", "Marked as Contacted")}
           disabled={isPending}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <CheckCircle className="h-4 w-4 text-teal-500" />
           Mark Contacted
         </button>
-
         <button
           onClick={() => handleQuickLog("follow_up_scheduled", "Marked for Follow-Up")}
           disabled={isPending}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <Clock className="h-4 w-4 text-amber-500" />
-          Follow-Up Needed
+          Follow-Up
         </button>
-
         <button
           onClick={() => handleStatusChange("QUALIFIED")}
           disabled={isPending}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <ThumbsUp className="h-4 w-4 text-emerald-500" />
-          Mark Qualified
+          Qualified
         </button>
-
         <button
           onClick={() => handleStatusChange("DISQUALIFIED")}
           disabled={isPending}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <ThumbsDown className="h-4 w-4 text-red-500" />
           Disqualify
         </button>
+      </div>
 
+      <div className="border-t" />
+
+      {/* Other Actions */}
+      <div className="space-y-1.5">
         <button
           onClick={() => handleQuickLog("referral_sent", "Marked as Referred")}
           disabled={isPending}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <Handshake className="h-4 w-4 text-orange-500" />
           Refer Out
         </button>
-
         <button
           onClick={() => handleQuickLog("duplicate_found", "Marked as Duplicate")}
           disabled={isPending}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <Copy className="h-4 w-4 text-yellow-600" />
           Mark Duplicate
         </button>
-
         <button
           onClick={handleExport}
           disabled={isPending}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <Download className="h-4 w-4 text-indigo-500" />
           Export for CRM
         </button>
-
         <button
           onClick={() => setShowMergeSearch(true)}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <Merge className="h-4 w-4 text-gray-500" />
           Find & Merge
         </button>
-
         <button
           onClick={() => setShowNoteForm(!showNoteForm)}
-          className={actionBtnClass}
+          className={actionBtn}
         >
           <MessageSquare className="h-4 w-4 text-purple-500" />
           Add Note
