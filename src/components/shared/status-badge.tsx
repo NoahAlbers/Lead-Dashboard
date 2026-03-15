@@ -14,6 +14,7 @@ const statusColors: Record<LeadStatus, string> = {
   DISQUALIFIED: "bg-gray-100 text-gray-700",
   DUPLICATE: "bg-yellow-100 text-yellow-700",
   ARCHIVED: "bg-gray-100 text-gray-500",
+  MERGED: "bg-gray-200 text-gray-600",
 };
 
 const statusLabels: Record<LeadStatus, string> = {
@@ -29,6 +30,7 @@ const statusLabels: Record<LeadStatus, string> = {
   DISQUALIFIED: "Disqualified",
   DUPLICATE: "Duplicate",
   ARCHIVED: "Archived",
+  MERGED: "Merged",
 };
 
 export function StatusBadge({ status }: { status: LeadStatus }) {

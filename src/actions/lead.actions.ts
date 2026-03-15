@@ -43,7 +43,7 @@ export async function getLeads(params: {
   if (status?.length) {
     where.status = { in: status as LeadStatus[] };
   } else {
-    where.status = { not: "ARCHIVED" };
+    where.status = { notIn: ["ARCHIVED", "MERGED"] };
   }
 
   if (search) {
@@ -289,9 +289,9 @@ export async function getLeadStats() {
   ] = await Promise.all([
     prisma.lead.count({ where: { createdAt: { gte: today }, status: "NEW" } }),
     prisma.lead.count({ where: { status: { in: ["NEW", "REVIEWED"] } } }),
-    prisma.lead.count({ where: { qualityTier: "A", status: { not: "ARCHIVED" } } }),
+    prisma.lead.count({ where: { qualityTier: "A", status: { notIn: ["ARCHIVED", "MERGED"] } } }),
     prisma.lead.count({ where: { status: "FOLLOW_UP_NEEDED" } }),
-    prisma.lead.count({ where: { status: { not: "ARCHIVED" } } }),
+    prisma.lead.count({ where: { status: { notIn: ["ARCHIVED", "MERGED"] } } }),
   ]);
 
   return {
@@ -310,7 +310,7 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
   const monthAgo = new Date(today);
   monthAgo.setDate(monthAgo.getDate() - 30);
 
-  const notArchived = { status: { not: "ARCHIVED" as LeadStatus } };
+  const notArchived = { status: { notIn: ["ARCHIVED", "MERGED"] as LeadStatus[] } };
 
   const results: Record<string, number | string> = {};
 
@@ -412,7 +412,7 @@ export async function bulkMarkAsRead(leadIds: string[]) {
 
 export async function getUnreadCount() {
   return prisma.lead.count({
-    where: { isRead: false, status: { not: "ARCHIVED" } },
+    where: { isRead: false, status: { notIn: ["ARCHIVED", "MERGED"] } },
   });
 }
 

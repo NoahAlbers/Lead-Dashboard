@@ -27,6 +27,14 @@ enum LeadStatus {
   DISQUALIFIED
   DUPLICATE
   ARCHIVED
+  MERGED
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
 }
 
 
@@ -45,6 +53,13 @@ model User {
   leadNotes      LeadNote[]
   savedViews     SavedView[]
   emailTemplates EmailTemplate[] @relation("TemplateCreator")
+
+  // Phase 2 relations
+  notifications           Notification[]
+  pushSubscriptions       PushSubscription[]
+  notificationPreferences NotificationPreference[]
+  soundPreference         SoundPreference?
+  followUpReminders       FollowUpReminder[]
 
   @@map("users")
 }
@@ -112,6 +127,24 @@ model Lead {
   crmStatus     String? @map("crm_status")
   crmExternalId String? @map("crm_external_id")
 
+  // SLA Tracking (Phase 2)
+  firstContactAt DateTime? @map("first_contact_at")
+  slaStatus      String?   @map("sla_status")
+  slaBreachedAt  DateTime? @map("sla_breached_at")
+
+  // Assignment (Phase 3)
+  assignedAt    DateTime? @map("assigned_at")
+  claimedBySelf Boolean   @default(false) @map("claimed_by_self")
+
+  // Follow-Up (Phase 4)
+  nextFollowUpAt DateTime? @map("next_follow_up_at")
+
+  // Merge (Phase 5)
+  mergedIntoLeadId String?   @map("merged_into_lead_id")
+  mergedIntoLead   Lead?     @relation("MergedLeads", fields: [mergedIntoLeadId], references: [id])
+  mergedFromLeads  Lead[]    @relation("MergedLeads")
+  mergedAt         DateTime? @map("merged_at")
+
   // Relations
   assignedUserId      String?          @map("assigned_user_id")
   assignedUser        User?            @relation("AssignedUser", fields: [assignedUserId], references: [id])
@@ -121,9 +154,14 @@ model Lead {
   duplicateOfLead     Lead?            @relation("DuplicateLeads", fields: [duplicateOfLeadId], references: [id])
   duplicateLeads      Lead[]           @relation("DuplicateLeads")
 
-  events     LeadEvent[]
-  notes      LeadNote[]
-  crmExports CrmExport[]
+  events          LeadEvent[]
+  notes           LeadNote[]
+  crmExports      CrmExport[]
+  notifications   Notification[]
+  followUpReminders FollowUpReminder[]
+  assignmentLogs  AssignmentLog[]
+  mergeHistoryPrimary   MergeHistory[] @relation("MergePrimary")
+  mergeHistoryDuplicate MergeHistory[] @relation("MergeDuplicate")
 
   @@index([status])
   @@index([qualityTier])
@@ -131,6 +169,8 @@ model Lead {
   @@index([assignedUserId])
   @@index([email])
   @@index([companyName])
+  @@index([slaStatus])
+  @@index([nextFollowUpAt])
   @@map("leads")
 }
 
@@ -335,4 +375,177 @@ model CustomStatus {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("custom_statuses")
+}
+
+// ===== Phase 2: Notification System =====
+
+model Notification {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type     String // new_lead, lead_assigned, sla_warning, sla_breach, sla_escalation, follow_up_due, etc.
+  title    String
+  body     String
+  priority NotificationPriority @default(NORMAL)
+
+  leadId String? @map("lead_id")
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  read    Boolean   @default(false)
+  readAt  DateTime? @map("read_at")
+  clicked Boolean   @default(false)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userId    String @map("user_id")
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint  String
+  keysJson  Json   @map("keys_json")
+  userAgent String? @map("user_agent")
+  active    Boolean @default(true)
+
+  @@map("push_subscriptions")
+}
+
+model NotificationPreference {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId           String @map("user_id")
+  user             User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  notificationType    String  @map("notification_type")
+  browserPushEnabled  Boolean @default(true) @map("browser_push_enabled")
+  inAppEnabled        Boolean @default(true) @map("in_app_enabled")
+  soundEnabled        Boolean @default(true) @map("sound_enabled")
+
+  @@unique([userId, notificationType])
+  @@map("notification_preferences")
+}
+
+model SoundPreference {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId        String  @unique @map("user_id")
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  soundsEnabled Boolean @default(true) @map("sounds_enabled")
+  volume        Int     @default(70)
+
+  @@map("sound_preferences")
+}
+
+// ===== Phase 2: SLA Tracking =====
+
+model SlaConfig {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  qualityTier         String @unique @map("quality_tier")
+  firstContactMinutes Int    @map("first_contact_minutes")
+  followUpMinutes     Int    @map("follow_up_minutes")
+  escalationMinutes   Int?   @map("escalation_minutes")
+
+  @@map("sla_config")
+}
+
+model OfficeHoursConfig {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  startTime  String @default("09:00") @map("start_time")
+  endTime    String @default("16:00") @map("end_time")
+  activeDays Json   @default("[1,2,3,4,5]") @map("active_days")
+  timezone   String @default("America/New_York")
+
+  @@map("office_hours_config")
+}
+
+model OfficeHoursHoliday {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  date DateTime @db.Date
+  name String
+
+  @@map("office_hours_holidays")
+}
+
+// ===== Phase 3: Assignment =====
+
+model AssignmentLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  leadId          String  @map("lead_id")
+  lead            Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromUserId      String? @map("from_user_id")
+  toUserId        String? @map("to_user_id")
+  assignedByUserId String @map("assigned_by_user_id")
+  reason          String?
+
+  @@index([leadId])
+  @@map("assignment_log")
+}
+
+// ===== Phase 4: Follow-Up Reminders =====
+
+model FollowUpReminder {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  leadId     String @map("lead_id")
+  lead       Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId     String @map("user_id")
+  user       User   @relation(fields: [userId], references: [id])
+
+  reminderAt  DateTime @map("reminder_at")
+  note        String?
+  completed   Boolean  @default(false)
+  completedAt DateTime? @map("completed_at")
+
+  @@index([leadId])
+  @@index([userId, completed])
+  @@map("follow_up_reminders")
+}
+
+// ===== Phase 5: Duplicate Merge =====
+
+model MergeHistory {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  primaryLeadId   String @map("primary_lead_id")
+  primaryLead     Lead   @relation("MergePrimary", fields: [primaryLeadId], references: [id])
+  duplicateLeadId String @map("duplicate_lead_id")
+  duplicateLead   Lead   @relation("MergeDuplicate", fields: [duplicateLeadId], references: [id])
+  mergedByUserId  String @map("merged_by_user_id")
+
+  primarySnapshotJson   Json @map("primary_snapshot_json")
+  duplicateSnapshotJson Json @map("duplicate_snapshot_json")
+  fieldSelectionsJson   Json @map("field_selections_json")
+
+  undone         Boolean   @default(false)
+  undoneAt       DateTime? @map("undone_at")
+  undoneByUserId String?   @map("undone_by_user_id")
+
+  @@index([primaryLeadId])
+  @@index([duplicateLeadId])
+  @@map("merge_history")
 }

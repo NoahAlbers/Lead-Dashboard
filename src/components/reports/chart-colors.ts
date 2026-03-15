@@ -25,6 +25,7 @@ export const STATUS_COLORS: Record<string, string> = {
   DISQUALIFIED: "#ef4444",
   DUPLICATE: "#f97316",
   ARCHIVED: "#9ca3af",
+  MERGED: "#d1d5db",
 };
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -40,6 +41,7 @@ export const STATUS_LABELS: Record<string, string> = {
   DISQUALIFIED: "Disqualified",
   DUPLICATE: "Duplicate",
   ARCHIVED: "Archived",
+  MERGED: "Merged",
 };
 
 export const NEUTRAL = "#8889A0";

@@ -3,6 +3,7 @@ import { scoreAndUpdateLead } from "./scoring.service";
 import { findDuplicates } from "./duplicate-detection.service";
 import { evaluateReferral } from "./referral.service";
 import { logEvent } from "./activity-log.service";
+import { createNotificationsForRole } from "./notification.service";
 
 interface WebflowFormData {
   [key: string]: unknown;
@@ -175,6 +176,20 @@ export async function ingestLead(
       });
     }
   }
+
+  // Notify staff about new lead
+  const leadLabel = lead.companyName || lead.fullName || "New Lead";
+  const tierLabel = scoreResult.qualityTier ?? "Unscored";
+  const isHighPriority = scoreResult.qualityTier === "A Lead" || (scoreResult.score ?? 0) >= 80;
+
+  await createNotificationsForRole(
+    "INTAKE",
+    "new_lead",
+    `New ${tierLabel}: ${leadLabel}`,
+    `${lead.state ?? ""} ${lead.accountVolume ? `| ${lead.accountVolume} units` : ""} | Score: ${scoreResult.score ?? "N/A"}`.trim(),
+    lead.id,
+    isHighPriority ? "HIGH" : "NORMAL"
+  ).catch(() => {}); // Don't fail ingestion if notification fails
 
   return lead;
 }

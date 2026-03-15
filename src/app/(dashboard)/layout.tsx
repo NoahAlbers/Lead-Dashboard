@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { FaviconManager } from "@/components/layout/favicon-manager";
+import { SoundProvider } from "@/components/layout/sound-manager";
 import { getUnreadCount } from "@/actions/lead.actions";
 
 export default async function DashboardLayout({
@@ -16,21 +17,23 @@ export default async function DashboardLayout({
   const unreadCount = await getUnreadCount();
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        userRole={session.user.role}
-        uncontactedCount={unreadCount}
-      />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header
-          userName={session.user.name}
+    <SoundProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar
           userRole={session.user.role}
+          uncontactedCount={unreadCount}
         />
-        <main className="flex-1 overflow-y-auto bg-muted/40 p-6">
-          {children}
-        </main>
-        <FaviconManager />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Header
+            userName={session.user.name}
+            userRole={session.user.role}
+          />
+          <main className="flex-1 overflow-y-auto bg-muted/40 p-6">
+            {children}
+          </main>
+          <FaviconManager />
+        </div>
       </div>
-    </div>
+    </SoundProvider>
   );
 }
