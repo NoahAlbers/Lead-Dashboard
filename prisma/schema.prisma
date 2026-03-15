@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  INTAKE
+  SALES
+  MANAGER
+}
+
+enum LeadStatus {
+  NEW
+  REVIEWED
+  QUALIFIED
+  CONTACTED
+  FOLLOW_UP_NEEDED
+  REFERRED_OUT
+  IMPORTED_TO_CRM
+  WON
+  LOST
+  DISQUALIFIED
+  DUPLICATE
+}
+
+enum QualityTier {
+  A
+  B
+  C
+  POOR
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(INTAKE)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  assignedLeads  Lead[]          @relation("AssignedUser")
+  leadEvents     LeadEvent[]
+  leadNotes      LeadNote[]
+  savedViews     SavedView[]
+  emailTemplates EmailTemplate[] @relation("TemplateCreator")
+
+  @@map("users")
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Source
+  source     String?
+  leadSource String? @map("lead_source")
+  sourcePage String? @map("source_page")
+  utmSource  String? @map("utm_source")
+  utmMedium  String? @map("utm_medium")
+  utmCampaign String? @map("utm_campaign")
+  referrer   String?
+
+  // Identity / Contact
+  firstName      String? @map("first_name")
+  lastName       String? @map("last_name")
+  fullName       String? @map("full_name")
+  companyName    String? @map("company_name")
+  title          String?
+  email          String?
+  phone          String?
+  alternatePhone String? @map("alternate_phone")
+
+  // Location
+  address1 String? @map("address_1")
+  address2 String? @map("address_2")
+  city     String?
+  state    String?
+  zip      String?
+  country  String?
+
+  // Business / Case Data
+  industry            String?
+  debtType            String?  @map("debt_type")
+  balanceAmount       Decimal? @map("balance_amount") @db.Decimal(12, 2)
+  estimatedClaimValue Decimal? @map("estimated_claim_value") @db.Decimal(12, 2)
+  accountVolume       String?  @map("account_volume")
+  serviceRequested    String?  @map("service_requested")
+  notesFromForm       String?  @map("notes_from_form") @db.Text
+  urgency             String?
+  businessType        String?  @map("business_type")
+  geographicScope     String?  @map("geographic_scope")
+
+  // Raw payload
+  rawPayloadJson Json? @map("raw_payload_json")
+
+  // Internal / Derived
+  status            LeadStatus  @default(NEW)
+  score             Int?
+  qualityTier       QualityTier? @map("quality_tier")
+  recommendedAction String?      @map("recommended_action")
+  scoreReasons      Json?        @map("score_reasons")
+  lastActivityAt    DateTime?    @map("last_activity_at")
+
+  // CRM
+  crmStatus     String? @map("crm_status")
+  crmExternalId String? @map("crm_external_id")
+
+  // Relations
+  assignedUserId      String?          @map("assigned_user_id")
+  assignedUser        User?            @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  recommendedReferralId String?        @map("recommended_referral_id")
+  recommendedReferral   ReferralPartner? @relation("RecommendedReferral", fields: [recommendedReferralId], references: [id])
+  duplicateOfLeadId   String?          @map("duplicate_of_lead_id")
+  duplicateOfLead     Lead?            @relation("DuplicateLeads", fields: [duplicateOfLeadId], references: [id])
+  duplicateLeads      Lead[]           @relation("DuplicateLeads")
+
+  events     LeadEvent[]
+  notes      LeadNote[]
+  crmExports CrmExport[]
+
+  @@index([status])
+  @@index([qualityTier])
+  @@index([createdAt])
+  @@index([assignedUserId])
+  @@index([email])
+  @@index([companyName])
+  @@map("leads")
+}
+
+model LeadEvent {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  eventType    String @map("event_type")
+  eventDataJson Json?  @map("event_data_json")
+
+  leadId String @map("lead_id")
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([leadId])
+  @@index([eventType])
+  @@map("lead_events")
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  noteBody String @map("note_body") @db.Text
+
+  leadId String @map("lead_id")
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([leadId])
+  @@map("lead_notes")
+}
+
+model ScoringRule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  enabled     Boolean  @default(true)
+  priority    Int      @default(0)
+
+  conditionsJson Json @map("conditions_json")
+  outcomesJson   Json @map("outcomes_json")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("scoring_rules")
+}
+
+model ReferralPartner {
+  id     String  @id @default(cuid())
+  name   String
+  active Boolean @default(true)
+
+  contactName String? @map("contact_name")
+  email       String?
+  phone       String?
+  website     String?
+
+  statesServedJson      Json? @map("states_served_json")
+  industriesServedJson  Json? @map("industries_served_json")
+  specialtiesJson       Json? @map("specialties_json")
+  preferredLeadTypesJson Json? @map("preferred_lead_types_json")
+
+  minimumClaimSize Decimal? @map("minimum_claim_size") @db.Decimal(12, 2)
+  maximumClaimSize Decimal? @map("maximum_claim_size") @db.Decimal(12, 2)
+
+  exclusionsJson Json?   @map("exclusions_json")
+  notes          String? @db.Text
+
+  defaultEmailTemplateId String?        @map("default_email_template_id")
+  defaultEmailTemplate   EmailTemplate? @relation(fields: [defaultEmailTemplateId], references: [id])
+
+  rankingPriority Int @default(0) @map("ranking_priority")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  recommendedLeads Lead[] @relation("RecommendedReferral")
+
+  @@map("referral_partners")
+}
+
+model EmailTemplate {
+  id   String @id @default(cuid())
+  name String
+  type String // intro, referral, follow_up, internal_handoff
+
+  subjectTemplate String @map("subject_template")
+  bodyTemplate    String @map("body_template") @db.Text
+  active          Boolean @default(true)
+
+  createdByUserId String? @map("created_by_user_id")
+  createdBy       User?   @relation("TemplateCreator", fields: [createdByUserId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  referralPartners ReferralPartner[]
+
+  @@map("email_templates")
+}
+
+model SavedView {
+  id   String @id @default(cuid())
+  name String
+
+  filtersJson Json? @map("filters_json")
+  sortJson    Json? @map("sort_json")
+  isSystem    Boolean @default(false) @map("is_system")
+
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("saved_views")
+}
+
+model CrmExport {
+  id         String  @id @default(cuid())
+  systemName String  @map("system_name")
+  status     String  // pending, success, failed
+
+  payloadJson  Json?    @map("payload_json")
+  externalId   String?  @map("external_id")
+  errorMessage String?  @map("error_message")
+
+  attemptedAt DateTime  @default(now()) @map("attempted_at")
+  completedAt DateTime? @map("completed_at")
+
+  leadId String @map("lead_id")
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("crm_exports")
+}
