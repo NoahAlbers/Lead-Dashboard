@@ -1,73 +1,96 @@
-Layout and visual polish pass. Read all, then implement.
+Fixes needed across state pills, inbox layout, email referral flow, tier colors, and reports. Read all then plan.
 
-## FIX 1: Lead Inbox column widths — make adjustable
-- Add draggable column resizers to the lead inbox table
-- Users should be able to click and drag the border between column headers to resize
-- Show a resize cursor on hover between columns
-- Set sensible default widths (Company and Email columns wider, State and Score narrower)
-- Persist column width preferences per user (localStorage is fine for now)
-- Make sure the table remains horizontally scrollable if total column width exceeds the viewport
+## FIX 1: State pills — color not applying to full state names
+State pill colors are only working on abbreviated state names (like "FL" shows green) but full state names like "Florida", "Michigan", "Georgia", "Alabama" are all showing as default blue/gray pills. The lookup logic is probably only matching on abbreviation. Fix:
+- The state classification lookup must match on BOTH full state name AND abbreviation
+- "Florida" and "FL" should both resolve to Good → green
+- "Michigan" and "MI" should both resolve to Good → green  
+- "Georgia" and "GA" should both resolve to Good → green
+- "Alabama" and "AL" should both resolve to Good → green
+- Create a mapping utility that normalizes any state input (full name, abbreviation, mixed case) to the classification
+- Apply this fix everywhere state pills render: lead inbox table, lead detail page, referral partners, etc.
+- Test with the existing leads to confirm all pills are colored correctly
 
-## FIX 2: Lead Inbox toolbar layout — consolidate into one row
-Current layout has the search/filters on one row and "Columns" button floating separately. Fix:
-- Move the "Columns" button (column visibility toggle) into the same row as Search, All Statuses, All Tiers, date pickers, and Unread filter
-- Everything should be in a single compact filter toolbar row
-- Keep the order logical: Search bar (takes most space) → Status filter → Tier filter → Date range → Unread toggle → Columns button
-- Make sure it doesn't wrap awkwardly on standard desktop widths (1280px+)
+## FIX 2: Lead inbox table — fill full width, no white space gap
+The lead inbox table header row has white space on the right side — the table isn't filling the full available width. Fix:
+- The table should always stretch to fill 100% of its container width
+- When columns are resized, the remaining columns should distribute to fill the space
+- If total column widths are less than container width, the last column (or all columns proportionally) should expand to fill
+- Set table-layout and width so there's never a visible gap between the last column header and the container edge
+- The data rows should align with the headers perfectly
 
-## FIX 3: Customize button for stat widgets — move inline with title
-- The "Customize" gear/button for the inbox stat widget boxes is currently positioned awkwardly
-- Move it to be inline with the "Lead Inbox" title and "X total leads" subtitle
-- Place it on the right side of that title row, like: "Lead Inbox [4 total leads] ................. ⚙ Customize"
-- Keep it subtle — small icon or text link, not a prominent button
+## FIX 3: Referral email template selection — must prompt for partner selection
+When a user clicks the email action on a lead and selects a referral-type email template, it should:
+1. Show the template selection modal (already working)
+2. When a referral-type template is selected, BEFORE opening the mail client, show a second step:
+   - "Select Referral Partner" with a list of active referral partners
+   - Each partner entry shows: name, states served, specialties, claim size range
+   - Each partner has an "expand/more info" button that opens a detail panel showing ALL partner info (all emails, contact name, phone, website, industries, exclusions, notes, custom fields)
+   - User clicks to select a partner
+3. After partner is selected, populate the email template with BOTH lead fields AND partner fields:
+   - {{referral_partner_name}} → selected partner's name
+   - {{referral_partner_contact_name}} → partner's contact name
+   - {{referral_partner_email}} → partner's primary email
+   - {{referral_partner_phone}} → partner's phone
+   - {{referral_partner_website}} → partner's website
+   - All lead fields as normal
+4. Set the email recipient to the selected partner's email
+5. Then open the mail client with the fully populated email
+6. Log the referral action with which partner was selected
 
-## FIX 4: Geographic heatmap — fix the color scale
-The heatmap now correctly shows green for good states and red/pink for bad states based on the state classification system. But the legend/scale at the bottom still shows a blue gradient (0 → 3) which was the old lead-density scale. Fix:
-- The heatmap is now doing two things at once: showing lead density AND state classification. These need to be reconciled.
-- Recommended approach: Use a dual-layer system:
-  - Base color: light green tint for good states, light red/pink tint for bad states (from state config)
-  - Intensity/saturation: driven by lead count (more leads = deeper/darker shade of that state's base color)
-  - So a good state with 3 leads = deep green, good state with 0 leads = very light green
-  - Bad state with 2 leads = deep red, bad state with 0 leads = very light pink
-  - Unknown states = gray scale by lead count
-- Update the legend to reflect this:
-  - Show a two-part legend: "Good States" with a green gradient (light → dark by lead count), "Restricted States" with a red gradient (light → dark by lead count)
-  - Or show a simple legend: green = good state, red = restricted state, darker = more leads
-- Remove the old blue scale entirely
+If the template is NOT a referral type, skip the partner selection and go straight to populating with lead fields and opening the mail client as it works now.
 
-## FIX 5: State pills — apply good/bad coloring everywhere
-State pills should reflect the state classification throughout the app. Check and fix:
-- Lead Inbox table State column: each state pill should be green (good), red/orange (bad), or default blue/gray (unknown)
-- Lead Detail page: state display should use colored pills
-- Currently some pills appear to be blue/default even for states that are classified. Audit:
-  - "Michigan" appears as a blue pill — Michigan is a GOOD state, should be green
-  - "Florida" appears green — correct
-  - "Georgia", "Alabama" appear as pills — Georgia is GOOD (green), Alabama is GOOD (green)
-  - "FL" abbreviation on Test Co — should also be green, and ideally display consistently (either always full name or always abbreviation, pick one and be consistent)
-- Make state display consistent: always show full state name in pills, not sometimes abbreviation and sometimes full name
-- Apply the same coloring to:
-  - Referral partner "States Served" display
-  - State filter dropdowns (color the options or add a dot indicator)
-  - Any other place states appear
+## FIX 4: Quality tier pills — use colors from settings
+The tier pills in the lead inbox (A Lead, B Lead, C Lead, Poor Fit) are all showing as purple/lavender. They should use the colors configured in the Quality Tiers settings:
+- A Lead → green (the green dot color from settings)
+- B Lead → blue (the blue dot color from settings)
+- C Lead → yellow/amber (the yellow dot color from settings)
+- Poor Fit → red/pink (the red dot color from settings)
+- Pull these colors dynamically from the quality tier configuration in the database
+- Apply as the pill background color (with appropriate text contrast)
+- Apply everywhere tier pills appear: lead inbox table, lead detail page, reports, filters
 
-## FIX 6: Reports dashboard — ALL widgets must be resizable
-- Ensure every widget/chart card on the Reports Dashboard supports resizing via the drag handle
-- This includes:
-  - Summary stat cards (Total Leads, Avg Score, Contact Rate, Est. Units)
-  - Lead Volume Over Time chart
-  - Quality Distribution donut
-  - Quality Trend chart
-  - Geographic Heatmap
-  - Any custom charts the user has added
-- All widgets should work with the react-grid-layout (or whatever grid library is in use)
-- Each widget's chart/content should re-render and resize properly when the container changes size
-- Charts should be responsive to their container — not fixed pixel dimensions
-- Make sure the drag handle is visible and consistent on every widget
+## FIX 5: Quality Trend chart — fix display
+The Quality Trend chart (tier mix over time) looks broken — it's showing overlapping filled areas that are hard to read. Fix:
+- This should be a stacked area chart or stacked bar chart showing the count of leads per tier over time
+- Each tier should use its configured color (from the tier settings)
+- X-axis: dates
+- Y-axis: lead count
+- Each tier is a distinct layer/series, stacked so you can see the total and the mix
+- If there's very little data (only 2 days), it should still render cleanly — maybe use bars instead of area for sparse data
+- Make sure the legend shows each tier with its correct color
 
-Plan and implement in this order:
-1. Heatmap color scale fix (visual bug, contained)
-2. State pill coloring audit and fix (visual consistency)
-3. Inbox toolbar consolidation (layout)
-4. Customize button repositioning (layout)
-5. Column resizing (interactive feature)
-6. Reports widget resizing (ensure all covered)
+## FIX 6: Remove Lead Sources widget
+- Remove the "Lead Sources" widget from the default reports dashboard layout entirely
+- All leads come from the same source so this chart adds no value
+- If it's part of the default widget config, remove it from the defaults
+- Users shouldn't see it unless they explicitly add a custom chart for lead source later
+
+## FIX 7: Quality Distribution widget — fix rendering
+The Quality Distribution donut/pie chart is broken — it's just showing "5 leads" text with no chart. Fix:
+- This should be a donut or pie chart showing the breakdown of leads by quality tier
+- Each segment colored by the tier's configured color
+- Show the count or percentage per tier
+- Center label can show total lead count
+- If only one tier has leads, it should still render as a full donut in that tier's color with a label
+- Check if the issue is a data query problem (not returning tier breakdown) or a rendering problem (chart component not receiving data correctly)
+
+## FIX 8: Custom charts — debug and fix
+The custom chart builder/viewer in the reports dashboard isn't working. Debug:
+- Can users add a new custom chart? Does the "Add Chart" flow work?
+- After adding a custom chart, does it render?
+- Check the data query — is it actually fetching and aggregating the selected field's data?
+- Check multi-select field handling — fields like PM software, listing locations, states need to be exploded from arrays so each value is counted individually
+- Make sure chart type selection works (bar, pie/donut, trend line)
+- Test with a concrete example: create a chart for "Leads by State" as a bar chart — each state that appears in any lead should have a bar with its count
+- If the issue is that there's not enough varied data with only 5 test leads, make sure the charts at least render with whatever data exists rather than showing nothing
+
+Plan then implement in this order:
+1. State pill color lookup fix (quick, high visibility)
+2. Tier pill colors from settings (quick, high visibility)  
+3. Table full-width fix (quick layout fix)
+4. Quality Distribution chart fix (reports)
+5. Quality Trend chart fix (reports)
+6. Remove Lead Sources widget (reports cleanup)
+7. Custom charts debugging (reports)
+8. Referral email partner selection flow (biggest feature)

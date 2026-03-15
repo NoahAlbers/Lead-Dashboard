@@ -12,7 +12,6 @@ import { QualityTrend } from "@/components/reports/quality-trend";
 import { PipelineFunnel } from "@/components/reports/pipeline-funnel";
 import { StatusBreakdown } from "@/components/reports/status-breakdown";
 import { GeoHeatmap } from "@/components/reports/geo-heatmap";
-import { LeadSources } from "@/components/reports/lead-sources";
 import { RuleEffectiveness } from "@/components/reports/rule-effectiveness";
 import { AvgScoreChart } from "@/components/reports/avg-score-chart";
 import { RecentLeadsTable } from "@/components/reports/recent-leads-table";
@@ -24,6 +23,7 @@ import { ResponseTime } from "@/components/reports/response-time";
 import { ActivityFeed } from "@/components/reports/activity-feed";
 import { CustomChartManager } from "@/components/reports/custom-chart-builder";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
+import { getTierColorMap } from "@/actions/status.actions";
 
 import {
   getReportKPIs,
@@ -31,7 +31,6 @@ import {
   getTierDistribution,
   getStatusBreakdown,
   getLeadsByState,
-  getLeadSources,
   getPipelineFunnel,
   getAvgScoreOverTime,
   getScoringRuleEffectiveness,
@@ -62,7 +61,6 @@ const DEFAULT_LAYOUT = [
   { i: "funnel", w: 1 },
   { i: "status", w: 1 },
   { i: "geo", w: 1 },
-  { i: "sources", w: 1 },
   { i: "rules", w: 1 },
   { i: "avg-score", w: 1 },
   { i: "recent", w: 2 },
@@ -96,16 +94,16 @@ export default async function ReportsPage({ searchParams }: PageProps) {
   const dateRange = getRangeDate(range);
 
   const [
-    kpis, volumeByDay, tierDist, statusBreakdown, byState, sources,
+    kpis, volumeByDay, tierDist, statusBreakdown, byState,
     funnel, avgScoreTime, ruleStats, recentLeads, topLeads, followUps,
     responseTime, unitDist, rentDist, activity, sparkline, stateClassifications,
+    tierColorMap,
   ] = await Promise.all([
     getReportKPIs(dateRange),
     getLeadVolumeByDay(dateRange),
     getTierDistribution(dateRange),
     getStatusBreakdown(dateRange),
     getLeadsByState(dateRange),
-    getLeadSources(dateRange),
     getPipelineFunnel(dateRange),
     getAvgScoreOverTime(dateRange),
     getScoringRuleEffectiveness(dateRange),
@@ -118,6 +116,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getRecentActivity(20),
     getDailyLeadCounts(dateRange),
     getStateClassificationMap(),
+    getTierColorMap(),
   ]);
 
   // Serialize dateRange for client component
@@ -148,10 +147,10 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
         {/* Quality */}
         <DashboardWidget title="Quality Distribution" subtitle="Current tier breakdown">
-          <QualityDonut data={tierDist} />
+          <QualityDonut data={tierDist} tierColorMap={tierColorMap} />
         </DashboardWidget>
         <DashboardWidget title="Quality Trend" subtitle="Tier mix over time">
-          <QualityTrend data={volumeByDay} />
+          <QualityTrend data={volumeByDay} tierColorMap={tierColorMap} />
         </DashboardWidget>
 
         {/* Pipeline */}
@@ -166,10 +165,6 @@ export default async function ReportsPage({ searchParams }: PageProps) {
         <DashboardWidget title="Geographic Heatmap" subtitle="Lead density by state">
           <GeoHeatmap data={byState} stateClassifications={stateClassifications} />
         </DashboardWidget>
-        <DashboardWidget title="Lead Sources" subtitle="Where leads come from">
-          <LeadSources data={sources} />
-        </DashboardWidget>
-
         {/* Scoring */}
         <DashboardWidget title="Rule Effectiveness" subtitle="Which scoring rules fire">
           <RuleEffectiveness data={ruleStats} />
@@ -180,10 +175,10 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
         {/* Tables */}
         <DashboardWidget title="Recent Leads" subtitle="Latest 10 leads">
-          <RecentLeadsTable leads={recentLeads} />
+          <RecentLeadsTable leads={recentLeads} tierColorMap={tierColorMap} />
         </DashboardWidget>
         <DashboardWidget title="Top Leads by Score" subtitle="Highest scoring leads">
-          <TopLeads leads={topLeads} />
+          <TopLeads leads={topLeads} tierColorMap={tierColorMap} />
         </DashboardWidget>
         <DashboardWidget title="Upcoming Follow-Ups" subtitle="Leads needing attention">
           <FollowUpTable leads={followUps} />

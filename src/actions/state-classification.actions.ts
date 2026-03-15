@@ -104,7 +104,10 @@ export async function getStateClassificationMap(): Promise<Record<string, string
   const states = await getStateClassifications();
   const map: Record<string, string> = {};
   for (const s of states) {
+    // Key by abbreviation (uppercase) — matches "FL", "CA", etc.
     map[s.stateAbbrev.toUpperCase()] = s.classification;
+    // Key by full name (uppercase) — matches "FLORIDA", "CALIFORNIA", etc.
+    map[s.stateName.toUpperCase()] = s.classification;
   }
   return map;
 }

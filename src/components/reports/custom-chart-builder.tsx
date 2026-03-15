@@ -116,7 +116,7 @@ export function CustomChartManager({ dateRange }: { dateRange: { from: Date; to:
   return (
     <>
       {charts.map((config) => (
-        <div key={config.id}>
+        <div key={config.id} className="h-full">
           <CustomChartCard config={config} onRemove={() => removeChart(config.id)} dateRange={dateRange} />
         </div>
       ))}

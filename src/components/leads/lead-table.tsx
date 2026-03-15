@@ -99,7 +99,23 @@ interface LeadTableProps {
   sortDirection: string;
   emailTemplates?: EmailTemplate[];
   stateClassifications?: Record<string, string>;
+  tierColorMap?: Record<string, string>;
   filterBar?: React.ReactNode;
+  referralPartners?: Array<{
+    id: string;
+    name: string;
+    contactName: string | null;
+    email: string | null;
+    emails: string[] | null;
+    phone: string | null;
+    website: string | null;
+    statesServed: string[] | null;
+    specialties: string[] | null;
+    industries: string[] | null;
+    minimumClaimSize: number | null;
+    maximumClaimSize: number | null;
+    notes: string | null;
+  }>;
 }
 
 // --- All available column definitions ---
@@ -227,7 +243,7 @@ function RowQuickActions({ lead, onEmailClick }: { lead: LeadRow; onEmailClick: 
 }
 
 // --- Main Component ---
-export function LeadTable({ leads, total, page, pageSize, totalPages, sortField, sortDirection, emailTemplates = [], stateClassifications = {}, filterBar }: LeadTableProps) {
+export function LeadTable({ leads, total, page, pageSize, totalPages, sortField, sortDirection, emailTemplates = [], stateClassifications = {}, tierColorMap, filterBar, referralPartners = [] }: LeadTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -347,7 +363,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       case "score":
         return <ScoreBadge score={row.score} />;
       case "qualityTier":
-        return <TierBadge tier={row.qualityTier} />;
+        return <TierBadge tier={row.qualityTier} colorMap={tierColorMap} />;
       case "status":
         return <StatusBadge status={row.status} />;
       case "recommendedAction":
@@ -497,7 +513,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       {/* Table */}
       <div className="rounded-lg border bg-card">
         <div className="overflow-x-auto">
-          <table className="text-sm" style={{ tableLayout: "fixed", width: totalTableWidth }}>
+          <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: totalTableWidth }}>
             <thead>
               <tr className="border-b bg-muted/50">
                 {activeColumns.map((colId) => {
@@ -581,6 +597,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
           onClose={() => setEmailDialogLead(null)}
           lead={{ id: emailDialogLead.id, email: emailDialogLead.email, fullName: emailDialogLead.fullName, companyName: emailDialogLead.companyName, phone: emailDialogLead.phone, state: emailDialogLead.state, industry: emailDialogLead.industry }}
           templates={emailTemplates}
+          referralPartners={referralPartners}
         />
       )}
     </div>

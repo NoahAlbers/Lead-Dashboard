@@ -9,7 +9,7 @@ interface VolumeData {
   [tier: string]: number | string;
 }
 
-export function QualityTrend({ data }: { data: VolumeData[] }) {
+export function QualityTrend({ data, tierColorMap }: { data: VolumeData[]; tierColorMap?: Record<string, string> }) {
   if (data.length === 0) return <EmptyState />;
 
   const tierKeys = new Set<string>();
@@ -37,8 +37,8 @@ export function QualityTrend({ data }: { data: VolumeData[] }) {
             type="monotone"
             dataKey={tier}
             stackId="1"
-            stroke={TIER_COLORS[tier] ?? "#8889A0"}
-            fill={TIER_COLORS[tier] ?? "#8889A0"}
+            stroke={tierColorMap?.[tier] ?? TIER_COLORS[tier] ?? "#8889A0"}
+            fill={tierColorMap?.[tier] ?? TIER_COLORS[tier] ?? "#8889A0"}
             fillOpacity={0.6}
             name={tier}
           />

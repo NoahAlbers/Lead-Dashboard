@@ -97,6 +97,15 @@ export async function getTierRanges(): Promise<TierItem[]> {
   }
 }
 
+export async function getTierColorMap(): Promise<Record<string, string>> {
+  const tiers = await getTierRanges();
+  const map: Record<string, string> = {};
+  for (const t of tiers) {
+    map[t.name] = t.color;
+  }
+  return map;
+}
+
 export async function saveTierRanges(tiers: TierItem[]) {
   await prisma.customStatus.upsert({
     where: { id: TIER_RANGES_ID },

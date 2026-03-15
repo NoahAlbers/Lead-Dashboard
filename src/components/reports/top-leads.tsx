@@ -12,7 +12,7 @@ interface Lead {
   status: string;
 }
 
-export function TopLeads({ leads }: { leads: Lead[] }) {
+export function TopLeads({ leads, tierColorMap }: { leads: Lead[]; tierColorMap?: Record<string, string> }) {
   if (leads.length === 0) return <EmptyState />;
 
   return (
@@ -24,7 +24,7 @@ export function TopLeads({ leads }: { leads: Lead[] }) {
             {lead.companyName || lead.fullName || "—"}
           </Link>
           <ScoreBadge score={lead.score} />
-          <TierBadge tier={lead.qualityTier} />
+          <TierBadge tier={lead.qualityTier} colorMap={tierColorMap} />
           <span className="text-muted-foreground tabular-nums w-12 text-right">{lead.accountVolume || "—"}</span>
           {lead.status === "NEW" && (
             <span className="rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-[9px] font-medium">NEW</span>

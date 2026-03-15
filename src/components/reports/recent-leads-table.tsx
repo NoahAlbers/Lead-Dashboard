@@ -14,7 +14,7 @@ interface Lead {
   state: string | null;
 }
 
-export function RecentLeadsTable({ leads }: { leads: Lead[] }) {
+export function RecentLeadsTable({ leads, tierColorMap }: { leads: Lead[]; tierColorMap?: Record<string, string> }) {
   if (leads.length === 0) return <EmptyState />;
 
   return (
@@ -46,7 +46,7 @@ export function RecentLeadsTable({ leads }: { leads: Lead[] }) {
                 </td>
                 <td className="py-2">{lead.fullName || "—"}</td>
                 <td className="py-2 text-right"><ScoreBadge score={lead.score} /></td>
-                <td className="py-2"><TierBadge tier={lead.qualityTier} /></td>
+                <td className="py-2"><TierBadge tier={lead.qualityTier} colorMap={tierColorMap} /></td>
                 <td className="py-2"><StatusBadge status={lead.status as never} /></td>
                 <td className="py-2 text-right tabular-nums">{lead.accountVolume || "—"}</td>
                 <td className="py-2">{lead.state || "—"}</td>

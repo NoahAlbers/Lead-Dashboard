@@ -9,13 +9,13 @@ interface TierData {
   count: number;
 }
 
-export function QualityDonut({ data }: { data: TierData[] }) {
+export function QualityDonut({ data, tierColorMap }: { data: TierData[]; tierColorMap?: Record<string, string> }) {
   if (data.length === 0 || data.every((d) => d.count === 0)) return <EmptyState />;
 
   const total = data.reduce((s, d) => s + d.count, 0);
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
@@ -29,7 +29,7 @@ export function QualityDonut({ data }: { data: TierData[] }) {
             paddingAngle={2}
           >
             {data.map((d) => (
-              <Cell key={d.tier} fill={TIER_COLORS[d.tier] ?? "#8889A0"} />
+              <Cell key={d.tier} fill={tierColorMap?.[d.tier] ?? TIER_COLORS[d.tier] ?? "#8889A0"} />
             ))}
           </Pie>
           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />

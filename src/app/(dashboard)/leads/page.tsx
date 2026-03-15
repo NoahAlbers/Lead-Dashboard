@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { getLeads, getLeadStats, getWidgetMetrics } from "@/actions/lead.actions";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
+import { getTierColorMap } from "@/actions/status.actions";
+import { getActivePartners } from "@/actions/partner.actions";
 import { prisma } from "@/lib/db";
 import { LeadTable } from "@/components/leads/lead-table";
 import { LeadFilters } from "@/components/leads/lead-filters";
@@ -40,15 +42,18 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     "bad_states", "total_value", "total_units",
   ];
 
-  const [result, stats, emailTemplates, stateClassifications, widgetMetrics] = await Promise.all([
+  const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners] = await Promise.all([
     getLeads(filters),
     getLeadStats(),
     prisma.emailTemplate.findMany({
       where: { active: true },
       orderBy: { type: "asc" },
+      include: { emailType: { select: { color: true, isReferral: true } } },
     }),
     getStateClassificationMap(),
     getWidgetMetrics(allMetricIds),
+    getTierColorMap(),
+    getActivePartners(),
   ]);
 
   const serializedLeads = result.leads.map((l) => ({
@@ -64,6 +69,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     type: t.type,
     subjectTemplate: t.subjectTemplate,
     bodyTemplate: t.bodyTemplate,
+    emailType: t.emailType ? { color: t.emailType.color, isReferral: t.emailType.isReferral } : null,
   }));
 
   return (
@@ -94,6 +100,8 @@ export default async function LeadsPage({ searchParams }: PageProps) {
           sortDirection={filters.sortDirection}
           emailTemplates={serializedTemplates}
           stateClassifications={stateClassifications}
+          tierColorMap={tierColorMap}
+          referralPartners={activePartners}
         />
       </Suspense>
     </div>

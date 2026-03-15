@@ -9,6 +9,7 @@ import { evaluateReferral } from "@/services/referral.service";
 import { getActivePartners } from "@/actions/partner.actions";
 import { StatusBadge, TierBadge, ScoreBadge } from "@/components/shared/status-badge";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
+import { getTierColorMap } from "@/actions/status.actions";
 import { getStateColor } from "@/lib/state-colors";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
@@ -118,11 +119,12 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events, stateClassMap] = await Promise.all([
+  const [lead, notes, events, stateClassMap, tierColorMap] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
     getStateClassificationMap(),
+    getTierColorMap(),
   ]);
 
   if (!lead) notFound();
@@ -178,7 +180,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
               {lead.companyName || lead.fullName || "Unknown Lead"}
             </h1>
             <StatusBadge status={lead.status} />
-            <TierBadge tier={lead.qualityTier} />
+            <TierBadge tier={lead.qualityTier} colorMap={tierColorMap} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Created {format(toZonedTime(new Date(lead.createdAt), EST_TZ), "MMMM d, yyyy 'at' h:mm a", { timeZone: EST_TZ })} EST

@@ -51,8 +51,22 @@ const tierColors: Record<string, string> = {
   POOR: "bg-red-100 text-red-700",
 };
 
-export function TierBadge({ tier }: { tier: string | null }) {
+export function TierBadge({ tier, colorMap }: { tier: string | null; colorMap?: Record<string, string> }) {
   if (!tier) return <span className="text-xs text-muted-foreground">—</span>;
+
+  // Use DB-configured hex color if available
+  const hexColor = colorMap?.[tier];
+  if (hexColor) {
+    return (
+      <span
+        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+        style={{ backgroundColor: hexColor + "40", color: hexColor }}
+      >
+        {tier}
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(
