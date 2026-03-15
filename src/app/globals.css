@@ -1,38 +1,38 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-background: #ffffff;
-  --color-foreground: #09090b;
-  --color-card: #ffffff;
-  --color-card-foreground: #09090b;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #09090b;
-  --color-primary: #285FE2;
+  --color-background: #F4F5F9;
+  --color-foreground: #1A1A2E;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #1A1A2E;
+  --color-popover: #FFFFFF;
+  --color-popover-foreground: #1A1A2E;
+  --color-primary: #3D5AF1;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #f0f4ff;
-  --color-secondary-foreground: #1e3a5f;
-  --color-muted: #f4f4f5;
-  --color-muted-foreground: #71717a;
-  --color-accent: #f0f4ff;
-  --color-accent-foreground: #1e3a5f;
+  --color-secondary: #EEF1FE;
+  --color-secondary-foreground: #2D45C6;
+  --color-muted: #EEF1FE;
+  --color-muted-foreground: #8889A0;
+  --color-accent: #EEF1FE;
+  --color-accent-foreground: #2D45C6;
   --color-destructive: #ef4444;
   --color-destructive-foreground: #fafafa;
-  --color-border: #e2e8f0;
-  --color-input: #e2e8f0;
-  --color-ring: #285FE2;
-  --radius: 0.5rem;
+  --color-border: #E2E4EC;
+  --color-input: #E2E4EC;
+  --color-ring: #3D5AF1;
+  --radius: 0.75rem;
   --color-sidebar: #0f172a;
   --color-sidebar-foreground: #f1f5f9;
   --color-sidebar-border: #1e293b;
   --color-sidebar-accent: #1e3a5f;
   --color-sidebar-accent-foreground: #ffffff;
-  --color-sidebar-ring: #285FE2;
+  --color-sidebar-ring: #3D5AF1;
 
-  --color-success: #22c55e;
+  --color-success: #16a34a;
   --color-success-foreground: #ffffff;
-  --color-warning: #f59e0b;
+  --color-warning: #E8A83E;
   --color-warning-foreground: #ffffff;
-  --color-info: #285FE2;
+  --color-info: #3D5AF1;
   --color-info-foreground: #ffffff;
 }
 
