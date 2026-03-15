@@ -51,16 +51,25 @@ const tierColors: Record<string, string> = {
   POOR: "bg-red-100 text-red-700",
 };
 
+function getContrastTextColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#1A1A2E" : "#ffffff";
+}
+
 export function TierBadge({ tier, colorMap }: { tier: string | null; colorMap?: Record<string, string> }) {
   if (!tier) return <span className="text-xs text-muted-foreground">—</span>;
 
-  // Use DB-configured hex color if available
+  // Use DB-configured hex color with solid background + contrast text
   const hexColor = colorMap?.[tier];
   if (hexColor) {
+    const textColor = getContrastTextColor(hexColor);
     return (
       <span
-        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-        style={{ backgroundColor: hexColor + "40", color: hexColor }}
+        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold"
+        style={{ backgroundColor: hexColor, color: textColor }}
       >
         {tier}
       </span>

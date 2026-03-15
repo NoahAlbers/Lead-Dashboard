@@ -21,6 +21,7 @@ export default async function PartnersPage() {
           ...p,
           minimumClaimSize: p.minimumClaimSize ? Number(p.minimumClaimSize) : null,
           maximumClaimSize: p.maximumClaimSize ? Number(p.maximumClaimSize) : null,
+          minimumTotalBalance: p.minimumTotalBalance ? Number(p.minimumTotalBalance) : null,
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),
         }))}

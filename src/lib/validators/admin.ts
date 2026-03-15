@@ -46,6 +46,22 @@ export const referralPartnerSchema = z.object({
   exclusionsJson: z.array(z.string()).optional(),
   notes: z.string().optional(),
   rankingPriority: z.coerce.number().int().default(0),
+  // Financial Terms
+  contingencyRate: z.string().optional(),
+  upfrontCosts: z.string().optional(),
+  paymentTerms: z.string().optional(),
+  commissionStructure: z.string().optional(),
+  // Account Requirements
+  minimumAccounts: z.coerce.number().int().optional().nullable(),
+  minimumTotalBalance: z.coerce.number().optional().nullable(),
+  avgAccountAgePref: z.string().optional(),
+  accountTypesAccepted: z.string().optional(),
+  // Service Details
+  collectionMethods: z.string().optional(),
+  licensedStatesJson: z.array(z.string()).optional(),
+  insuranceInfo: z.string().optional(),
+  yearsInBusiness: z.coerce.number().int().optional().nullable(),
+  complianceNotes: z.string().optional(),
 });
 
 export const emailTemplateSchema = z.object({

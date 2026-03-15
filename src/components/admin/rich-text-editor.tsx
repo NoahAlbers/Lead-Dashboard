@@ -86,6 +86,10 @@ const MERGE_FIELDS = [
     { label: "Partner Email", value: "{{referral_partner_email}}" },
     { label: "Partner Phone", value: "{{referral_partner_phone}}" },
     { label: "Partner Website", value: "{{referral_partner_website}}" },
+    { label: "Contingency Rate", value: "{{referral_partner_contingency_rate}}" },
+    { label: "Upfront Costs", value: "{{referral_partner_upfront_costs}}" },
+    { label: "Min Accounts", value: "{{referral_partner_minimum_accounts}}" },
+    { label: "Min Total Balance", value: "{{referral_partner_minimum_total_balance}}" },
   ]},
 ];
 

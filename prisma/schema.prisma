@@ -206,6 +206,25 @@ model ReferralPartner {
   exclusionsJson Json?   @map("exclusions_json")
   notes          String? @db.Text
 
+  // Financial Terms
+  contingencyRate     String? @map("contingency_rate")
+  upfrontCosts        String? @map("upfront_costs")
+  paymentTerms        String? @map("payment_terms")
+  commissionStructure String? @map("commission_structure")
+
+  // Account Requirements
+  minimumAccounts     Int?     @map("minimum_accounts")
+  minimumTotalBalance Decimal? @map("minimum_total_balance") @db.Decimal(12, 2)
+  avgAccountAgePref   String?  @map("avg_account_age_preference")
+  accountTypesAccepted String? @map("account_types_accepted")
+
+  // Service Details
+  collectionMethods  String? @map("collection_methods")
+  licensedStatesJson Json?   @map("licensed_states_json")
+  insuranceInfo      String? @map("insurance_info")
+  yearsInBusiness    Int?    @map("years_in_business")
+  complianceNotes    String? @map("compliance_notes") @db.Text
+
   defaultEmailTemplateId String?        @map("default_email_template_id")
   defaultEmailTemplate   EmailTemplate? @relation(fields: [defaultEmailTemplateId], references: [id])
 

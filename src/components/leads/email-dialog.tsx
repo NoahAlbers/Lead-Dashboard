@@ -64,6 +64,22 @@ interface ReferralPartner {
   minimumClaimSize: number | null;
   maximumClaimSize: number | null;
   notes: string | null;
+  // Financial Terms
+  contingencyRate?: string | null;
+  upfrontCosts?: string | null;
+  paymentTerms?: string | null;
+  commissionStructure?: string | null;
+  // Account Requirements
+  minimumAccounts?: number | null;
+  minimumTotalBalance?: number | null;
+  avgAccountAgePref?: string | null;
+  accountTypesAccepted?: string | null;
+  // Service Details
+  collectionMethods?: string | null;
+  licensedStates?: string[] | null;
+  insuranceInfo?: string | null;
+  yearsInBusiness?: number | null;
+  complianceNotes?: string | null;
 }
 
 interface EmailDialogProps {
@@ -127,6 +143,10 @@ function renderTemplate(
     "{{referral_partner_email}}": partner?.email ?? "",
     "{{referral_partner_phone}}": partner?.phone ?? "",
     "{{referral_partner_website}}": partner?.website ?? "",
+    "{{referral_partner_contingency_rate}}": partner?.contingencyRate ?? "",
+    "{{referral_partner_upfront_costs}}": partner?.upfrontCosts ?? "",
+    "{{referral_partner_minimum_accounts}}": partner?.minimumAccounts != null ? String(partner.minimumAccounts) : "",
+    "{{referral_partner_minimum_total_balance}}": partner?.minimumTotalBalance != null ? `$${partner.minimumTotalBalance.toLocaleString()}` : "",
   };
 
   let result = template;
@@ -313,6 +333,9 @@ export function EmailDialog({
                       {partner.specialties && partner.specialties.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-1">{partner.specialties.join(", ")}</p>
                       )}
+                      {partner.contingencyRate && (
+                        <p className="text-xs text-muted-foreground mt-0.5">Rate: {partner.contingencyRate}</p>
+                      )}
                       {(partner.minimumClaimSize || partner.maximumClaimSize) && (
                         <p className="text-xs text-muted-foreground">
                           Claim: ${partner.minimumClaimSize?.toLocaleString() ?? "0"} - ${partner.maximumClaimSize?.toLocaleString() ?? "∞"}
@@ -360,6 +383,42 @@ export function EmailDialog({
               )}
               {detailPartner.industries && detailPartner.industries.length > 0 && (
                 <div><p className="text-muted-foreground text-xs mb-1">Industries</p><p className="text-sm">{detailPartner.industries.join(", ")}</p></div>
+              )}
+              {/* Financial Terms */}
+              {(detailPartner.contingencyRate || detailPartner.upfrontCosts || detailPartner.paymentTerms || detailPartner.commissionStructure) && (
+                <div>
+                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Financial Terms</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {detailPartner.contingencyRate && <div><p className="text-muted-foreground text-xs">Contingency Rate</p><p className="font-medium">{detailPartner.contingencyRate}</p></div>}
+                    {detailPartner.upfrontCosts && <div><p className="text-muted-foreground text-xs">Upfront Costs</p><p className="font-medium">{detailPartner.upfrontCosts}</p></div>}
+                    {detailPartner.paymentTerms && <div><p className="text-muted-foreground text-xs">Payment Terms</p><p className="font-medium">{detailPartner.paymentTerms}</p></div>}
+                    {detailPartner.commissionStructure && <div><p className="text-muted-foreground text-xs">Commission</p><p className="font-medium">{detailPartner.commissionStructure}</p></div>}
+                  </div>
+                </div>
+              )}
+              {/* Account Requirements */}
+              {(detailPartner.minimumAccounts || detailPartner.minimumTotalBalance || detailPartner.avgAccountAgePref || detailPartner.accountTypesAccepted) && (
+                <div>
+                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Account Requirements</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {detailPartner.minimumAccounts != null && <div><p className="text-muted-foreground text-xs">Min Accounts</p><p className="font-medium">{detailPartner.minimumAccounts}</p></div>}
+                    {detailPartner.minimumTotalBalance != null && <div><p className="text-muted-foreground text-xs">Min Total Balance</p><p className="font-medium">${detailPartner.minimumTotalBalance.toLocaleString()}</p></div>}
+                    {detailPartner.avgAccountAgePref && <div><p className="text-muted-foreground text-xs">Preferred Age</p><p className="font-medium">{detailPartner.avgAccountAgePref}</p></div>}
+                    {detailPartner.accountTypesAccepted && <div><p className="text-muted-foreground text-xs">Types Accepted</p><p className="font-medium">{detailPartner.accountTypesAccepted}</p></div>}
+                  </div>
+                </div>
+              )}
+              {/* Service Details */}
+              {(detailPartner.collectionMethods || detailPartner.insuranceInfo || detailPartner.yearsInBusiness || detailPartner.complianceNotes) && (
+                <div>
+                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Service Details</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {detailPartner.collectionMethods && <div><p className="text-muted-foreground text-xs">Collection Methods</p><p className="font-medium">{detailPartner.collectionMethods}</p></div>}
+                    {detailPartner.yearsInBusiness != null && <div><p className="text-muted-foreground text-xs">Years in Business</p><p className="font-medium">{detailPartner.yearsInBusiness}</p></div>}
+                    {detailPartner.insuranceInfo && <div className="col-span-2"><p className="text-muted-foreground text-xs">Insurance</p><p className="font-medium">{detailPartner.insuranceInfo}</p></div>}
+                    {detailPartner.complianceNotes && <div className="col-span-2"><p className="text-muted-foreground text-xs">Compliance</p><p className="font-medium">{detailPartner.complianceNotes}</p></div>}
+                  </div>
+                </div>
               )}
               {detailPartner.notes && (
                 <div><p className="text-muted-foreground text-xs mb-1">Notes</p><p className="text-sm whitespace-pre-wrap bg-muted/50 rounded p-2">{detailPartner.notes}</p></div>

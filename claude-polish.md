@@ -1,96 +1,75 @@
-Fixes needed across state pills, inbox layout, email referral flow, tier colors, and reports. Read all then plan.
+Two fixes needed — tier pill readability and referral partner fields. Read both then implement.
 
-## FIX 1: State pills — color not applying to full state names
-State pill colors are only working on abbreviated state names (like "FL" shows green) but full state names like "Florida", "Michigan", "Georgia", "Alabama" are all showing as default blue/gray pills. The lookup logic is probably only matching on abbreviation. Fix:
-- The state classification lookup must match on BOTH full state name AND abbreviation
-- "Florida" and "FL" should both resolve to Good → green
-- "Michigan" and "MI" should both resolve to Good → green  
-- "Georgia" and "GA" should both resolve to Good → green
-- "Alabama" and "AL" should both resolve to Good → green
-- Create a mapping utility that normalizes any state input (full name, abbreviation, mixed case) to the classification
-- Apply this fix everywhere state pills render: lead inbox table, lead detail page, referral partners, etc.
-- Test with the existing leads to confirm all pills are colored correctly
+## FIX 1: Tier pill colors — too low contrast, hard to read
+The quality tier pills (A Lead, B Lead, C Lead, Poor Fit) currently have very light/pastel backgrounds with light text, making them nearly unreadable. Fix:
 
-## FIX 2: Lead inbox table — fill full width, no white space gap
-The lead inbox table header row has white space on the right side — the table isn't filling the full available width. Fix:
-- The table should always stretch to fill 100% of its container width
-- When columns are resized, the remaining columns should distribute to fill the space
-- If total column widths are less than container width, the last column (or all columns proportionally) should expand to fill
-- Set table-layout and width so there's never a visible gap between the last column header and the container edge
-- The data rows should align with the headers perfectly
+- Increase the contrast significantly. Two approaches (pick whichever looks better):
+  
+  Option A — Darker background, white text:
+  - A Lead: solid medium green background (#22c55e or similar), white text
+  - B Lead: solid blue background (#3b82f6 or similar), white text
+  - C Lead: solid amber/yellow background (#f59e0b or similar), dark text (black or dark brown for contrast since yellow + white is unreadable)
+  - Poor Fit: solid red background (#ef4444 or similar), white text
 
-## FIX 3: Referral email template selection — must prompt for partner selection
-When a user clicks the email action on a lead and selects a referral-type email template, it should:
-1. Show the template selection modal (already working)
-2. When a referral-type template is selected, BEFORE opening the mail client, show a second step:
-   - "Select Referral Partner" with a list of active referral partners
-   - Each partner entry shows: name, states served, specialties, claim size range
-   - Each partner has an "expand/more info" button that opens a detail panel showing ALL partner info (all emails, contact name, phone, website, industries, exclusions, notes, custom fields)
-   - User clicks to select a partner
-3. After partner is selected, populate the email template with BOTH lead fields AND partner fields:
-   - {{referral_partner_name}} → selected partner's name
-   - {{referral_partner_contact_name}} → partner's contact name
-   - {{referral_partner_email}} → partner's primary email
-   - {{referral_partner_phone}} → partner's phone
-   - {{referral_partner_website}} → partner's website
-   - All lead fields as normal
-4. Set the email recipient to the selected partner's email
-5. Then open the mail client with the fully populated email
-6. Log the referral action with which partner was selected
+  Option B — Tinted background, dark colored text:
+  - A Lead: light green bg, dark green text, medium green left border
+  - B Lead: light blue bg, dark blue text, medium blue left border
+  - C Lead: light amber bg, dark amber text, medium amber left border
+  - Poor Fit: light red bg, dark red text, medium red left border
 
-If the template is NOT a referral type, skip the partner selection and go straight to populating with lead fields and opening the mail client as it works now.
+- Whichever approach you use, ensure WCAG AA contrast ratio (4.5:1 minimum for normal text)
+- These colors should still pull from the tier configuration in settings, but the rendering logic needs to compute a readable text color based on the background
+- Add a utility function: given a background color (hex), return either white or dark text for best contrast
+- Apply this fix everywhere tier pills appear: inbox table, lead detail, reports charts, filters
+- The status pills (New, Contacted, Disqualified, etc.) look fine — don't change those, just the tier pills
 
-## FIX 4: Quality tier pills — use colors from settings
-The tier pills in the lead inbox (A Lead, B Lead, C Lead, Poor Fit) are all showing as purple/lavender. They should use the colors configured in the Quality Tiers settings:
-- A Lead → green (the green dot color from settings)
-- B Lead → blue (the blue dot color from settings)
-- C Lead → yellow/amber (the yellow dot color from settings)
-- Poor Fit → red/pink (the red dot color from settings)
-- Pull these colors dynamically from the quality tier configuration in the database
-- Apply as the pill background color (with appropriate text contrast)
-- Apply everywhere tier pills appear: lead inbox table, lead detail page, reports, filters
+## FIX 2: Referral partner form — add business/financial fields
+The referral partner edit form needs additional fields for business terms and operational details. Add these fields to both the database schema and the edit form:
 
-## FIX 5: Quality Trend chart — fix display
-The Quality Trend chart (tier mix over time) looks broken — it's showing overlapping filled areas that are hard to read. Fix:
-- This should be a stacked area chart or stacked bar chart showing the count of leads per tier over time
-- Each tier should use its configured color (from the tier settings)
-- X-axis: dates
-- Y-axis: lead count
-- Each tier is a distinct layer/series, stacked so you can see the total and the mix
-- If there's very little data (only 2 days), it should still render cleanly — maybe use bars instead of area for sparse data
-- Make sure the legend shows each tier with its correct color
+### New fields to add:
 
-## FIX 6: Remove Lead Sources widget
-- Remove the "Lead Sources" widget from the default reports dashboard layout entirely
-- All leads come from the same source so this chart adds no value
-- If it's part of the default widget config, remove it from the defaults
-- Users shouldn't see it unless they explicitly add a custom chart for lead source later
+Financial Terms section:
+- contingency_rate (text or number) — Label: "Contingency Rate (%)" — e.g., "25%", "20-30% depending on age"
+- upfront_costs (text) — Label: "Upfront Costs / Fees" — e.g., "$25 per account", "No upfront fees", "$500 setup + $10/account"
+- payment_terms (text) — Label: "Payment Terms" — e.g., "Net 30", "Monthly remittance"
+- commission_structure (text) — Label: "Commission / Revenue Share" — for any referral fee or kickback arrangement
 
-## FIX 7: Quality Distribution widget — fix rendering
-The Quality Distribution donut/pie chart is broken — it's just showing "5 leads" text with no chart. Fix:
-- This should be a donut or pie chart showing the breakdown of leads by quality tier
-- Each segment colored by the tier's configured color
-- Show the count or percentage per tier
-- Center label can show total lead count
-- If only one tier has leads, it should still render as a full donut in that tier's color with a label
-- Check if the issue is a data query problem (not returning tier breakdown) or a rendering problem (chart component not receiving data correctly)
+Account Requirements section:
+- minimum_accounts (number, nullable) — Label: "Minimum # of Accounts" — minimum number of accounts they'll accept in a placement
+- minimum_total_balance (number, nullable) — Label: "Minimum Total Balance ($)" — minimum total dollar amount for a placement
+- average_account_age_preference (text) — Label: "Preferred Account Age" — e.g., "60-180 days", "Any age", "Under 1 year"
+- account_types_accepted (text) — Label: "Account Types Accepted" — e.g., "Commercial only", "Consumer and commercial", "Medical debt"
 
-## FIX 8: Custom charts — debug and fix
-The custom chart builder/viewer in the reports dashboard isn't working. Debug:
-- Can users add a new custom chart? Does the "Add Chart" flow work?
-- After adding a custom chart, does it render?
-- Check the data query — is it actually fetching and aggregating the selected field's data?
-- Check multi-select field handling — fields like PM software, listing locations, states need to be exploded from arrays so each value is counted individually
-- Make sure chart type selection works (bar, pie/donut, trend line)
-- Test with a concrete example: create a chart for "Leads by State" as a bar chart — each state that appears in any lead should have a bar with its count
-- If the issue is that there's not enough varied data with only 5 test leads, make sure the charts at least render with whatever data exists rather than showing nothing
+Service Details section:
+- collection_methods (text) — Label: "Collection Methods" — e.g., "Letters, calls, skip tracing", "Legal collections", "Debt buying"
+- licensed_states (text, comma-separated or JSON array) — Label: "Licensed / Bonded States" — states where they're actually licensed, which may differ from states_served
+- insurance_info (text) — Label: "Insurance / Bonding Info" — e.g., "Bonded in all 50 states", "$2M E&O coverage"
+- years_in_business (number, nullable) — Label: "Years in Business"
+- compliance_notes (text) — Label: "Compliance Notes" — any compliance certifications, audit info, etc.
 
-Plan then implement in this order:
-1. State pill color lookup fix (quick, high visibility)
-2. Tier pill colors from settings (quick, high visibility)  
-3. Table full-width fix (quick layout fix)
-4. Quality Distribution chart fix (reports)
-5. Quality Trend chart fix (reports)
-6. Remove Lead Sources widget (reports cleanup)
-7. Custom charts debugging (reports)
-8. Referral email partner selection flow (biggest feature)
+### Form layout:
+- Group these into clear sections with headers on the edit form:
+  1. Basic Info (existing: name, contact, email, phone, website, ranking)
+  2. Service Area (existing: states served, industries)
+  3. Account Requirements (new: min accounts, min balance, claim size range, account age, account types)
+  4. Financial Terms (new: contingency rate, upfront costs, payment terms, commission)
+  5. Service Details (new: collection methods, licensed states, insurance, years in business, compliance)
+  6. Notes (existing)
+  7. Status (existing: active toggle)
+
+### Also:
+- These new fields should be visible in the referral partner detail view
+- These fields should be visible in the expanded partner info panel during the referral email partner selection flow
+- Add merge variables for key financial fields so they can be used in referral email templates:
+  - {{referral_partner_contingency_rate}}
+  - {{referral_partner_upfront_costs}}
+  - {{referral_partner_minimum_accounts}}
+  - {{referral_partner_minimum_total_balance}}
+- Run a database migration to add these columns to the referral_partners table
+
+Implement in this order:
+1. Tier pill contrast fix (quick visual fix)
+2. Referral partner schema migration + new fields
+3. Update referral partner edit form with sections
+4. Update partner detail views and selection panel
+5. Add new merge variables to email template system

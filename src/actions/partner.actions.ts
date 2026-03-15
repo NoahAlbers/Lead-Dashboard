@@ -28,6 +28,22 @@ export async function getActivePartners() {
     minimumClaimSize: p.minimumClaimSize ? Number(p.minimumClaimSize) : null,
     maximumClaimSize: p.maximumClaimSize ? Number(p.maximumClaimSize) : null,
     notes: p.notes,
+    // Financial Terms
+    contingencyRate: p.contingencyRate,
+    upfrontCosts: p.upfrontCosts,
+    paymentTerms: p.paymentTerms,
+    commissionStructure: p.commissionStructure,
+    // Account Requirements
+    minimumAccounts: p.minimumAccounts,
+    minimumTotalBalance: p.minimumTotalBalance ? Number(p.minimumTotalBalance) : null,
+    avgAccountAgePref: p.avgAccountAgePref,
+    accountTypesAccepted: p.accountTypesAccepted,
+    // Service Details
+    collectionMethods: p.collectionMethods,
+    licensedStates: p.licensedStatesJson as string[] | null,
+    insuranceInfo: p.insuranceInfo,
+    yearsInBusiness: p.yearsInBusiness,
+    complianceNotes: p.complianceNotes,
   }));
 }
 
