@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Users,
   Settings,
-  FileText,
   Handshake,
   Mail,
   BarChart3,
@@ -42,10 +41,9 @@ export function Sidebar({ userRole }: { userRole: Role }) {
 
   return (
     <aside className="flex h-screen w-60 flex-col border-r bg-sidebar">
-      <div className="flex h-14 items-center border-b px-4">
+      <div className="flex h-14 items-center border-b border-sidebar-border px-4">
         <Link href="/leads" className="flex items-center gap-2">
-          <FileText className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-sm">ACB Lead Console</span>
+          <img src="/acb-logo.webp" alt="ACB" className="h-8" />
         </Link>
       </div>
 

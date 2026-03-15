@@ -31,10 +31,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="w-full max-w-sm rounded-lg border bg-card p-8 shadow-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold">ACB Lead Console</h1>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <img src="/acb-logo.webp" alt="Advanced Collection Bureau" className="h-12 mb-4" />
+          <h1 className="text-xl font-bold text-foreground">Lead Operations Console</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Sign in to your account
           </p>

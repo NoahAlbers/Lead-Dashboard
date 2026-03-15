@@ -30,86 +30,12 @@ async function main() {
   });
   console.log("Seeded intake user:", intake.email);
 
-  // Seed default scoring rules
+  // Seed default scoring rules — tuned for ACB's residential rental debt focus
   const rules = [
-    {
-      name: "Florida Target Market",
-      description: "Lead is in Florida — ACB primary market",
-      priority: 10,
-      conditionsJson: [
-        { field: "state", operator: "equals", value: "FL" },
-      ],
-      outcomesJson: { scoreAdjustment: 15, reason: "Florida target market" },
-    },
-    {
-      name: "Commercial Collections",
-      description: "Service requested is commercial collections",
-      priority: 20,
-      conditionsJson: [
-        { field: "serviceRequested", operator: "contains", value: "commercial" },
-      ],
-      outcomesJson: {
-        scoreAdjustment: 20,
-        reason: "Commercial collections requested",
-      },
-    },
-    {
-      name: "High Balance",
-      description: "Estimated balance or claim value above $10,000",
-      priority: 30,
-      conditionsJson: [
-        { field: "balanceAmount", operator: "greater_than", value: 10000 },
-      ],
-      outcomesJson: {
-        scoreAdjustment: 20,
-        reason: "High balance (>$10,000)",
-      },
-    },
-    {
-      name: "Complete Contact Info",
-      description: "Lead has both email and phone",
-      priority: 40,
-      conditionsJson: [
-        { field: "email", operator: "is_not_empty", value: "" },
-        { field: "phone", operator: "is_not_empty", value: "" },
-      ],
-      outcomesJson: {
-        scoreAdjustment: 10,
-        reason: "Complete contact info provided",
-      },
-    },
-    {
-      name: "Consumer Debt Penalty",
-      description: "Consumer debt type is outside ACB focus",
-      priority: 50,
-      conditionsJson: [
-        { field: "debtType", operator: "contains", value: "consumer" },
-      ],
-      outcomesJson: {
-        scoreAdjustment: -25,
-        reason: "Consumer debt — outside core focus",
-      },
-    },
-    {
-      name: "Outside Target Geography",
-      description: "Lead is not in a preferred state",
-      priority: 60,
-      conditionsJson: [
-        {
-          field: "state",
-          operator: "not_in",
-          value: ["FL", "GA", "AL", "SC", "NC", "TN", "TX", "NY", "CA"],
-        },
-      ],
-      outcomesJson: {
-        scoreAdjustment: -20,
-        reason: "Outside target geography",
-      },
-    },
     {
       name: "Missing Contact Info",
       description: "Missing both email and phone — hard stop",
-      priority: 5,
+      priority: 1,
       conditionsJson: [
         { field: "email", operator: "is_empty", value: "" },
         { field: "phone", operator: "is_empty", value: "" },
@@ -122,16 +48,114 @@ async function main() {
       },
     },
     {
-      name: "Small Claim Penalty",
-      description: "Balance under $1,000",
-      priority: 70,
+      name: "Florida Target Market",
+      description: "Lead is in Florida — ACB primary market",
+      priority: 10,
       conditionsJson: [
-        { field: "balanceAmount", operator: "less_than", value: 1000 },
+        { field: "state", operator: "equals", value: "FL" },
+      ],
+      outcomesJson: { scoreAdjustment: 15, reason: "Florida target market" },
+    },
+    {
+      name: "Residential Rental Debt",
+      description: "Lead has residential rental debt — ACB core service",
+      priority: 15,
+      conditionsJson: [
+        { field: "debtType", operator: "contains", value: "Residential Rental Debt" },
+      ],
+      outcomesJson: {
+        scoreAdjustment: 20,
+        reason: "Residential rental debt — core ACB service",
+      },
+    },
+    {
+      name: "Debts Ready Now",
+      description: "Lead has debts ready to place now (high urgency)",
+      priority: 18,
+      conditionsJson: [
+        { field: "urgency", operator: "equals", value: "high" },
+      ],
+      outcomesJson: {
+        scoreAdjustment: 10,
+        reason: "Debts ready to place now",
+      },
+    },
+    {
+      name: "Large Portfolio",
+      description: "Lead has 50+ units — high-value portfolio",
+      priority: 20,
+      conditionsJson: [
+        { field: "accountVolume", operator: "greater_than", value: 50 },
+      ],
+      outcomesJson: {
+        scoreAdjustment: 15,
+        reason: "Large portfolio (50+ units)",
+      },
+    },
+    {
+      name: "High Portfolio Value",
+      description: "Estimated portfolio value above $50,000",
+      priority: 25,
+      conditionsJson: [
+        { field: "balanceAmount", operator: "greater_than", value: 50000 },
+      ],
+      outcomesJson: {
+        scoreAdjustment: 15,
+        reason: "High portfolio value (>$50,000)",
+      },
+    },
+    {
+      name: "Complete Contact Info",
+      description: "Lead has both email and phone",
+      priority: 30,
+      conditionsJson: [
+        { field: "email", operator: "is_not_empty", value: "" },
+        { field: "phone", operator: "is_not_empty", value: "" },
+      ],
+      outcomesJson: {
+        scoreAdjustment: 10,
+        reason: "Complete contact info provided",
+      },
+    },
+    {
+      name: "Has Company",
+      description: "Lead represents a property management company",
+      priority: 35,
+      conditionsJson: [
+        { field: "companyName", operator: "is_not_empty", value: "" },
+      ],
+      outcomesJson: {
+        scoreAdjustment: 5,
+        reason: "Represents a company",
+      },
+    },
+    {
+      name: "Outside Target Geography",
+      description: "Lead is not in a preferred state",
+      priority: 50,
+      conditionsJson: [
+        {
+          field: "state",
+          operator: "not_in",
+          value: ["FL", "GA", "AL", "SC", "NC", "TN", "TX", "NY", "CA"],
+        },
+      ],
+      outcomesJson: {
+        scoreAdjustment: -15,
+        reason: "Outside target geography",
+      },
+    },
+    {
+      name: "Very Small Portfolio",
+      description: "Estimated portfolio value under $5,000",
+      priority: 60,
+      conditionsJson: [
+        { field: "balanceAmount", operator: "less_than", value: 5000 },
         { field: "balanceAmount", operator: "greater_than", value: 0 },
       ],
       outcomesJson: {
-        scoreAdjustment: -20,
-        reason: "Very small claim size (<$1,000)",
+        scoreAdjustment: -15,
+        reason: "Very small portfolio value (<$5,000)",
       },
     },
   ];

@@ -20,12 +20,69 @@ interface PageProps {
 }
 
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
   return (
     <div className="flex justify-between py-1.5 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-right">{value || "—"}</span>
+      <span className="font-medium text-right max-w-[60%]">{value}</span>
     </div>
   );
+}
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border bg-card p-5">
+      <h2 className="font-semibold mb-3">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function TagList({ items }: { items: string }) {
+  if (!items) return <span className="text-muted-foreground">—</span>;
+  const tags = items.split(",").map(s => s.trim()).filter(Boolean);
+  if (tags.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tags.map((tag, i) => (
+        <span key={i} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Extract ACB-specific fields from the raw payload
+function getIntakeFormFields(rawPayload: Record<string, unknown> | null) {
+  if (!rawPayload) return null;
+
+  // The raw payload could be the direct form data or nested
+  const raw = (rawPayload._rawIntakeForm as Record<string, unknown>) ?? rawPayload;
+
+  return {
+    companyWebsite: raw.companyWebsite as string | undefined,
+    noCompany: raw.noCompany as boolean | undefined,
+    noWebsite: raw.noWebsite as boolean | undefined,
+    priorAgency: raw.priorAgency as string | undefined,
+    debtTypes: raw.debtTypes as string[] | undefined,
+    customDebtType: raw.customDebtType as string | undefined,
+    debtsNow: raw.debtsNow as string | undefined,
+    states: raw.states as string[] | undefined,
+    ownershipType: raw.ownershipType as string | undefined,
+    ownPercent: raw.ownPercent as number | undefined,
+    totalUnits: raw.totalUnits as string | undefined,
+    rentalTypes: raw.rentalTypes as string[] | undefined,
+    propertyTypes: raw.propertyTypes as string[] | undefined,
+    avgRent: raw.avgRent as number | undefined,
+    listingSites: raw.listingSites as string[] | undefined,
+    customListing: raw.customListing as string | undefined,
+    pmSoftware: raw.pmSoftware as string[] | undefined,
+    customPM: raw.customPM as string | undefined,
+    comments: raw.comments as string | undefined,
+    certifyOwesDebt: raw.certifyOwesDebt as boolean | undefined,
+    certifyNoDebt: raw.certifyNoDebt as boolean | undefined,
+  };
 }
 
 export default async function LeadDetailPage({ params }: PageProps) {
@@ -66,6 +123,10 @@ export default async function LeadDetailPage({ params }: PageProps) {
     scoreAdjustment: number;
     reason: string;
   }>;
+
+  // Extract ACB intake form specific fields from raw payload
+  const intakeFields = getIntakeFormFields(lead.rawPayloadJson as Record<string, unknown> | null);
+  const isIntakeForm = lead.source === "intake_form" || !!intakeFields?.debtTypes;
 
   return (
     <div className="space-y-6">
@@ -109,8 +170,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
         {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Contact Info */}
-          <div className="rounded-lg border bg-card p-5">
-            <h2 className="font-semibold mb-3">Contact Information</h2>
+          <SectionCard title="Contact Information">
             <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
               <InfoRow label="Contact Name" value={lead.fullName} />
               <InfoRow label="Company" value={lead.companyName} />
@@ -127,49 +187,198 @@ export default async function LeadDetailPage({ params }: PageProps) {
                     .join(", ") || null
                 }
               />
+              {intakeFields?.companyWebsite && (
+                <InfoRow label="Website" value={intakeFields.companyWebsite} />
+              )}
+              {intakeFields?.noCompany && (
+                <InfoRow label="Company Status" value="Independent owner" />
+              )}
             </div>
-          </div>
+          </SectionCard>
 
-          {/* Intake Summary */}
-          <div className="rounded-lg border bg-card p-5">
-            <h2 className="font-semibold mb-3">Intake Summary</h2>
-            <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-              <InfoRow label="Service Requested" value={lead.serviceRequested} />
-              <InfoRow label="Debt Type" value={lead.debtType} />
-              <InfoRow
-                label="Balance Amount"
-                value={
-                  lead.balanceAmount
-                    ? `$${lead.balanceAmount.toLocaleString()}`
-                    : null
-                }
-              />
-              <InfoRow
-                label="Estimated Claim"
-                value={
-                  lead.estimatedClaimValue
-                    ? `$${lead.estimatedClaimValue.toLocaleString()}`
-                    : null
-                }
-              />
-              <InfoRow label="Industry" value={lead.industry} />
-              <InfoRow label="Business Type" value={lead.businessType} />
-              <InfoRow label="Account Volume" value={lead.accountVolume} />
-              <InfoRow label="Urgency" value={lead.urgency} />
-              <InfoRow label="Source" value={lead.leadSource} />
-              <InfoRow label="Source Page" value={lead.sourcePage} />
-            </div>
-            {lead.notesFromForm && (
-              <div className="mt-3 pt-3 border-t">
-                <p className="text-sm text-muted-foreground mb-1">Notes from Form</p>
-                <p className="text-sm whitespace-pre-wrap">{lead.notesFromForm}</p>
+          {/* ACB Intake Form Details — only shown for intake form leads */}
+          {isIntakeForm && intakeFields && (
+            <SectionCard title="Intake Form Details">
+              <div className="space-y-4">
+                {/* Debt & Collection Info */}
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                    Debt & Collection Info
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                    {intakeFields.debtTypes && intakeFields.debtTypes.length > 0 && (
+                      <div className="py-1.5">
+                        <p className="text-sm text-muted-foreground mb-1">Debt Types</p>
+                        <TagList items={intakeFields.debtTypes.join(", ") + (intakeFields.customDebtType ? `, ${intakeFields.customDebtType}` : "")} />
+                      </div>
+                    )}
+                    <InfoRow label="Debts Ready Now" value={intakeFields.debtsNow} />
+                    <InfoRow label="Prior Collection Agency" value={intakeFields.priorAgency} />
+                    {intakeFields.certifyOwesDebt && (
+                      <InfoRow label="Certification" value="Tenants owe debt" />
+                    )}
+                    {intakeFields.certifyNoDebt && (
+                      <InfoRow label="Certification" value="No debt owed" />
+                    )}
+                  </div>
+                </div>
+
+                {/* States Served */}
+                {intakeFields.states && intakeFields.states.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Geographic Coverage
+                    </p>
+                    <TagList items={intakeFields.states.join(", ")} />
+                  </div>
+                )}
+
+                {/* Property Details */}
+                {(intakeFields.totalUnits || intakeFields.ownershipType || intakeFields.rentalTypes?.length) && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Property Portfolio
+                    </p>
+                    <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                      <InfoRow label="Ownership" value={
+                        intakeFields.ownershipType
+                          ? intakeFields.ownershipType + (
+                              intakeFields.ownershipType === "We own and manage for others" && intakeFields.ownPercent != null
+                                ? ` (${intakeFields.ownPercent}% own / ${100 - intakeFields.ownPercent}% manage)`
+                                : ""
+                            )
+                          : undefined
+                      } />
+                      <InfoRow label="Total Units" value={intakeFields.totalUnits} />
+                      <InfoRow label="Avg Rent / Unit" value={
+                        intakeFields.avgRent
+                          ? `$${intakeFields.avgRent.toLocaleString()}`
+                          : undefined
+                      } />
+                      {intakeFields.rentalTypes && intakeFields.rentalTypes.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">Rental Types</p>
+                          <TagList items={intakeFields.rentalTypes.join(", ")} />
+                        </div>
+                      )}
+                      {intakeFields.propertyTypes && intakeFields.propertyTypes.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">Property Types</p>
+                          <TagList items={intakeFields.propertyTypes.join(", ")} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Software & Listings */}
+                {(intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Software & Listings
+                    </p>
+                    <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                      {intakeFields.listingSites && intakeFields.listingSites.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">Listing Sites</p>
+                          <TagList items={intakeFields.listingSites.join(", ") + (intakeFields.customListing ? `, ${intakeFields.customListing}` : "")} />
+                        </div>
+                      )}
+                      {intakeFields.pmSoftware && intakeFields.pmSoftware.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">PM Software</p>
+                          <TagList items={intakeFields.pmSoftware.join(", ") + (intakeFields.customPM ? `, ${intakeFields.customPM}` : "")} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Comments */}
+                {intakeFields.comments && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Comments / Questions
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap rounded-md bg-muted/50 p-3">
+                      {intakeFields.comments}
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </SectionCard>
+          )}
+
+          {/* Generic Intake Summary — for non-intake-form leads or as fallback */}
+          {!isIntakeForm && (
+            <SectionCard title="Intake Summary">
+              <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                <InfoRow label="Service Requested" value={lead.serviceRequested} />
+                <InfoRow label="Debt Type" value={lead.debtType} />
+                <InfoRow
+                  label="Balance Amount"
+                  value={
+                    lead.balanceAmount
+                      ? `$${lead.balanceAmount.toLocaleString()}`
+                      : null
+                  }
+                />
+                <InfoRow
+                  label="Estimated Claim"
+                  value={
+                    lead.estimatedClaimValue
+                      ? `$${lead.estimatedClaimValue.toLocaleString()}`
+                      : null
+                  }
+                />
+                <InfoRow label="Industry" value={lead.industry} />
+                <InfoRow label="Business Type" value={lead.businessType} />
+                <InfoRow label="Account Volume" value={lead.accountVolume} />
+                <InfoRow label="Urgency" value={lead.urgency} />
+                <InfoRow label="Source" value={lead.leadSource} />
+                <InfoRow label="Source Page" value={lead.sourcePage} />
+              </div>
+              {lead.notesFromForm && (
+                <div className="mt-3 pt-3 border-t">
+                  <p className="text-sm text-muted-foreground mb-1">Notes from Form</p>
+                  <p className="text-sm whitespace-pre-wrap">{lead.notesFromForm}</p>
+                </div>
+              )}
+            </SectionCard>
+          )}
+
+          {/* Quick Stats Row — for intake form leads */}
+          {isIntakeForm && (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {lead.balanceAmount && (
+                <div className="rounded-lg border bg-card p-4 text-center">
+                  <p className="text-xs text-muted-foreground">Est. Portfolio Value</p>
+                  <p className="text-lg font-bold mt-1">${lead.balanceAmount.toLocaleString()}</p>
+                </div>
+              )}
+              {intakeFields?.totalUnits && (
+                <div className="rounded-lg border bg-card p-4 text-center">
+                  <p className="text-xs text-muted-foreground">Total Units</p>
+                  <p className="text-lg font-bold mt-1">{intakeFields.totalUnits}</p>
+                </div>
+              )}
+              {intakeFields?.avgRent && (
+                <div className="rounded-lg border bg-card p-4 text-center">
+                  <p className="text-xs text-muted-foreground">Avg Rent</p>
+                  <p className="text-lg font-bold mt-1">${intakeFields.avgRent.toLocaleString()}</p>
+                </div>
+              )}
+              {intakeFields?.states && intakeFields.states.length > 0 && (
+                <div className="rounded-lg border bg-card p-4 text-center">
+                  <p className="text-xs text-muted-foreground">States</p>
+                  <p className="text-lg font-bold mt-1">{intakeFields.states.length}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Score Explanation */}
-          <div className="rounded-lg border bg-card p-5">
-            <h2 className="font-semibold mb-3">Qualification</h2>
+          <SectionCard title="Qualification">
             <div className="flex items-center gap-4 mb-4">
               <div>
                 <span className="text-sm text-muted-foreground">Lead Score</span>
@@ -223,12 +432,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 </div>
               </div>
             )}
-          </div>
+          </SectionCard>
 
           {/* Referral Recommendation */}
           {referrals.length > 0 && (
-            <div className="rounded-lg border bg-card p-5">
-              <h2 className="font-semibold mb-3">Referral Recommendation</h2>
+            <SectionCard title="Referral Recommendation">
               <div className="space-y-3">
                 {referrals.slice(0, 3).map((rec, i) => (
                   <div
@@ -252,20 +460,18 @@ export default async function LeadDetailPage({ params }: PageProps) {
                   </div>
                 ))}
               </div>
-            </div>
+            </SectionCard>
           )}
 
           {/* Activity Timeline */}
-          <div className="rounded-lg border bg-card p-5">
-            <h2 className="font-semibold mb-3">Activity Timeline</h2>
+          <SectionCard title="Activity Timeline">
             <ActivityTimeline events={events} />
-          </div>
+          </SectionCard>
 
           {/* Notes */}
-          <div className="rounded-lg border bg-card p-5">
-            <h2 className="font-semibold mb-3">Notes</h2>
+          <SectionCard title="Notes">
             <LeadNotes notes={notes} />
-          </div>
+          </SectionCard>
         </div>
 
         {/* Right Column - Actions */}
@@ -294,6 +500,20 @@ export default async function LeadDetailPage({ params }: PageProps) {
                   External ID: {lead.crmExternalId}
                 </p>
               )}
+            </div>
+
+            {/* Lead Metadata */}
+            <div className="mt-4 pt-4 border-t">
+              <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2">
+                Source Info
+              </h3>
+              <div className="text-sm space-y-1">
+                <InfoRow label="Source" value={lead.leadSource} />
+                <InfoRow label="Urgency" value={lead.urgency} />
+                {lead.utmSource && <InfoRow label="UTM Source" value={lead.utmSource} />}
+                {lead.utmMedium && <InfoRow label="UTM Medium" value={lead.utmMedium} />}
+                {lead.utmCampaign && <InfoRow label="UTM Campaign" value={lead.utmCampaign} />}
+              </div>
             </div>
 
             {/* Duplicate Info */}

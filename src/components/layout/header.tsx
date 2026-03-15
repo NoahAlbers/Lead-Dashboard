@@ -10,7 +10,7 @@ interface HeaderProps {
 
 export function Header({ userName, userRole }: HeaderProps) {
   return (
-    <header className="flex h-14 items-center justify-between border-b bg-background px-6">
+    <header className="flex h-14 items-center justify-between border-b border-primary/20 bg-background px-6">
       <div />
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-sm">

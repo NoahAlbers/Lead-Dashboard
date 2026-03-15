@@ -12,6 +12,7 @@ import {
   ThumbsDown,
   Download,
   MessageSquare,
+  Copy,
 } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
@@ -156,6 +157,24 @@ export function LeadActions({
         >
           <ThumbsDown className="h-4 w-4 text-red-500" />
           Disqualify
+        </button>
+
+        <button
+          onClick={() => handleQuickLog("referral_sent")}
+          disabled={isPending}
+          className={actionBtnClass}
+        >
+          <Handshake className="h-4 w-4 text-orange-500" />
+          Refer Out
+        </button>
+
+        <button
+          onClick={() => handleQuickLog("duplicate_found")}
+          disabled={isPending}
+          className={actionBtnClass}
+        >
+          <Copy className="h-4 w-4 text-yellow-600" />
+          Mark Duplicate
         </button>
 
         <button
