@@ -2,15 +2,20 @@ import { getCustomStatuses, getTierRanges } from "@/actions/status.actions";
 import { getArchivedLeads } from "@/actions/lead.actions";
 import { getEmailTypes } from "@/actions/email-type.actions";
 import { getStateClassifications } from "@/actions/state-classification.actions";
+import { getSlaConfigs, getOfficeHours, getHolidays } from "@/actions/sla.actions";
 import { SettingsClient } from "./settings-client";
+import { SlaSettings } from "@/components/admin/sla-settings";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
     getEmailTypes(),
     getStateClassifications(),
+    getSlaConfigs(),
+    getOfficeHours(),
+    getHolidays(),
   ]);
 
   return (
@@ -54,6 +59,31 @@ export default async function SettingsPage() {
           active: sc.active,
         }))}
       />
+
+      {/* SLA Configuration */}
+      <div className="rounded-lg border bg-card p-5">
+        <SlaSettings
+          initialConfigs={slaConfigs.map((c) => ({
+            id: c.id,
+            qualityTier: c.qualityTier,
+            firstContactMinutes: c.firstContactMinutes,
+            followUpMinutes: c.followUpMinutes,
+            escalationMinutes: c.escalationMinutes,
+          }))}
+          initialOfficeHours={{
+            startTime: officeHours.startTime,
+            endTime: officeHours.endTime,
+            activeDays: officeHours.activeDays as number[],
+            timezone: officeHours.timezone,
+          }}
+          initialHolidays={holidays.map((h) => ({
+            id: h.id,
+            date: h.date.toISOString(),
+            name: h.name,
+          }))}
+          tierNames={tierRanges.map((t) => t.name)}
+        />
+      </div>
 
       <div className="rounded-lg border bg-card p-5 space-y-6">
         {/* CRM Field Mapping */}

@@ -14,7 +14,15 @@ export type EventType =
   | "crm_imported"
   | "duplicate_flagged"
   | "assigned_user_changed"
-  | "quick_log";
+  | "quick_log"
+  | "sla_warning"
+  | "sla_breach"
+  | "sla_escalated"
+  | "first_contact_recorded"
+  | "leads_merged"
+  | "merge_undone"
+  | "follow_up_scheduled"
+  | "follow_up_completed";
 
 export async function logEvent(
   leadId: string,

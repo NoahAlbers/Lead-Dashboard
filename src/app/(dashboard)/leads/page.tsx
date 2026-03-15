@@ -39,7 +39,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     "new_today", "new_week", "new_month", "total", "uncontacted", "unread",
     "a_leads", "b_leads", "c_leads", "poor_leads", "follow_up", "referred",
     "contacted", "disqualified", "duplicates", "avg_score", "good_states",
-    "bad_states", "total_value", "total_units",
+    "bad_states", "total_value", "total_units", "sla_breached", "sla_at_risk",
   ];
 
   const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners] = await Promise.all([

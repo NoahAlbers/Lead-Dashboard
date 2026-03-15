@@ -100,6 +100,7 @@ export async function getLeads(params: {
     "urgency",
     "serviceRequested",
     "businessType",
+    "slaStatus",
   ];
 
   const orderField = allowedSortFields.includes(sortField)
@@ -168,10 +169,20 @@ export async function updateLeadStatus(leadId: string, newStatus: LeadStatus) {
   const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
   const oldStatus = lead.status;
 
+  // Record first contact if moving to CONTACTED and no prior first contact
+  const updateData: Record<string, unknown> = { status: newStatus };
+  if (newStatus === "CONTACTED" && !lead.firstContactAt) {
+    updateData.firstContactAt = new Date();
+  }
+
   await prisma.lead.update({
     where: { id: leadId },
-    data: { status: newStatus },
+    data: updateData,
   });
+
+  if (newStatus === "CONTACTED" && !lead.firstContactAt) {
+    await logEvent(leadId, "first_contact_recorded", {}, session.user.id);
+  }
 
   await logEvent(
     leadId,
@@ -372,6 +383,8 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
       const leads = await prisma.lead.findMany({ where: { accountVolume: { not: null }, ...notArchived }, select: { accountVolume: true } });
       return leads.reduce((sum, l) => sum + (parseInt(l.accountVolume ?? "0", 10) || 0), 0);
     },
+    sla_breached: () => prisma.lead.count({ where: { slaStatus: { in: ["breached", "escalated"] }, ...notArchived } }),
+    sla_at_risk: () => prisma.lead.count({ where: { slaStatus: { in: ["warning", "breached", "escalated"] }, ...notArchived } }),
   };
 
   const promises = metricIds.map(async (id) => {

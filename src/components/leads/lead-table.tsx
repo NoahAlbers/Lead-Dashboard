@@ -53,6 +53,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { LeadStatus } from "@prisma/client";
 import { getStateColor } from "@/lib/state-colors";
+import { SlaBadge } from "@/components/leads/sla-badge";
 
 interface LeadRow {
   id: string;
@@ -79,6 +80,8 @@ interface LeadRow {
   assignedUser: { id: string; name: string } | null;
   recommendedReferral: { id: string; name: string } | null;
   stateClassifications?: Record<string, string>;
+  slaStatus: string | null;
+  slaRemainingMinutes?: number | null;
 }
 
 interface EmailTemplate {
@@ -143,12 +146,13 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { id: "urgency", label: "Urgency", sortField: "urgency" },
   { id: "businessType", label: "Business Type", sortField: "businessType" },
   { id: "lastActivityAt", label: "Last Activity", sortField: "lastActivityAt" },
+  { id: "sla", label: "SLA", sortField: "slaStatus" },
   { id: "actions", label: "Quick Actions" },
 ];
 
 const DEFAULT_VISIBLE = new Set([
   "readIndicator", "createdAt", "companyName", "fullName", "email", "state",
-  "score", "qualityTier", "status", "actions",
+  "score", "qualityTier", "status", "sla", "actions",
 ]);
 const DEFAULT_ORDER = ALL_COLUMNS.map((c) => c.id);
 
@@ -156,7 +160,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   readIndicator: 40, createdAt: 140, companyName: 200, fullName: 140,
   email: 200, phone: 120, state: 80, score: 70, qualityTier: 70,
   status: 110, recommendedAction: 120, industry: 120, debtType: 120,
-  accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, actions: 220,
+  accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, sla: 110, actions: 220,
 };
 
 const STORAGE_KEY = "lead-table-config";
@@ -380,6 +384,8 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
         return <span className="text-xs">{row.businessType || "—"}</span>;
       case "lastActivityAt":
         return row.lastActivityAt ? format(toZonedTime(new Date(row.lastActivityAt), "America/New_York"), "MM/dd/yy", { timeZone: "America/New_York" }) : "—";
+      case "sla":
+        return <SlaBadge slaStatus={row.slaStatus} remainingMinutes={row.slaRemainingMinutes ?? undefined} compact />;
       case "actions":
         return <RowQuickActions lead={row} onEmailClick={(l) => setEmailDialogLead(l)} />;
       default:

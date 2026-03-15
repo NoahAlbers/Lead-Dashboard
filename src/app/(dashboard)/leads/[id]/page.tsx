@@ -10,7 +10,9 @@ import { getActivePartners } from "@/actions/partner.actions";
 import { StatusBadge, TierBadge, ScoreBadge } from "@/components/shared/status-badge";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { getTierColorMap } from "@/actions/status.actions";
+import { getLeadSlaInfo } from "@/actions/sla.actions";
 import { getStateColor } from "@/lib/state-colors";
+import { SlaBadge, SlaProgressBar } from "@/components/leads/sla-badge";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { LeadNotes } from "@/components/leads/lead-notes";
@@ -119,12 +121,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events, stateClassMap, tierColorMap] = await Promise.all([
+  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
     getStateClassificationMap(),
     getTierColorMap(),
+    getLeadSlaInfo(id),
   ]);
 
   if (!lead) notFound();
@@ -325,6 +328,29 @@ export default async function LeadDetailPage({ params }: PageProps) {
                   <p className="text-sm whitespace-pre-wrap">{lead.notesFromForm}</p>
                 </div>
               )}
+            </SectionCard>
+          )}
+
+          {/* SLA Tracking */}
+          {slaInfo && (
+            <SectionCard title="SLA Tracking">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">
+                      {slaInfo.slaType === "first_contact" ? "First Contact SLA" : "Follow-Up SLA"}
+                    </p>
+                    <SlaBadge slaStatus={slaInfo.slaStatus} remainingMinutes={slaInfo.remainingMinutes} />
+                  </div>
+                  <div className="flex-1">
+                    <SlaProgressBar percentElapsed={slaInfo.percentElapsed} slaStatus={slaInfo.slaStatus} />
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[10px] text-muted-foreground">{slaInfo.elapsedMinutes}m elapsed</span>
+                      <span className="text-[10px] text-muted-foreground">{slaInfo.thresholdMinutes}m threshold</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </SectionCard>
           )}
 

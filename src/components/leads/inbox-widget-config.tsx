@@ -39,6 +39,9 @@ const ALL_METRICS: MetricDefinition[] = [
   { id: "bad_states", label: "Banned State Leads", icon: MapPin, group: "Other" },
   { id: "total_value", label: "Total Balance", icon: DollarSign, group: "Other" },
   { id: "total_units", label: "Total Units", icon: Hash, group: "Other" },
+  // SLA
+  { id: "sla_breached", label: "SLA Breached", icon: AlertTriangle, group: "SLA" },
+  { id: "sla_at_risk", label: "SLA At Risk", icon: Clock, group: "SLA" },
 ];
 
 const DEFAULT_WIDGETS = ["new_today", "uncontacted", "a_leads", "follow_up"];
