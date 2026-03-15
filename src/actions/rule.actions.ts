@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { auth, assertRole } from "@/lib/auth";
 import { scoringRuleSchema } from "@/lib/validators/admin";
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 export async function getRules() {
@@ -15,7 +16,13 @@ export async function createRule(data: unknown) {
 
   const parsed = scoringRuleSchema.parse(data);
 
-  const rule = await prisma.scoringRule.create({ data: parsed });
+  const rule = await prisma.scoringRule.create({
+    data: {
+      ...parsed,
+      conditionsJson: parsed.conditionsJson as unknown as Prisma.InputJsonValue,
+      outcomesJson: parsed.outcomesJson as unknown as Prisma.InputJsonValue,
+    },
+  });
   revalidatePath("/admin/rules");
   return rule;
 }
@@ -28,7 +35,11 @@ export async function updateRule(id: string, data: unknown) {
 
   const rule = await prisma.scoringRule.update({
     where: { id },
-    data: parsed,
+    data: {
+      ...parsed,
+      conditionsJson: parsed.conditionsJson as unknown as Prisma.InputJsonValue,
+      outcomesJson: parsed.outcomesJson as unknown as Prisma.InputJsonValue,
+    },
   });
   revalidatePath("/admin/rules");
   return rule;
