@@ -38,8 +38,48 @@ function evaluateCondition(
   lead: Record<string, unknown>,
   condition: RuleCondition
 ): boolean {
-  const value = getLeadFieldValue(lead, condition.field);
+  let value = getLeadFieldValue(lead, condition.field);
+
+  // For the "state" field, also check the "states" array so rules can match any selected state
+  if (condition.field === "state") {
+    const statesArr = lead["states"];
+    if (Array.isArray(statesArr) && statesArr.length > 0) {
+      value = statesArr; // Use the array instead of single value
+    }
+  }
+
   const condValue = condition.value;
+
+  // If the lead value is an array, check if ANY element satisfies the condition
+  if (Array.isArray(value)) {
+    const items = value.map((v) => String(v).toLowerCase());
+    switch (condition.operator) {
+      case "equals":
+        return items.includes(String(condValue).toLowerCase());
+      case "not_equals":
+        return !items.includes(String(condValue).toLowerCase());
+      case "contains":
+        return items.some((item) => item.includes(String(condValue).toLowerCase()));
+      case "in":
+        if (Array.isArray(condValue)) {
+          const targets = condValue.map((v) => String(v).toLowerCase());
+          return items.some((item) => targets.includes(item));
+        }
+        return false;
+      case "not_in":
+        if (Array.isArray(condValue)) {
+          const targets = condValue.map((v) => String(v).toLowerCase());
+          return !items.some((item) => targets.includes(item));
+        }
+        return true;
+      case "is_empty":
+        return items.length === 0;
+      case "is_not_empty":
+        return items.length > 0;
+      default:
+        return false;
+    }
+  }
 
   switch (condition.operator) {
     case "equals":

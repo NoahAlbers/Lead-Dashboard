@@ -32,7 +32,7 @@ import {
   EyeOff,
   RotateCcw,
 } from "lucide-react";
-import { updateLeadStatus, archiveLead } from "@/actions/lead.actions";
+import { updateLeadStatus, archiveLead, toggleReadStatus, bulkMarkAsRead } from "@/actions/lead.actions";
 import { logQuickAction } from "@/actions/note.actions";
 import { toast } from "@/components/ui/use-toast";
 import { EmailDialog } from "@/components/leads/email-dialog";
@@ -61,6 +61,7 @@ interface LeadRow {
   email: string | null;
   phone: string | null;
   state: string | null;
+  states: string[] | null;
   industry: string | null;
   debtType: string | null;
   accountVolume: string | null;
@@ -259,7 +260,22 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   function renderCell(colId: string, row: LeadRow) {
     switch (colId) {
       case "readIndicator":
-        return <div className="flex items-center justify-center w-3">{!row.isRead && <span className="block h-2 w-2 rounded-full bg-primary" />}</div>;
+        return (
+          <button
+            className="flex items-center justify-center w-4 h-4"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleReadStatus(row.id);
+            }}
+            title={row.isRead ? "Mark unread" : "Mark read"}
+          >
+            {!row.isRead ? (
+              <span className="block h-2 w-2 rounded-full bg-primary" />
+            ) : (
+              <span className="block h-2 w-2 rounded-full bg-transparent border border-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </button>
+        );
       case "createdAt":
         return format(toZonedTime(new Date(row.createdAt), "America/New_York"), "MM/dd/yy h:mm a", { timeZone: "America/New_York" });
       case "companyName":
@@ -271,14 +287,14 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       case "phone":
         return <span className="text-xs">{row.phone || "—"}</span>;
       case "state": {
-        const s = row.state;
-        if (!s) return "—";
-        const parts = s.split(",").map((x) => x.trim()).filter(Boolean);
-        if (parts.length <= 1) return <span className="text-xs">{s}</span>;
+        // Prefer the states JSON array, fall back to single state string
+        const statesArr = row.states && row.states.length > 0 ? row.states : (row.state ? row.state.split(",").map((x) => x.trim()).filter(Boolean) : []);
+        if (statesArr.length === 0) return "—";
+        if (statesArr.length === 1) return <span className="text-xs">{statesArr[0]}</span>;
         return (
           <div className="flex flex-wrap gap-0.5">
-            {parts.slice(0, 3).map((x, i) => <span key={i} className="rounded bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-medium">{x}</span>)}
-            {parts.length > 3 && <span className="text-[10px] text-muted-foreground">+{parts.length - 3}</span>}
+            {statesArr.slice(0, 3).map((x, i) => <span key={i} className="rounded bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-medium">{x}</span>)}
+            {statesArr.length > 3 && <span className="text-[10px] text-muted-foreground">+{statesArr.length - 3}</span>}
           </div>
         );
       }
@@ -477,7 +493,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
                 leads.map((lead) => (
                   <tr
                     key={lead.id}
-                    className={`border-b hover:bg-muted/30 transition-colors cursor-pointer ${!lead.isRead ? "font-semibold" : ""}`}
+                    className={`group border-b hover:bg-muted/30 transition-colors cursor-pointer ${!lead.isRead ? "font-semibold" : ""}`}
                     onClick={() => router.push(`/leads/${lead.id}`)}
                   >
                     {activeColumns.map((colId) => (

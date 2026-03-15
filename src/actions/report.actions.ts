@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { normalizeState } from "@/lib/us-states";
+import { toEstDateString } from "@/lib/timezone";
 
 interface DateRange {
   from: Date;
@@ -59,7 +60,7 @@ export async function getLeadVolumeByDay(range: DateRange | null) {
 
   const buckets: Record<string, { date: string; total: number; [tier: string]: number | string }> = {};
   for (const lead of leads) {
-    const day = lead.createdAt.toISOString().slice(0, 10);
+    const day = toEstDateString(lead.createdAt);
     if (!buckets[day]) buckets[day] = { date: day, total: 0 };
     buckets[day].total++;
     const tier = lead.qualityTier ?? "Unknown";
@@ -93,16 +94,22 @@ export async function getStatusBreakdown(range: DateRange | null) {
 export async function getLeadsByState(range: DateRange | null) {
   const where = buildWhere(range);
   const leads = await prisma.lead.findMany({
-    where: { ...where, state: { not: null }, status: { not: "ARCHIVED" } },
-    select: { state: true, accountVolume: true },
+    where: { ...where, status: { not: "ARCHIVED" } },
+    select: { state: true, states: true, accountVolume: true },
   });
 
   const map: Record<string, { count: number; units: number }> = {};
   for (const lead of leads) {
-    const state = normalizeState(lead.state) || lead.state || "Unknown";
-    if (!map[state]) map[state] = { count: 0, units: 0 };
-    map[state].count++;
-    map[state].units += parseInt(lead.accountVolume ?? "0", 10) || 0;
+    const units = parseInt(lead.accountVolume ?? "0", 10) || 0;
+    // Use states JSON array if available, otherwise fall back to single state
+    const statesArr = (lead.states as string[] | null) ?? (lead.state ? [lead.state] : []);
+    for (const s of statesArr) {
+      const normalized = normalizeState(s) || s;
+      if (!normalized) continue;
+      if (!map[normalized]) map[normalized] = { count: 0, units: 0 };
+      map[normalized].count++;
+      map[normalized].units += units;
+    }
   }
 
   return Object.entries(map)
@@ -166,7 +173,7 @@ export async function getAvgScoreOverTime(range: DateRange | null) {
 
   const daily: Record<string, { sum: number; count: number }> = {};
   for (const lead of leads) {
-    const day = lead.createdAt.toISOString().slice(0, 10);
+    const day = toEstDateString(lead.createdAt);
     if (!daily[day]) daily[day] = { sum: 0, count: 0 };
     daily[day].sum += lead.score ?? 0;
     daily[day].count++;
@@ -389,9 +396,86 @@ export async function getDailyLeadCounts(range: DateRange | null) {
 
   const daily: Record<string, number> = {};
   for (const lead of leads) {
-    const day = lead.createdAt.toISOString().slice(0, 10);
+    const day = toEstDateString(lead.createdAt);
     daily[day] = (daily[day] || 0) + 1;
   }
 
   return Object.entries(daily).map(([date, count]) => ({ date, count }));
+}
+
+// Multi-select fields that are stored in rawPayloadJson._rawIntakeForm as arrays
+const MULTI_SELECT_FIELDS = new Set([
+  "states", "pmSoftware", "listingSites", "rentalTypes", "propertyTypes", "debtTypes",
+]);
+
+// Fields stored directly on Lead model as strings
+const DIRECT_STRING_FIELDS = new Set([
+  "state", "debtType", "industry", "businessType", "urgency", "status", "qualityTier",
+]);
+
+// Fields in rawPayloadJson._rawIntakeForm as single values
+const INTAKE_SINGLE_FIELDS = new Set([
+  "ownershipType", "priorAgency", "debtsNow",
+]);
+
+export async function getCustomChartData(
+  field: string,
+  range: DateRange | null
+): Promise<Array<{ label: string; value: number }>> {
+  const where = buildWhere(range);
+  const leads = await prisma.lead.findMany({
+    where: { ...where, status: { not: "ARCHIVED" } },
+    select: {
+      state: true,
+      states: true,
+      debtType: true,
+      industry: true,
+      businessType: true,
+      urgency: true,
+      status: true,
+      qualityTier: true,
+      rawPayloadJson: true,
+    },
+  });
+
+  const counts: Record<string, number> = {};
+
+  for (const lead of leads) {
+    let values: string[] = [];
+
+    if (field === "states") {
+      // Use the states JSON array
+      const arr = lead.states as string[] | null;
+      values = arr && arr.length > 0 ? arr : (lead.state ? [lead.state] : []);
+    } else if (MULTI_SELECT_FIELDS.has(field)) {
+      // Extract from rawPayloadJson._rawIntakeForm
+      const raw = lead.rawPayloadJson as Record<string, unknown> | null;
+      const intake = (raw?._rawIntakeForm as Record<string, unknown>) ?? raw;
+      const arr = intake?.[field];
+      if (Array.isArray(arr)) {
+        values = arr.map(String).filter(Boolean);
+      } else if (typeof arr === "string" && arr) {
+        values = arr.split(",").map((s) => s.trim()).filter(Boolean);
+      }
+    } else if (DIRECT_STRING_FIELDS.has(field)) {
+      const val = (lead as Record<string, unknown>)[field];
+      if (val && typeof val === "string") {
+        // Some fields like debtType can be comma-separated
+        values = val.split(",").map((s) => s.trim()).filter(Boolean);
+      }
+    } else if (INTAKE_SINGLE_FIELDS.has(field)) {
+      const raw = lead.rawPayloadJson as Record<string, unknown> | null;
+      const intake = (raw?._rawIntakeForm as Record<string, unknown>) ?? raw;
+      const val = intake?.[field];
+      if (val && typeof val === "string") values = [val];
+    }
+
+    for (const v of values) {
+      counts[v] = (counts[v] || 0) + 1;
+    }
+  }
+
+  return Object.entries(counts)
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
 }

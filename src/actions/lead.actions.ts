@@ -6,6 +6,7 @@ import { logEvent } from "@/services/activity-log.service";
 import { scoreAndUpdateLead } from "@/services/scoring.service";
 import type { LeadStatus, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { estStartOfDay, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
 
 export async function getLeads(params: {
   search?: string;
@@ -15,6 +16,7 @@ export async function getLeads(params: {
   assignedUserId?: string;
   dateFrom?: string;
   dateTo?: string;
+  isRead?: string;
   page?: number;
   pageSize?: number;
   sortField?: string;
@@ -28,6 +30,7 @@ export async function getLeads(params: {
     assignedUserId,
     dateFrom,
     dateTo,
+    isRead,
     page = 1,
     pageSize = 25,
     sortField = "createdAt",
@@ -68,8 +71,14 @@ export async function getLeads(params: {
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
-    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
-    if (dateTo) where.createdAt.lte = new Date(dateTo + "T23:59:59.999Z");
+    if (dateFrom) where.createdAt.gte = estDateStringToUtcStart(dateFrom);
+    if (dateTo) where.createdAt.lte = estDateStringToUtcEnd(dateTo);
+  }
+
+  if (isRead === "false") {
+    where.isRead = false;
+  } else if (isRead === "true") {
+    where.isRead = true;
   }
 
   const allowedSortFields = [
@@ -269,8 +278,7 @@ export async function recalculateScore(leadId: string) {
 }
 
 export async function getLeadStats() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = estStartOfDay();
 
   const [
     newToday,
@@ -298,6 +306,23 @@ export async function getLeadStats() {
 export async function markLeadAsRead(leadId: string) {
   await prisma.lead.update({
     where: { id: leadId },
+    data: { isRead: true },
+  });
+  revalidatePath("/leads");
+}
+
+export async function toggleReadStatus(leadId: string) {
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { isRead: !lead.isRead },
+  });
+  revalidatePath("/leads");
+}
+
+export async function bulkMarkAsRead(leadIds: string[]) {
+  await prisma.lead.updateMany({
+    where: { id: { in: leadIds } },
     data: { isRead: true },
   });
   revalidatePath("/leads");

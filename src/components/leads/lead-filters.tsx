@@ -54,12 +54,15 @@ export function LeadFilters() {
     setSearchInput("");
   }
 
+  const isUnreadFilter = searchParams.get("isRead") === "false";
+
   const hasFilters =
     searchParams.has("search") ||
     searchParams.has("status") ||
     searchParams.has("qualityTier") ||
     searchParams.has("state") ||
-    searchParams.has("dateFrom");
+    searchParams.has("dateFrom") ||
+    searchParams.has("isRead");
 
   return (
     <div className="flex flex-wrap gap-3">
@@ -115,6 +118,17 @@ export function LeadFilters() {
         className="h-9 rounded-md border border-input bg-card px-3 text-sm"
         placeholder="To"
       />
+
+      <button
+        onClick={() => updateParam("isRead", isUnreadFilter ? null : "false")}
+        className={`h-9 rounded-md border px-3 text-sm font-medium transition-colors ${
+          isUnreadFilter
+            ? "border-primary bg-primary/10 text-primary"
+            : "border-input bg-card text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        Unread
+      </button>
 
       {hasFilters && (
         <button

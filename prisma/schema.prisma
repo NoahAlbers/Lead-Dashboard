@@ -78,6 +78,7 @@ model Lead {
   address2 String? @map("address_2")
   city     String?
   state    String?
+  states   Json?     @map("states") // string[] of all selected states
   zip      String?
   country  String?
 

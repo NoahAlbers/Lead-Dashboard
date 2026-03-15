@@ -1,34 +1,34 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
+import { GripVertical, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 
 interface DashboardWidgetProps {
   title: string;
   subtitle?: string;
-  span?: 1 | 2;
-  height?: number;
   children: React.ReactNode;
-  widgetId?: string;
   onHide?: () => void;
 }
 
 export function DashboardWidget({
   title,
   subtitle,
-  span = 1,
-  height,
   children,
   onHide,
 }: DashboardWidgetProps) {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
-    <div className={`rounded-lg border bg-card ${span === 2 ? "lg:col-span-2" : ""}`}>
-      <div className="flex items-start justify-between p-4 pb-0">
-        <div>
-          <h3 className="font-semibold text-sm">{title}</h3>
-          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+    <div className="rounded-lg border bg-card h-full flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-3 pb-0">
+        <div className="flex items-center gap-2">
+          <div className="widget-drag-handle cursor-grab text-muted-foreground/40 hover:text-muted-foreground">
+            <GripVertical className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm">{title}</h3>
+            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+          </div>
         </div>
         {onHide && (
           <div className="relative">
@@ -51,7 +51,7 @@ export function DashboardWidget({
           </div>
         )}
       </div>
-      <div className="p-4" style={height ? { height } : undefined}>
+      <div className="p-4 flex-1 min-h-0 overflow-auto">
         {children}
       </div>
     </div>

@@ -53,6 +53,7 @@ const FIELD_MAP: Record<string, string> = {
   "comments": "notesFromForm",
   "urgency": "urgency",
   "business-type": "businessType",
+  "states_array": "statesArray",
 };
 
 function mapFields(data: WebflowFormData): Record<string, unknown> {
@@ -115,6 +116,7 @@ export async function ingestLead(
       address2: mapped.address2 as string | undefined,
       city: mapped.city as string | undefined,
       state: mapped.state as string | undefined,
+      states: mapped.statesArray ?? undefined,
       zip: mapped.zip as string | undefined,
       country: mapped.country as string | undefined,
       industry: mapped.industry as string | undefined,

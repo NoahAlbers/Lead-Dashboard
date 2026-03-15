@@ -245,6 +245,7 @@ export async function POST(request: NextRequest) {
       "business-type": p.rentalTypes.join(", "),
       "industry": p.propertyTypes.join(", "),
       "state": normalizeState(p.states[0]) || undefined,
+      "states_array": p.states.length > 0 ? p.states : undefined,
       "account-volume": p.totalUnits || undefined,
       "urgency": urgency,
       "_rawIntakeForm": rawIntakeForm,

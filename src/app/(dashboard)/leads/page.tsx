@@ -30,6 +30,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     assignedUserId: params.assignedUserId as string | undefined,
     dateFrom: params.dateFrom as string | undefined,
     dateTo: params.dateTo as string | undefined,
+    isRead: params.isRead as string | undefined,
     page: params.page ? Number(params.page) : 1,
     pageSize: params.pageSize ? Number(params.pageSize) : 25,
     sortField: (params.sortField as string) ?? "createdAt",
