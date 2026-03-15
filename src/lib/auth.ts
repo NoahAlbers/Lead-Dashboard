@@ -18,13 +18,6 @@ declare module "next-auth" {
   }
 }
 
-declare module "@auth/core/jwt" {
-  interface JWT {
-    id: string;
-    role: Role;
-  }
-}
-
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
@@ -59,14 +52,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     jwt({ token, user }) {
       if (user) {
-        token.id = user.id!;
-        token.role = user.role;
+        (token as Record<string, unknown>).id = user.id;
+        (token as Record<string, unknown>).role = user.role;
       }
       return token;
     },
     session({ session, token }) {
-      session.user.id = token.id;
-      session.user.role = token.role;
+      session.user.id = (token as Record<string, unknown>).id as string;
+      session.user.role = (token as Record<string, unknown>).role as Role;
       return session;
     },
   },
