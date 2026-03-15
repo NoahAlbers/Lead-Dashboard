@@ -13,11 +13,13 @@ import {
   Download,
   MessageSquare,
   Copy,
+  Merge,
 } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
 import { EmailDialog } from "@/components/leads/email-dialog";
+import { MergeSearchDialog } from "@/components/leads/merge-search-dialog";
 import { toast } from "@/components/ui/use-toast";
 import type { LeadStatus } from "@prisma/client";
 
@@ -80,6 +82,7 @@ export function LeadActions({
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [showStatusSelect, setShowStatusSelect] = useState(false);
+  const [showMergeSearch, setShowMergeSearch] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
 
   function handleEmailAction() {
@@ -237,6 +240,14 @@ export function LeadActions({
         </button>
 
         <button
+          onClick={() => setShowMergeSearch(true)}
+          className={actionBtnClass}
+        >
+          <Merge className="h-4 w-4 text-gray-500" />
+          Find & Merge
+        </button>
+
+        <button
           onClick={() => setShowNoteForm(!showNoteForm)}
           className={actionBtnClass}
         >
@@ -333,6 +344,12 @@ export function LeadActions({
           referralPartners={referralPartners}
         />
       )}
+
+      <MergeSearchDialog
+        open={showMergeSearch}
+        onClose={() => setShowMergeSearch(false)}
+        currentLeadId={leadId}
+      />
     </div>
   );
 }

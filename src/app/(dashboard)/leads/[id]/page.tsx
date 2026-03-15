@@ -516,6 +516,16 @@ export default async function LeadDetailPage({ params }: PageProps) {
               <div className="mt-4 pt-4 border-t">
                 <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2">Duplicate Info</h3>
                 {lead.duplicateOfLead && (
+                  <div className="mb-2">
+                    <Link
+                      href={`/leads/merge?leadA=${lead.id}&leadB=${lead.duplicateOfLead.id}`}
+                      className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-1 text-xs font-medium hover:bg-primary/20 transition-colors mb-2"
+                    >
+                      Merge with Original
+                    </Link>
+                  </div>
+                )}
+                {lead.duplicateOfLead && (
                   <p className="text-sm">
                     Duplicate of{" "}
                     <Link href={`/leads/${lead.duplicateOfLead.id}`} className="text-primary hover:underline">
