@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingestLead } from "@/services/lead-ingestion.service";
+import { normalizeState } from "@/lib/us-states";
 
 // --- CORS ---
 const ALLOWED_ORIGINS = [
@@ -114,7 +115,7 @@ function normalizePayload(body: Record<string, unknown>): NormalizedPayload {
       debtTypes: splitComma(body["Debt Types"]),
       debtsNow: body["Debts Ready Now"] as string | undefined,
       priorAgency: body["Prior Collection Agency"] as string | undefined,
-      states: splitComma(body["States"]),
+      states: splitComma(body["States"]).map(normalizeState).filter(Boolean),
       ownershipType: ownership.type || undefined,
       ownPercent: ownership.ownPercent,
       totalUnits: body["Total Units"] as string | undefined,
@@ -147,7 +148,7 @@ function normalizePayload(body: Record<string, unknown>): NormalizedPayload {
     customDebtType: body.customDebtType as string | undefined,
     debtsNow: body.debtsNow as string | undefined,
     priorAgency: body.priorAgency as string | undefined,
-    states: Array.isArray(body.states) ? body.states : splitComma(body.states),
+    states: (Array.isArray(body.states) ? body.states : splitComma(body.states)).map(normalizeState).filter(Boolean),
     ownershipType: ownership2.type || (body.ownershipType as string | undefined),
     ownPercent: ownership2.ownPercent ?? (body.ownPercent as number | undefined),
     totalUnits: body.totalUnits as string | undefined,
@@ -243,7 +244,7 @@ export async function POST(request: NextRequest) {
       "service_requested": "collections",
       "business-type": p.rentalTypes.join(", "),
       "industry": p.propertyTypes.join(", "),
-      "state": p.states[0] ?? undefined,
+      "state": normalizeState(p.states[0]) || undefined,
       "account-volume": p.totalUnits || undefined,
       "urgency": urgency,
       "_rawIntakeForm": rawIntakeForm,
