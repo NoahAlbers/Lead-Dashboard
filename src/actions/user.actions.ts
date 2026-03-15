@@ -70,7 +70,7 @@ export async function deleteUser(id: string) {
   assertRole(session, "ADMIN");
 
   // Don't allow deleting yourself
-  if (session.user.id === id) throw new Error("Cannot delete yourself");
+  if (session!.user.id === id) throw new Error("Cannot delete yourself");
 
   await prisma.user.update({ where: { id }, data: { active: false } });
   revalidatePath("/admin/users");

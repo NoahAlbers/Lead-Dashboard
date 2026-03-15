@@ -22,7 +22,7 @@ export async function createTemplate(data: unknown) {
   const template = await prisma.emailTemplate.create({
     data: {
       ...parsed,
-      createdByUserId: session.user.id,
+      createdByUserId: session!.user.id,
     },
   });
   revalidatePath("/admin/templates");
