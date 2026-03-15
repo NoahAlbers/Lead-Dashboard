@@ -3,6 +3,9 @@
     "allow": [
       "Bash(cd:*)",
       "Bash(find:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\alber\\Desktop\\acb-form"
     ]
   }
 }
