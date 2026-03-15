@@ -49,10 +49,8 @@ export function Sidebar({
   return (
     <aside className="flex h-screen w-60 flex-col border-r bg-sidebar">
       <div className="flex h-14 items-center border-b border-sidebar-border px-4">
-        <Link href="/leads" className="flex items-center gap-2">
-          <span className="bg-white rounded-lg px-3 py-1.5">
-            <img src="/acb-logo.webp" alt="ACB" className="h-8" />
-          </span>
+        <Link href="/leads" className="flex items-center">
+          <img src="/acb-logo.webp" alt="ACB" className="h-8 w-auto" />
         </Link>
       </div>
 

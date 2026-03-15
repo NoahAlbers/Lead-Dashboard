@@ -190,8 +190,10 @@ model ReferralPartner {
 
   contactName String? @map("contact_name")
   email       String?
+  emails      Json?   @map("emails") // string[] for multiple emails
   phone       String?
   website     String?
+  customFields Json?  @map("custom_fields") // Record<string, unknown>
 
   statesServedJson      Json? @map("states_served_json")
   industriesServedJson  Json? @map("industries_served_json")
@@ -217,10 +219,29 @@ model ReferralPartner {
   @@map("referral_partners")
 }
 
+model EmailType {
+  id         String  @id @default(cuid())
+  name       String
+  color      String  @default("#B3D4FF")
+  isReferral Boolean @default(false) @map("is_referral")
+  isDefault  Boolean @default(false) @map("is_default")
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  templates EmailTemplate[]
+
+  @@map("email_types")
+}
+
 model EmailTemplate {
   id   String @id @default(cuid())
   name String
-  type String // intro, referral, follow_up, internal_handoff
+  type String // legacy string type
+
+  emailTypeId String?    @map("email_type_id")
+  emailType   EmailType? @relation(fields: [emailTypeId], references: [id])
 
   subjectTemplate String @map("subject_template")
   bodyTemplate    String @map("body_template") @db.Text

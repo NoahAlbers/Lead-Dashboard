@@ -2,11 +2,11 @@
 
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Link from "@tiptap/extension-link";
+import LinkExtension from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
-import Image from "@tiptap/extension-image";
+import ImageExtension from "@tiptap/extension-image";
 import {
   Bold,
   Italic,
@@ -23,21 +23,55 @@ import {
   Image as ImageIcon,
   Code,
   ChevronDown,
+  X,
+  Table as TableIcon,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
 const MERGE_FIELDS = [
-  { label: "First Name", value: "{{first_name}}" },
-  { label: "Last Name", value: "{{last_name}}" },
-  { label: "Full Name", value: "{{full_name}}" },
+  { group: "Contact", fields: [
+    { label: "First Name", value: "{{first_name}}" },
+    { label: "Last Name", value: "{{last_name}}" },
+    { label: "Full Name", value: "{{full_name}}" },
+    { label: "Company", value: "{{company_name}}" },
+    { label: "Email", value: "{{email}}" },
+    { label: "Phone", value: "{{phone}}" },
+    { label: "Website", value: "{{website}}" },
+  ]},
+  { group: "Lead Data", fields: [
+    { label: "Units", value: "{{units}}" },
+    { label: "States", value: "{{states}}" },
+    { label: "Debt Type", value: "{{debt_type}}" },
+    { label: "Service Requested", value: "{{service_requested}}" },
+    { label: "Balance Amount", value: "{{balance_amount}}" },
+    { label: "Industry", value: "{{industry}}" },
+    { label: "Urgency", value: "{{urgency}}" },
+    { label: "Notes from Form", value: "{{notes_from_form}}" },
+    { label: "Lead Source", value: "{{lead_source}}" },
+  ]},
+  { group: "Staff", fields: [
+    { label: "Assigned User", value: "{{assigned_user_name}}" },
+  ]},
+  { group: "Referral Partner", fields: [
+    { label: "Partner Name", value: "{{referral_partner_name}}" },
+    { label: "Partner Email", value: "{{referral_partner_email}}" },
+    { label: "Partner Phone", value: "{{referral_partner_phone}}" },
+    { label: "Partner Website", value: "{{referral_partner_website}}" },
+    { label: "Partner Contact", value: "{{referral_partner_contact_name}}" },
+  ]},
+];
+
+const SUMMARY_TABLE_FIELDS = [
+  { label: "Name", value: "{{full_name}}" },
   { label: "Company", value: "{{company_name}}" },
   { label: "Email", value: "{{email}}" },
   { label: "Phone", value: "{{phone}}" },
-  { label: "Total Units", value: "{{total_units}}" },
-  { label: "States", value: "{{state}}" },
-  { label: "Website", value: "{{website}}" },
-  { label: "Assigned User", value: "{{assigned_user_name}}" },
-  { label: "Referral Partner", value: "{{referral_partner_name}}" },
+  { label: "States", value: "{{states}}" },
+  { label: "Units", value: "{{units}}" },
+  { label: "Debt Type", value: "{{debt_type}}" },
+  { label: "Urgency", value: "{{urgency}}" },
+  { label: "Industry", value: "{{industry}}" },
+  { label: "Notes", value: "{{notes_from_form}}" },
 ];
 
 interface RichTextEditorProps {
@@ -50,14 +84,24 @@ export function RichTextEditor({ content, onChange, placeholder }: RichTextEdito
   const [showMergeFields, setShowMergeFields] = useState(false);
   const [showSource, setShowSource] = useState(false);
   const [sourceHtml, setSourceHtml] = useState(content);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [selectedTableFields, setSelectedTableFields] = useState<Set<number>>(new Set([0, 1, 2, 3]));
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+        bulletList: {},
+        orderedList: {},
+      }),
       Underline,
-      Link.configure({ openOnClick: false }),
+      LinkExtension.configure({ openOnClick: false }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Image.configure({ inline: true }),
+      ImageExtension.configure({ inline: true }),
       Placeholder.configure({ placeholder: placeholder ?? "Write your template..." }),
     ],
     content,
@@ -73,7 +117,6 @@ export function RichTextEditor({ content, onChange, placeholder }: RichTextEdito
     },
   });
 
-  // Sync external content changes
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
       editor.commands.setContent(content);
@@ -95,17 +138,43 @@ export function RichTextEditor({ content, onChange, placeholder }: RichTextEdito
   }
 
   function insertLink() {
-    const url = prompt("Enter URL:");
-    if (url) {
-      editor?.chain().focus().setLink({ href: url }).run();
+    if (linkUrl) {
+      editor?.chain().focus().setLink({ href: linkUrl }).run();
     }
+    setShowLinkModal(false);
+    setLinkUrl("");
   }
 
   function insertImage() {
-    const url = prompt("Enter image URL:");
-    if (url) {
-      editor?.chain().focus().setImage({ src: url }).run();
+    if (imageUrl) {
+      editor?.chain().focus().setImage({ src: imageUrl }).run();
     }
+    setShowImageModal(false);
+    setImageUrl("");
+  }
+
+  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    fetch("/api/upload", { method: "POST", body: formData })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.url) {
+          editor?.chain().focus().setImage({ src: data.url }).run();
+          setShowImageModal(false);
+        }
+      })
+      .catch(console.error);
+  }
+
+  function insertSummaryTable() {
+    const fields = SUMMARY_TABLE_FIELDS.filter((_, i) => selectedTableFields.has(i));
+    const rows = fields.map((f) => `<tr><td style="padding:6px 12px;border:1px solid #E2E4EC;font-weight:600;color:#4A4A68">${f.label}</td><td style="padding:6px 12px;border:1px solid #E2E4EC">${f.value}</td></tr>`).join("");
+    const table = `<table style="width:100%;border-collapse:collapse;margin:12px 0"><tbody>${rows}</tbody></table>`;
+    editor?.chain().focus().insertContent(table).run();
+    setShowTableModal(false);
   }
 
   if (!editor) return null;
@@ -117,108 +186,121 @@ export function RichTextEditor({ content, onChange, placeholder }: RichTextEdito
     <div className="rounded-md border border-input overflow-hidden">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 px-2 py-1.5">
-        <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btnClass(editor.isActive("bold"))} title="Bold">
-          <Bold className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={btnClass(editor.isActive("italic"))} title="Italic">
-          <Italic className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => editor.chain().focus().toggleUnderline().run()} className={btnClass(editor.isActive("underline"))} title="Underline">
-          <UnderlineIcon className="h-4 w-4" />
-        </button>
+        <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btnClass(editor.isActive("bold"))}><Bold className="h-4 w-4" /></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={btnClass(editor.isActive("italic"))}><Italic className="h-4 w-4" /></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleUnderline().run()} className={btnClass(editor.isActive("underline"))}><UnderlineIcon className="h-4 w-4" /></button>
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btnClass(editor.isActive("heading", { level: 1 }))} title="Heading 1">
-          <Heading1 className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btnClass(editor.isActive("heading", { level: 2 }))} title="Heading 2">
-          <Heading2 className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={btnClass(editor.isActive("heading", { level: 3 }))} title="Heading 3">
-          <Heading3 className="h-4 w-4" />
-        </button>
+        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btnClass(editor.isActive("heading", { level: 1 }))}><Heading1 className="h-4 w-4" /></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btnClass(editor.isActive("heading", { level: 2 }))}><Heading2 className="h-4 w-4" /></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={btnClass(editor.isActive("heading", { level: 3 }))}><Heading3 className="h-4 w-4" /></button>
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btnClass(editor.isActive("bulletList"))} title="Bullet List">
-          <List className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btnClass(editor.isActive("orderedList"))} title="Numbered List">
-          <ListOrdered className="h-4 w-4" />
-        </button>
+        <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btnClass(editor.isActive("bulletList"))}><List className="h-4 w-4" /></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btnClass(editor.isActive("orderedList"))}><ListOrdered className="h-4 w-4" /></button>
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        <button type="button" onClick={() => editor.chain().focus().setTextAlign("left").run()} className={btnClass(editor.isActive({ textAlign: "left" }))} title="Align Left">
-          <AlignLeft className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => editor.chain().focus().setTextAlign("center").run()} className={btnClass(editor.isActive({ textAlign: "center" }))} title="Align Center">
-          <AlignCenter className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => editor.chain().focus().setTextAlign("right").run()} className={btnClass(editor.isActive({ textAlign: "right" }))} title="Align Right">
-          <AlignRight className="h-4 w-4" />
-        </button>
+        <button type="button" onClick={() => editor.chain().focus().setTextAlign("left").run()} className={btnClass(editor.isActive({ textAlign: "left" }))}><AlignLeft className="h-4 w-4" /></button>
+        <button type="button" onClick={() => editor.chain().focus().setTextAlign("center").run()} className={btnClass(editor.isActive({ textAlign: "center" }))}><AlignCenter className="h-4 w-4" /></button>
+        <button type="button" onClick={() => editor.chain().focus().setTextAlign("right").run()} className={btnClass(editor.isActive({ textAlign: "right" }))}><AlignRight className="h-4 w-4" /></button>
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        <button type="button" onClick={insertLink} className={btnClass(editor.isActive("link"))} title="Insert Link">
-          <LinkIcon className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={insertImage} className={btnClass(false)} title="Insert Image">
-          <ImageIcon className="h-4 w-4" />
-        </button>
+        <button type="button" onClick={() => { setLinkUrl(""); setShowLinkModal(true); }} className={btnClass(editor.isActive("link"))}><LinkIcon className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { setImageUrl(""); setShowImageModal(true); }} className={btnClass(false)}><ImageIcon className="h-4 w-4" /></button>
+        <button type="button" onClick={() => setShowTableModal(true)} className={btnClass(false)} title="Insert Lead Summary Table"><TableIcon className="h-4 w-4" /></button>
 
         <div className="w-px h-5 bg-border mx-1" />
 
         {/* Merge Fields Dropdown */}
         <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowMergeFields(!showMergeFields)}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Insert Field
-            <ChevronDown className="h-3 w-3" />
+          <button type="button" onClick={() => setShowMergeFields(!showMergeFields)} className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+            Insert Field <ChevronDown className="h-3 w-3" />
           </button>
           {showMergeFields && (
-            <div className="absolute top-full left-0 mt-1 w-48 rounded-md border bg-card shadow-lg z-20">
-              {MERGE_FIELDS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => insertMergeField(f.value)}
-                  className="block w-full text-left px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-                >
-                  <span>{f.label}</span>
-                  <span className="ml-2 text-xs text-muted-foreground font-mono">{f.value}</span>
-                </button>
+            <div className="absolute top-full left-0 mt-1 w-56 rounded-md border bg-card shadow-lg z-20 max-h-[300px] overflow-y-auto">
+              {MERGE_FIELDS.map((group) => (
+                <div key={group.group}>
+                  <p className="px-3 pt-2 pb-1 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">{group.group}</p>
+                  {group.fields.map((f) => (
+                    <button key={f.value} type="button" onClick={() => insertMergeField(f.value)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-muted transition-colors">
+                      {f.label} <span className="text-xs text-muted-foreground font-mono ml-1">{f.value}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}
         </div>
 
         <div className="ml-auto">
-          <button
-            type="button"
-            onClick={() => setShowSource(!showSource)}
-            className={btnClass(showSource)}
-            title="HTML Source"
-          >
-            <Code className="h-4 w-4" />
-          </button>
+          <button type="button" onClick={() => setShowSource(!showSource)} className={btnClass(showSource)}><Code className="h-4 w-4" /></button>
         </div>
       </div>
+
+      {/* Link Modal */}
+      {showLinkModal && (
+        <div className="border-b bg-muted/20 px-4 py-3 flex items-center gap-2">
+          <input type="url" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://..." className="flex-1 h-8 rounded border border-input bg-card px-2 text-sm font-[inherit]" autoFocus onKeyDown={(e) => e.key === "Enter" && insertLink()} />
+          <button type="button" onClick={insertLink} className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">Insert</button>
+          <button type="button" onClick={() => setShowLinkModal(false)} className="rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* Image Modal */}
+      {showImageModal && (
+        <div className="border-b bg-muted/20 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Image URL..." className="flex-1 h-8 rounded border border-input bg-card px-2 text-sm font-[inherit]" />
+            <button type="button" onClick={insertImage} disabled={!imageUrl} className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50">Insert URL</button>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="rounded border border-dashed px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary cursor-pointer transition-colors">
+              Upload Image
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            </label>
+            <button type="button" onClick={() => setShowImageModal(false)} className="rounded p-1 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Table Modal */}
+      {showTableModal && (
+        <div className="border-b bg-muted/20 px-4 py-3 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Select fields for the lead summary table:</p>
+          <div className="grid grid-cols-2 gap-1">
+            {SUMMARY_TABLE_FIELDS.map((f, i) => (
+              <label key={i} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input type="checkbox" checked={selectedTableFields.has(i)} onChange={() => {
+                  setSelectedTableFields((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(i)) next.delete(i); else next.add(i);
+                    return next;
+                  });
+                }} className="rounded border-gray-300" />
+                {f.label}
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={insertSummaryTable} className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">Insert Table</button>
+            <button type="button" onClick={() => setShowTableModal(false)} className="rounded px-3 py-1 text-xs text-muted-foreground hover:bg-muted">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* Editor or Source */}
       {showSource ? (
         <textarea
           value={sourceHtml}
           onChange={(e) => handleSourceChange(e.target.value)}
-          className="w-full min-h-[200px] p-3 text-sm font-mono bg-card focus:outline-none"
+          className="w-full min-h-[200px] p-3 text-sm font-mono bg-card focus:outline-none font-[inherit]"
         />
       ) : (
-        <EditorContent editor={editor} className="bg-card" />
+        <EditorContent editor={editor} className="bg-card [&_select]:font-[inherit] [&_input]:font-[inherit]" />
       )}
     </div>
   );

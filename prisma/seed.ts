@@ -158,6 +158,22 @@ async function main() {
   }
   console.log("Seeded", rules.length, "scoring rules");
 
+  // Seed default email types
+  const emailTypes = [
+    { id: "type-intro", name: "Intro", color: "#B3D4FF", isReferral: false, isDefault: true, sortOrder: 1 },
+    { id: "type-follow-up", name: "Follow-Up", color: "#FFF3B3", isReferral: false, isDefault: true, sortOrder: 2 },
+    { id: "type-referral", name: "Referral", color: "#FFDAB3", isReferral: true, isDefault: true, sortOrder: 3 },
+    { id: "type-internal", name: "Internal Handoff", color: "#C7B3FF", isReferral: false, isDefault: true, sortOrder: 4 },
+  ];
+  for (const et of emailTypes) {
+    await prisma.emailType.upsert({
+      where: { id: et.id },
+      update: {},
+      create: et,
+    });
+  }
+  console.log("Seeded", emailTypes.length, "email types");
+
   // Seed default email templates
   const templates = [
     {

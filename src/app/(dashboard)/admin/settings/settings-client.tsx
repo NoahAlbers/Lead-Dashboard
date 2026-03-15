@@ -4,6 +4,7 @@ import { useState, useTransition, useCallback } from "react";
 import { Trash2, Plus, RotateCcw, Save, GripVertical } from "lucide-react";
 import { createCustomStatus, deleteCustomStatus, saveTierRanges } from "@/actions/status.actions";
 import { unarchiveLead } from "@/actions/lead.actions";
+import { createEmailType, updateEmailType, deleteEmailType } from "@/actions/email-type.actions";
 import { format } from "date-fns";
 import { toast } from "@/components/ui/use-toast";
 import {
@@ -54,10 +55,19 @@ interface ArchivedLead {
   score: number | null;
 }
 
+interface EmailTypeItem {
+  id: string;
+  name: string;
+  color: string;
+  isReferral: boolean;
+  isDefault: boolean;
+}
+
 interface SettingsClientProps {
   statuses: StatusItem[];
   tiers: TierItem[];
   archivedLeads: ArchivedLead[];
+  emailTypes: EmailTypeItem[];
 }
 
 // --- Status List (for lead statuses only) ---
@@ -339,7 +349,97 @@ function UnifiedTierManager({ initialTiers }: { initialTiers: TierItem[] }) {
 
 // --- Main Settings Client ---
 
-export function SettingsClient({ statuses, tiers, archivedLeads }: SettingsClientProps) {
+// --- Email Type Manager ---
+
+function EmailTypeManager({ initialTypes }: { initialTypes: EmailTypeItem[] }) {
+  const [types, setTypes] = useState(initialTypes);
+  const [isPending, startTransition] = useTransition();
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState(PASTEL_COLORS[0]);
+  const [newIsReferral, setNewIsReferral] = useState(false);
+
+  function handleAdd() {
+    if (!newName.trim()) return;
+    startTransition(async () => {
+      await createEmailType({ name: newName.trim(), color: newColor, isReferral: newIsReferral });
+      setNewName("");
+      setShowAdd(false);
+      setNewIsReferral(false);
+    });
+  }
+
+  function handleDelete(id: string) {
+    if (!confirm("Delete this email type?")) return;
+    startTransition(async () => {
+      await deleteEmailType(id);
+      setTypes((prev) => prev.filter((t) => t.id !== id));
+    });
+  }
+
+  function handleToggleReferral(id: string, isReferral: boolean) {
+    startTransition(async () => {
+      await updateEmailType(id, { isReferral });
+      setTypes((prev) => prev.map((t) => (t.id === id ? { ...t, isReferral } : t)));
+    });
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold">Email Types</h2>
+        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-primary hover:bg-primary/10 transition-colors">
+          <Plus className="h-3.5 w-3.5" />
+          Add Type
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="rounded-lg border bg-muted/30 p-3 mb-3 space-y-3">
+          <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Type name..." className="w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm" />
+          <div>
+            <p className="text-xs text-muted-foreground mb-1.5">Color</p>
+            <div className="flex flex-wrap gap-1.5">
+              {PASTEL_COLORS.map((color) => (
+                <button key={color} onClick={() => setNewColor(color)} className={`h-7 w-7 rounded-md border-2 ${newColor === color ? "border-foreground scale-110" : "border-transparent"}`} style={{ backgroundColor: color }} />
+              ))}
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={newIsReferral} onChange={(e) => setNewIsReferral(e.target.checked)} />
+            Referral type (for referring leads to partners)
+          </label>
+          <div className="flex gap-2">
+            <button onClick={handleAdd} disabled={!newName.trim() || isPending} className="rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Add</button>
+            <button onClick={() => setShowAdd(false)} className="rounded-md px-3 py-1 text-sm text-muted-foreground hover:bg-muted">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {types.map((et) => (
+          <div key={et.id} className="group flex items-center justify-between rounded-md border p-3">
+            <div className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: et.color }} />
+              <span className="text-sm font-medium">{et.name}</span>
+              {et.isReferral && <span className="text-[9px] bg-amber-100 text-amber-700 rounded px-1 py-0.5">Referral</span>}
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => handleToggleReferral(et.id, !et.isReferral)} disabled={isPending} className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted text-[10px]" title={et.isReferral ? "Unmark as referral" : "Mark as referral"}>
+                {et.isReferral ? "R" : "·"}
+              </button>
+              <button onClick={() => handleDelete(et.id)} disabled={isPending} className="rounded p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function SettingsClient({ statuses, tiers, archivedLeads, emailTypes }: SettingsClientProps) {
   const [isPending, startTransition] = useTransition();
 
   function handleRestore(leadId: string) {
@@ -353,6 +453,7 @@ export function SettingsClient({ statuses, tiers, archivedLeads }: SettingsClien
       <div className="rounded-lg border bg-card p-5 space-y-6">
         <StatusList items={statuses} />
         <UnifiedTierManager initialTiers={tiers} />
+        <EmailTypeManager initialTypes={emailTypes} />
       </div>
 
       {/* Archived Leads */}

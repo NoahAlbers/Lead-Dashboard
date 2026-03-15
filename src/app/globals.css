@@ -21,11 +21,11 @@
   --color-input: #E2E4EC;
   --color-ring: #3D5AF1;
   --radius: 0.75rem;
-  --color-sidebar: #0f172a;
-  --color-sidebar-foreground: #f1f5f9;
-  --color-sidebar-border: #1e293b;
-  --color-sidebar-accent: #1e3a5f;
-  --color-sidebar-accent-foreground: #ffffff;
+  --color-sidebar: #FFFFFF;
+  --color-sidebar-foreground: #1A1A2E;
+  --color-sidebar-border: #E2E4EC;
+  --color-sidebar-accent: #EEF1FE;
+  --color-sidebar-accent-foreground: #3D5AF1;
   --color-sidebar-ring: #3D5AF1;
 
   --color-success: #16a34a;

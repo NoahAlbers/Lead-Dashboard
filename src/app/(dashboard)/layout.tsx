@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { FaviconManager } from "@/components/layout/favicon-manager";
 import { getUnreadCount } from "@/actions/lead.actions";
 
 export default async function DashboardLayout({
@@ -28,6 +29,7 @@ export default async function DashboardLayout({
         <main className="flex-1 overflow-y-auto bg-muted/40 p-6">
           {children}
         </main>
+        <FaviconManager />
       </div>
     </div>
   );

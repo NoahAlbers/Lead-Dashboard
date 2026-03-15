@@ -1,12 +1,14 @@
 import { getCustomStatuses, getTierRanges } from "@/actions/status.actions";
 import { getArchivedLeads } from "@/actions/lead.actions";
+import { getEmailTypes } from "@/actions/email-type.actions";
 import { SettingsClient } from "./settings-client";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
+    getEmailTypes(),
   ]);
 
   return (
@@ -33,6 +35,13 @@ export default async function SettingsPage() {
           email: l.email,
           createdAt: l.createdAt.toISOString(),
           score: l.score,
+        }))}
+        emailTypes={emailTypes.map((et) => ({
+          id: et.id,
+          name: et.name,
+          color: et.color,
+          isReferral: et.isReferral,
+          isDefault: et.isDefault,
         }))}
       />
 
