@@ -11,6 +11,7 @@ import {
   BarChart3,
   Ruler,
   ClipboardList,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,8 @@ const navItems: NavItem[] = [
   { label: "Referral Partners", href: "/admin/partners", icon: Handshake, roles: ["ADMIN"] },
   { label: "Email Templates", href: "/admin/templates", icon: Mail, roles: ["ADMIN"] },
   { label: "Users", href: "/admin/users", icon: Users, roles: ["ADMIN"] },
-  { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["ADMIN"] },
+  { label: "My Settings", href: "/settings", icon: Bell },
+  { label: "Admin Settings", href: "/admin/settings", icon: Settings, roles: ["ADMIN"] },
 ];
 
 export function Sidebar({

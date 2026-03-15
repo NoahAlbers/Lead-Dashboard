@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Bell } from "lucide-react";
 import { NotificationPanel } from "./notification-panel";
+import { useSoundManager } from "./sound-manager";
 
 interface NotificationItem {
   id: string;
@@ -17,25 +18,52 @@ interface NotificationItem {
   createdAt: string;
 }
 
+function getPrioritySound(priority: string): "high" | "normal" | "low" | "chime" {
+  if (priority === "CRITICAL" || priority === "HIGH") return "high";
+  if (priority === "NORMAL") return "normal";
+  return "chime";
+}
+
 export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [prevUnreadCount, setPrevUnreadCount] = useState(0);
+  const prevUnreadCountRef = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
+  const isFirstLoad = useRef(true);
+  const { playSound } = useSoundManager();
 
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await fetch("/api/notifications/poll");
       if (!res.ok) return;
       const data = await res.json();
-      setPrevUnreadCount(unreadCount);
+
+      const prevCount = prevUnreadCountRef.current;
+      const newCount = data.unreadCount as number;
+
       setNotifications(data.notifications);
-      setUnreadCount(data.unreadCount);
+      setUnreadCount(newCount);
+
+      // Play sound when new notifications arrive (not on first load)
+      if (!isFirstLoad.current && newCount > prevCount) {
+        // Find the highest priority among new notifications
+        const newNotifs = (data.notifications as NotificationItem[]).filter((n) => !n.read);
+        const highestPriority = newNotifs.length > 0
+          ? newNotifs.reduce((max, n) => {
+              const order = { CRITICAL: 4, HIGH: 3, NORMAL: 2, LOW: 1 };
+              return (order[n.priority as keyof typeof order] ?? 0) > (order[max as keyof typeof order] ?? 0) ? n.priority : max;
+            }, "LOW")
+          : "NORMAL";
+        playSound(getPrioritySound(highestPriority));
+      }
+
+      prevUnreadCountRef.current = newCount;
+      isFirstLoad.current = false;
     } catch {
       // Silently fail
     }
-  }, [unreadCount]);
+  }, [playSound]);
 
   // Poll every 15 seconds
   useEffect(() => {

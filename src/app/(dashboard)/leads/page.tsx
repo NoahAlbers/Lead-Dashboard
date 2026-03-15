@@ -26,6 +26,9 @@ export default async function LeadsPage({ searchParams }: PageProps) {
       : undefined,
     state: params.state as string | undefined,
     assignedUserId: params.assignedUserId as string | undefined,
+    slaStatus: params.slaStatus
+      ? (params.slaStatus as string).split(",")
+      : undefined,
     dateFrom: params.dateFrom as string | undefined,
     dateTo: params.dateTo as string | undefined,
     isRead: params.isRead as string | undefined,

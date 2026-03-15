@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Search, X } from "lucide-react";
-import { useState } from "react";
+import { Search, X, Bookmark } from "lucide-react";
+import { useState, useEffect } from "react";
+import { getActiveUsers } from "@/actions/assignment.actions";
 
 const STATUS_OPTIONS = [
   { value: "NEW", label: "New" },
@@ -25,6 +26,27 @@ const TIER_OPTIONS = [
   { value: "POOR", label: "Poor Fit" },
 ];
 
+const SLA_OPTIONS = [
+  { value: "on_track", label: "On Track" },
+  { value: "warning", label: "At Risk" },
+  { value: "breached", label: "Breached" },
+  { value: "escalated", label: "Escalated" },
+];
+
+interface SavedViewDef {
+  label: string;
+  params: Record<string, string>;
+}
+
+const SAVED_VIEWS: SavedViewDef[] = [
+  { label: "New Today", params: { status: "NEW", dateFrom: new Date().toISOString().slice(0, 10) } },
+  { label: "Uncontacted", params: { status: "NEW,REVIEWED" } },
+  { label: "SLA At Risk", params: { slaStatus: "warning,breached,escalated" } },
+  { label: "Follow-Up Needed", params: { status: "FOLLOW_UP_NEEDED" } },
+  { label: "Unassigned", params: { assignedUserId: "__unassigned__" } },
+  { label: "Duplicates", params: { status: "DUPLICATE" } },
+];
+
 export function LeadFilters() {
   const router = useRouter();
   const pathname = usePathname();
@@ -32,6 +54,12 @@ export function LeadFilters() {
   const [searchInput, setSearchInput] = useState(
     searchParams.get("search") ?? ""
   );
+  const [users, setUsers] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [showViews, setShowViews] = useState(false);
+
+  useEffect(() => {
+    getActiveUsers().then(setUsers);
+  }, []);
 
   function updateParam(key: string, value: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -54,6 +82,16 @@ export function LeadFilters() {
     setSearchInput("");
   }
 
+  function applyView(view: SavedViewDef) {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(view.params)) {
+      params.set(k, v);
+    }
+    params.set("page", "1");
+    router.push(`${pathname}?${params.toString()}`);
+    setShowViews(false);
+  }
+
   const isUnreadFilter = searchParams.get("isRead") === "false";
 
   const hasFilters =
@@ -62,7 +100,9 @@ export function LeadFilters() {
     searchParams.has("qualityTier") ||
     searchParams.has("state") ||
     searchParams.has("dateFrom") ||
-    searchParams.has("isRead");
+    searchParams.has("isRead") ||
+    searchParams.has("assignedUserId") ||
+    searchParams.has("slaStatus");
 
   return (
     <div className="flex flex-wrap gap-3">
@@ -103,6 +143,18 @@ export function LeadFilters() {
         ))}
       </select>
 
+      <select
+        value={searchParams.get("assignedUserId") ?? ""}
+        onChange={(e) => updateParam("assignedUserId", e.target.value || null)}
+        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
+      >
+        <option value="">All Assignees</option>
+        <option value="__unassigned__">Unassigned</option>
+        {users.map((u) => (
+          <option key={u.id} value={u.id}>{u.name}</option>
+        ))}
+      </select>
+
       <input
         type="date"
         value={searchParams.get("dateFrom") ?? ""}
@@ -129,6 +181,30 @@ export function LeadFilters() {
       >
         Unread
       </button>
+
+      {/* Saved Views */}
+      <div className="relative">
+        <button
+          onClick={() => setShowViews(!showViews)}
+          className="h-9 rounded-md border border-input bg-card px-3 text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+        >
+          <Bookmark className="h-3.5 w-3.5" />
+          Views
+        </button>
+        {showViews && (
+          <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border bg-card shadow-lg z-50 py-1">
+            {SAVED_VIEWS.map((view) => (
+              <button
+                key={view.label}
+                onClick={() => applyView(view)}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {hasFilters && (
         <button

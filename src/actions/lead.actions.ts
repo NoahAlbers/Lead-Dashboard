@@ -14,6 +14,7 @@ export async function getLeads(params: {
   qualityTier?: string[];
   state?: string;
   assignedUserId?: string;
+  slaStatus?: string[];
   dateFrom?: string;
   dateTo?: string;
   isRead?: string;
@@ -65,7 +66,9 @@ export async function getLeads(params: {
     where.state = { equals: state, mode: "insensitive" };
   }
 
-  if (assignedUserId) {
+  if (assignedUserId === "__unassigned__") {
+    where.assignedUserId = null;
+  } else if (assignedUserId) {
     where.assignedUserId = assignedUserId;
   }
 
@@ -73,6 +76,10 @@ export async function getLeads(params: {
     where.createdAt = {};
     if (dateFrom) where.createdAt.gte = estDateStringToUtcStart(dateFrom);
     if (dateTo) where.createdAt.lte = estDateStringToUtcEnd(dateTo);
+  }
+
+  if (params.slaStatus?.length) {
+    where.slaStatus = { in: params.slaStatus };
   }
 
   if (isRead === "false") {
