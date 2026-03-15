@@ -62,6 +62,31 @@ export async function getUnassignedLeadCount(): Promise<number> {
   });
 }
 
+export async function getLeadsForUser(userId: string) {
+  return prisma.lead.findMany({
+    where: {
+      assignedUserId: userId,
+      status: { notIn: ["ARCHIVED", "MERGED", "WON", "LOST", "DISQUALIFIED"] },
+    },
+    select: {
+      id: true,
+      companyName: true,
+      fullName: true,
+      score: true,
+      qualityTier: true,
+      status: true,
+      state: true,
+      slaStatus: true,
+      createdAt: true,
+    },
+    orderBy: [
+      { slaStatus: "desc" },
+      { createdAt: "desc" },
+    ],
+    take: 50,
+  });
+}
+
 export async function getActiveUsers() {
   const session = await auth();
   if (!session) return [];

@@ -93,7 +93,7 @@ export default async function AssignmentsPage() {
         <div className="space-y-4">
           <h2 className="font-semibold">Staff Workload</h2>
           <div className="rounded-lg border bg-card p-4">
-            <WorkloadPanel stats={workload} />
+            <WorkloadPanel stats={workload} tierColorMap={tierColorMap} />
           </div>
         </div>
       </div>

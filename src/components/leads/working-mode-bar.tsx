@@ -34,7 +34,7 @@ export function WorkingModeBar() {
   }
 
   return (
-    <div className="sticky top-0 z-30 flex items-center gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 mb-4">
+    <div className="sticky top-0 z-30 flex items-center gap-4 rounded-lg border-b bg-background px-4 py-2 mb-4 shadow-sm">
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold text-primary">Working Leads</span>
         <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-bold">

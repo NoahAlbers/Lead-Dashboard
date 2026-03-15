@@ -1,102 +1,41 @@
-Revamp the Lead Detail page layout. This is the most important page in the app — staff spend most of their time here.
+Three quick UI fixes. Read all, then implement.
 
-## Header redesign
-- Title format: "Contact Name | Company Name" (e.g., "Mark Carper | Magna Terra LLC")
-- Below title: created date/time in muted text
-- Top right of header: 
-  - Large score circle (48-56px diameter, colored by tier — use the tier's configured color as the circle border/fill)
-  - Score number large and bold inside the circle
-  - Tier badge next to it (e.g., "C Lead" pill using tier color)
-  - Status badge (e.g., "Contacted" with status color)
-  - SLA badge if applicable (e.g., "32m left" in warning amber, or "On Track" in green)
-- Back to Inbox link stays at top left above the title
+## FIX 1: Working Leads sticky header bar — make opaque
+The "Working Leads" navigation bar at the top of the lead detail page (shows "Working Leads 1 of 3", processed count, navigation arrows, Exit button) currently has a transparent background. When you scroll, content shows through it and it looks messy. Fix:
+- Give the sticky header bar a solid opaque background: `background: var(--color-background-primary)` (or the same background as the rest of the page)
+- Add a subtle bottom border: `border-bottom: 0.5px solid var(--color-border-tertiary)`
+- Add a slight box-shadow only when scrolled (optional): `box-shadow: 0 1px 3px rgba(0,0,0,0.05)` — or skip the shadow and just use the border
+- Make sure it has a proper z-index so it sits above all scrolling content
+- The bar should look like a natural part of the page header, not floating
 
-## Three-column layout
+## FIX 2: Assignments page — show assigned leads per staff member
+The Manage Assignments page shows unassigned leads on the left and staff workload on the right. Currently the staff workload panel only shows a count and a bar — you can't see WHICH leads are assigned to each person. Fix:
 
-### Left column (~30% width): Lead data
-Stack these as compact, collapsible card sections with minimal padding:
+- Make each staff member's row expandable/collapsible
+- When expanded, show a list of their assigned leads below their name:
+  - Each lead shows: company name (clickable link to lead detail), score, tier badge, status badge, state pills, SLA status
+  - Sort by SLA urgency (most urgent first)
+- Default state: collapsed (just name, role, count, workload bar)
+- Click the staff member row or a chevron to expand
+- Alternatively, if the expanded list feels too cramped in the right panel:
+  - Click a staff member to open a slide-out panel or modal showing all their assigned leads in a clean list/table format
+  - The modal should include: lead company name, contact name, score, tier, status, SLA status, last activity
+  - Each lead in the modal should be clickable to navigate to the lead detail page
+- Also add a "Reassign" button on each lead within the expanded view, so managers can move leads between staff directly from the assignments page
+- The workload bar should use tier colors to show the breakdown (e.g., blue segment for B leads, green for A leads)
 
-1. **Contact Information**
-   - Contact name, company, email (clickable mailto), phone (clickable tel), website (clickable link or "No website"), alternate phone
-   - State pills with good/bad coloring
-   - Keep it dense — use a two-column label:value layout within the card
+## FIX 3: Read/unread indicators — replace invisible dots with envelope icons
+The current read/unread toggle on the lead inbox is a tiny dot that's nearly invisible. Replace with clear envelope icons:
+- **Unread**: Closed/sealed envelope icon (filled, using the app's primary/accent color — should be visually prominent)
+- **Read**: Open envelope icon (outlined/muted, using secondary text color — subtle but visible)
+- The icon should be ~18-20px, placed in the same column position where the dot currently is
+- Clicking the icon toggles read/unread state (same functionality as now)
+- Tooltip on hover: "Mark as read" or "Mark as unread"
+- The right-click context menu option should also update to show the envelope icon and say "Mark as read" / "Mark as unread"
+- If using Lucide icons (which the app likely already uses): `Mail` for unread (closed envelope), `MailOpen` for read (open envelope)
+- Unread leads should still have the slightly bolder/distinct row styling to make them stand out in the table even without focusing on the icon
 
-2. **Portfolio Details** 
-   - Total units, avg rent/unit, ownership type
-   - Rental types (pills), property types (pills)
-   - Listing sites (pills), PM software (pills)
-
-3. **Collections Readiness**
-   - Debt types (pills), debts ready now, prior agency experience
-   - Lead's comments/notes from form displayed in a subtle quote block
-
-Each section should be collapsible (click header to toggle) but default to expanded. Cards should have tight vertical spacing — 8px gap between sections, 12px internal padding.
-
-### Center column (~45% width): Qualification + Timeline
-This is the "story" of the lead — why it scored the way it did and what's happened.
-
-1. **Qualification Card**
-   - Score + tier prominently displayed
-   - Recommended action
-   - Applied rules list: rule name on left, point value on right (green for positive, red for negative)
-   - Base score at bottom
-   - Compact — no wasted vertical space
-
-2. **SLA Tracking Card**
-   - Which SLA is active (First Contact or Follow-Up)
-   - Visual progress bar (colored by status: green/amber/red)
-   - Time remaining or time overdue
-   - Threshold label at the end of the bar
-
-3. **Referral Recommendation** (only show if system recommends a referral)
-   - Recommended partner name + reason
-   - "Refer" button inline
-
-4. **Activity Timeline**
-   - Chronological event list, newest first
-   - Each entry: timestamp, user/system, event type, details
-   - Compact dots/line design (vertical timeline line with small dots)
-   - Inline "Add note..." text input at the top of the timeline
-   - Status change events, contact logs, emails, calls, referrals all in one stream
-   - This section should scroll internally if it gets long (max-height with overflow-y: auto)
-
-### Right column (~25% width): Actions
-This column should be **position: sticky** so it stays visible as the user scrolls.
-
-1. **Action Buttons** — stacked vertically, full width of the column:
-   - Email Lead (primary action style — slightly more prominent)
-   - Call Lead (primary action style)
-   - Mark Contacted
-   - Follow-Up Needed
-   - Mark Qualified
-   - Disqualify
-   - Refer Out
-   - Mark Duplicate
-   - Export for CRM
-   - Find & Merge
-   - Add Note
-   - Each button should have a small icon on the left and clear label
-   - Group them visually: Communication (email, call) | Status (contacted, follow-up, qualified, disqualify) | Other (refer, duplicate, CRM, merge, note)
-   - Use subtle divider lines between groups
-
-2. **Change Status** dropdown below the buttons
-
-3. **Assignment Section**
-   - Current assignee or "Unassigned"
-   - Assign/Reassign button (for managers)
-   - Claim button (for intake staff if unassigned)
-
-4. **CRM Status**
-   - Export status (Not exported / Exported / Imported)
-   - External CRM ID if available
-
-## General styling
-- Use the app's existing card styles but tighten padding (12-16px, not 24px)
-- Reduce gaps between sections (8-12px, not 20-24px)
-- The goal is to get ALL essential information visible without scrolling on a 1080p display
-- Left and center columns scroll naturally with the page
-- Right column is sticky (stays in view)
-- On the header, make the score circle and tier badge significantly larger than they are now — these should be the first thing your eye catches
-- Font sizes: header title 20-22px, section headers 14-15px bold, field labels 12-13px muted, field values 13-14px normal
-- Collapsible sections use a subtle chevron icon that rotates on toggle
-- Remove any redundant information — don't show the same data in multiple places
+Implement in this order:
+1. Working leads header opacity (30-second CSS fix)
+2. Read/unread envelope icons (quick component swap)
+3. Assignments expandable staff leads (most involved)

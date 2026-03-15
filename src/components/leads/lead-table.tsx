@@ -20,6 +20,7 @@ import {
   ArrowUp,
   ArrowDown,
   Mail,
+  MailOpen,
   Phone,
   CheckCircle,
   Clock,
@@ -326,17 +327,17 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       case "readIndicator":
         return (
           <button
-            className="flex items-center justify-center w-4 h-4"
+            className="flex items-center justify-center w-5 h-5"
             onClick={(e) => {
               e.stopPropagation();
               toggleReadStatus(row.id);
             }}
-            title={row.isRead ? "Mark unread" : "Mark read"}
+            title={row.isRead ? "Mark as unread" : "Mark as read"}
           >
             {!row.isRead ? (
-              <span className="block h-2 w-2 rounded-full bg-primary" />
+              <Mail className="h-[18px] w-[18px] text-primary" />
             ) : (
-              <span className="block h-2 w-2 rounded-full bg-transparent border border-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <MailOpen className="h-[18px] w-[18px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />
             )}
           </button>
         );
