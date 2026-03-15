@@ -13,6 +13,7 @@ import { getTierColorMap } from "@/actions/status.actions";
 import { getLeadSlaInfo } from "@/actions/sla.actions";
 import { getStateColor } from "@/lib/state-colors";
 import { SlaBadge, SlaProgressBar } from "@/components/leads/sla-badge";
+import { WorkingModeBarWrapper, DispositionPanelWrapper, SessionSummaryWrapper } from "@/components/leads/working-mode-wrapper";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { LeadNotes } from "@/components/leads/lead-notes";
@@ -168,6 +169,10 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
+      {/* Working Mode Bar */}
+      <WorkingModeBarWrapper />
+      <SessionSummaryWrapper />
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -455,6 +460,12 @@ export default async function LeadDetailPage({ params }: PageProps) {
               )}
             </div>
           </SectionCard>
+
+          {/* Disposition Panel (Working Mode) */}
+          <DispositionPanelWrapper
+            leadId={lead.id}
+            leadLabel={lead.companyName || lead.fullName || "Lead"}
+          />
         </div>
 
         {/* Right Column - Actions */}

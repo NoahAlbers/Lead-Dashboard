@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { FaviconManager } from "@/components/layout/favicon-manager";
 import { SoundProvider } from "@/components/layout/sound-manager";
+import { WorkingModeProvider } from "@/components/leads/working-mode-provider";
 import { getUnreadCount } from "@/actions/lead.actions";
 
 export default async function DashboardLayout({
@@ -18,6 +19,7 @@ export default async function DashboardLayout({
 
   return (
     <SoundProvider>
+    <WorkingModeProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar
           userRole={session.user.role}
@@ -34,6 +36,7 @@ export default async function DashboardLayout({
           <FaviconManager />
         </div>
       </div>
+    </WorkingModeProvider>
     </SoundProvider>
   );
 }

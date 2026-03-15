@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { LeadTable } from "@/components/leads/lead-table";
 import { LeadFilters } from "@/components/leads/lead-filters";
 import { InboxWidgets } from "@/components/leads/inbox-widget-config";
+import { StartWorkingButton } from "@/components/leads/start-working-button";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -78,11 +79,14 @@ export default async function LeadsPage({ searchParams }: PageProps) {
       <InboxWidgets
         metrics={widgetMetrics}
         titleRow={
-          <div>
-            <h1 className="text-2xl font-bold">Lead Inbox</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {result.total} total leads
-            </p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold">Lead Inbox</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {result.total} total leads
+              </p>
+            </div>
+            <StartWorkingButton />
           </div>
         }
       />
