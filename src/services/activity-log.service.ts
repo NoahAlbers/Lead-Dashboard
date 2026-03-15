@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 export type EventType =
   | "lead_created"
@@ -25,7 +26,7 @@ export async function logEvent(
     data: {
       leadId,
       eventType,
-      eventDataJson: data ?? {},
+      eventDataJson: (data ?? {}) as Prisma.InputJsonValue,
       userId: userId ?? null,
     },
   });
