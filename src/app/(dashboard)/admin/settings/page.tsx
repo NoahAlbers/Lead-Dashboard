@@ -3,9 +3,8 @@ import { getArchivedLeads } from "@/actions/lead.actions";
 import { SettingsClient } from "./settings-client";
 
 export default async function SettingsPage() {
-  const [statuses, tiers, archivedLeads, tierRanges] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges] = await Promise.all([
     getCustomStatuses("status"),
-    getCustomStatuses("tier"),
     getArchivedLeads(),
     getTierRanges(),
   ]);
@@ -26,12 +25,7 @@ export default async function SettingsPage() {
           color: s.color,
           isDefault: s.isDefault,
         }))}
-        tiers={tiers.map((t) => ({
-          id: t.id,
-          name: t.name,
-          color: t.color,
-          isDefault: t.isDefault,
-        }))}
+        tiers={tierRanges}
         archivedLeads={archivedLeads.map((l) => ({
           id: l.id,
           fullName: l.fullName,
@@ -40,7 +34,6 @@ export default async function SettingsPage() {
           createdAt: l.createdAt.toISOString(),
           score: l.score,
         }))}
-        tierRanges={tierRanges}
       />
 
       <div className="rounded-lg border bg-card p-5 space-y-6">
@@ -54,12 +47,8 @@ export default async function SettingsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 border-b">
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
-                    Act! Field
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
-                    Lead Field
-                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Act! Field</th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Lead Field</th>
                 </tr>
               </thead>
               <tbody>

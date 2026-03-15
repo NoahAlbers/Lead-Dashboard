@@ -1,11 +1,28 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Trash2, Plus, RotateCcw, Save } from "lucide-react";
+import { useState, useTransition, useCallback } from "react";
+import { Trash2, Plus, RotateCcw, Save, GripVertical } from "lucide-react";
 import { createCustomStatus, deleteCustomStatus, saveTierRanges } from "@/actions/status.actions";
 import { unarchiveLead } from "@/actions/lead.actions";
 import { format } from "date-fns";
 import { toast } from "@/components/ui/use-toast";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const PASTEL_COLORS = [
   "#FFB3B3", "#FFDAB3", "#FFF3B3", "#D4F5D4",
@@ -20,12 +37,12 @@ interface StatusItem {
   isDefault: boolean;
 }
 
-interface TierRange {
-  tier: string;
-  label: string;
+interface TierItem {
+  id: string;
+  name: string;
+  color: string;
   min: number;
   max: number;
-  color: string;
 }
 
 interface ArchivedLead {
@@ -39,20 +56,13 @@ interface ArchivedLead {
 
 interface SettingsClientProps {
   statuses: StatusItem[];
-  tiers: StatusItem[];
+  tiers: TierItem[];
   archivedLeads: ArchivedLead[];
-  tierRanges: TierRange[];
 }
 
-function StatusList({
-  items,
-  type,
-  label,
-}: {
-  items: StatusItem[];
-  type: string;
-  label: string;
-}) {
+// --- Status List (for lead statuses only) ---
+
+function StatusList({ items }: { items: StatusItem[] }) {
   const [isPending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
@@ -61,7 +71,7 @@ function StatusList({
   function handleAdd() {
     if (!newName.trim()) return;
     startTransition(async () => {
-      await createCustomStatus({ name: newName.trim(), color: newColor, type });
+      await createCustomStatus({ name: newName.trim(), color: newColor, type: "status" });
       setNewName("");
       setShowAdd(false);
     });
@@ -76,13 +86,13 @@ function StatusList({
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold">{label}</h2>
+        <h2 className="font-semibold">Lead Statuses</h2>
         <button
           onClick={() => setShowAdd(!showAdd)}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-primary hover:bg-primary/10 transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add {type === "status" ? "Status" : "Tier"}
+          Add Status
         </button>
       </div>
 
@@ -92,7 +102,7 @@ function StatusList({
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder={`${type === "status" ? "Status" : "Tier"} name...`}
+            placeholder="Status name..."
             className="w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <div>
@@ -130,15 +140,9 @@ function StatusList({
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {items.map((item) => (
-          <div
-            key={item.id}
-            className="group flex items-center justify-between rounded-md border p-3"
-          >
+          <div key={item.id} className="group flex items-center justify-between rounded-md border p-3">
             <div className="flex items-center gap-2">
-              <span
-                className="h-3 w-3 rounded-full shrink-0"
-                style={{ backgroundColor: item.color }}
-              />
+              <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
               <span className="text-sm font-medium">{item.name}</span>
             </div>
             {!item.isDefault && (
@@ -146,7 +150,6 @@ function StatusList({
                 onClick={() => handleDelete(item.id)}
                 disabled={isPending}
                 className="opacity-0 group-hover:opacity-100 rounded p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-50"
-                title="Delete"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -158,115 +161,185 @@ function StatusList({
   );
 }
 
-function TierRangeEditor({ initialRanges }: { initialRanges: TierRange[] }) {
-  const [ranges, setRanges] = useState(initialRanges);
-  const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+// --- Sortable Tier Card ---
 
-  function updateRange(tier: string, field: "min" | "max", value: number) {
-    setRanges((prev) =>
-      prev.map((r) => (r.tier === tier ? { ...r, [field]: value } : r))
-    );
-    setError(null);
-  }
+function SortableTierCard({
+  tier,
+  onChange,
+  onDelete,
+  disabled,
+}: {
+  tier: TierItem;
+  onChange: (id: string, field: string, value: string | number) => void;
+  onDelete: (id: string) => void;
+  disabled: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tier.id });
 
-  function validate(): boolean {
-    // Sort by min descending (A has highest range)
-    const sorted = [...ranges].sort((a, b) => b.min - a.min);
-
-    // Check no overlaps and full coverage
-    for (let i = 0; i < sorted.length; i++) {
-      if (sorted[i].min > sorted[i].max) {
-        setError(`${sorted[i].label}: min cannot exceed max.`);
-        return false;
-      }
-      if (i > 0 && sorted[i].max >= sorted[i - 1].min) {
-        setError(`${sorted[i].label} overlaps with ${sorted[i - 1].label}.`);
-        return false;
-      }
-    }
-
-    // Check coverage of 0-100
-    const highest = sorted[0];
-    const lowest = sorted[sorted.length - 1];
-    if (highest.max !== 100) {
-      setError("Top tier must end at 100.");
-      return false;
-    }
-    if (lowest.min !== 0) {
-      setError("Bottom tier must start at 0.");
-      return false;
-    }
-
-    return true;
-  }
-
-  function handleSave() {
-    if (!validate()) return;
-    startTransition(async () => {
-      await saveTierRanges(ranges.map((r) => ({ tier: r.tier, min: r.min, max: r.max })));
-      toast({ title: "Tier ranges saved", description: "Quality tier boundaries updated." });
-    });
-  }
-
-  const TIER_DISPLAY_COLORS: Record<string, string> = {
-    A: "border-emerald-200 bg-emerald-50",
-    B: "border-blue-200 bg-blue-50",
-    C: "border-amber-200 bg-amber-50",
-    POOR: "border-red-200 bg-red-50",
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
   };
 
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
   return (
-    <div>
-      <h2 className="font-semibold mb-3">Quality Tier Score Ranges</h2>
-      <p className="text-sm text-muted-foreground mb-3">
-        Define which score ranges map to each tier. Ranges must cover 0-100 without overlap.
-      </p>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {ranges.map((range) => (
-          <div
-            key={range.tier}
-            className={`rounded-lg border p-3 ${TIER_DISPLAY_COLORS[range.tier] ?? ""}`}
-          >
-            <p className="text-sm font-semibold mb-2">{range.label}</p>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={range.min}
-                onChange={(e) => updateRange(range.tier, "min", Number(e.target.value))}
-                className="w-14 rounded border border-input bg-card px-2 py-1 text-sm text-center"
+    <div ref={setNodeRef} style={style} className="rounded-lg border bg-card p-3 flex items-center gap-3">
+      <button {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground">
+        <GripVertical className="h-4 w-4" />
+      </button>
+
+      <div className="relative">
+        <button
+          onClick={() => setShowColorPicker(!showColorPicker)}
+          className="h-6 w-6 rounded-full border-2 border-border shrink-0"
+          style={{ backgroundColor: tier.color }}
+        />
+        {showColorPicker && (
+          <div className="absolute top-full left-0 mt-1 p-2 rounded-lg border bg-card shadow-lg z-20 flex flex-wrap gap-1.5 w-[180px]">
+            {PASTEL_COLORS.map((c) => (
+              <button
+                key={c}
+                onClick={() => { onChange(tier.id, "color", c); setShowColorPicker(false); }}
+                className={`h-6 w-6 rounded-md border-2 ${tier.color === c ? "border-foreground" : "border-transparent"}`}
+                style={{ backgroundColor: c }}
               />
-              <span className="text-xs text-muted-foreground">to</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={range.max}
-                onChange={(e) => updateRange(range.tier, "max", Number(e.target.value))}
-                className="w-14 rounded border border-input bg-card px-2 py-1 text-sm text-center"
-              />
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
-      {error && (
-        <p className="text-sm text-red-600 mt-2">{error}</p>
-      )}
+
+      <input
+        type="text"
+        value={tier.name}
+        onChange={(e) => onChange(tier.id, "name", e.target.value)}
+        className="flex-1 min-w-0 rounded border border-input bg-card px-2 py-1 text-sm font-medium"
+      />
+
+      <div className="flex items-center gap-1.5 shrink-0">
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={tier.min}
+          onChange={(e) => onChange(tier.id, "min", Number(e.target.value))}
+          className="w-14 rounded border border-input bg-card px-2 py-1 text-sm text-center"
+        />
+        <span className="text-xs text-muted-foreground">–</span>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={tier.max}
+          onChange={(e) => onChange(tier.id, "max", Number(e.target.value))}
+          className="w-14 rounded border border-input bg-card px-2 py-1 text-sm text-center"
+        />
+      </div>
+
       <button
-        onClick={handleSave}
-        disabled={isPending}
-        className="mt-3 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        onClick={() => { if (confirm("Delete this tier?")) onDelete(tier.id); }}
+        disabled={disabled}
+        className="rounded p-1 text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
       >
-        <Save className="h-3.5 w-3.5" />
-        Save Ranges
+        <Trash2 className="h-4 w-4" />
       </button>
     </div>
   );
 }
 
-export function SettingsClient({ statuses, tiers, archivedLeads, tierRanges }: SettingsClientProps) {
+// --- Unified Tier Manager ---
+
+function UnifiedTierManager({ initialTiers }: { initialTiers: TierItem[] }) {
+  const [tiers, setTiers] = useState(initialTiers);
+  const [isPending, startTransition] = useTransition();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  function handleChange(id: string, field: string, value: string | number) {
+    setTiers((prev) => prev.map((t) => (t.id === id ? { ...t, [field]: value } : t)));
+  }
+
+  function handleDelete(id: string) {
+    setTiers((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  function handleAdd() {
+    const newId = `tier-${Date.now()}`;
+    setTiers((prev) => [
+      ...prev,
+      { id: newId, name: "New Tier", color: PASTEL_COLORS[Math.floor(Math.random() * PASTEL_COLORS.length)], min: 0, max: 0 },
+    ]);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setTiers((prev) => {
+        const oldIndex = prev.findIndex((t) => t.id === active.id);
+        const newIndex = prev.findIndex((t) => t.id === over.id);
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+    }
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      await saveTierRanges(tiers);
+      toast({ title: "Tiers updated", description: `Recalculating lead scores...`, variant: "success" });
+    });
+  }
+
+  return (
+    <div>
+      <h2 className="font-semibold mb-1">Quality Tiers</h2>
+      <p className="text-sm text-muted-foreground mb-3">
+        Drag to set priority (first match wins). Overlapping ranges are allowed.
+      </p>
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={tiers.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {tiers.map((tier) => (
+              <SortableTierCard
+                key={tier.id}
+                tier={tier}
+                onChange={handleChange}
+                onDelete={handleDelete}
+                disabled={isPending}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+
+      <div className="flex items-center gap-2 mt-3">
+        <button
+          onClick={handleAdd}
+          className="flex items-center gap-1 rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add Tier
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={isPending || tiers.length === 0}
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          <Save className="h-3.5 w-3.5" />
+          Save Tiers
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Main Settings Client ---
+
+export function SettingsClient({ statuses, tiers, archivedLeads }: SettingsClientProps) {
   const [isPending, startTransition] = useTransition();
 
   function handleRestore(leadId: string) {
@@ -278,9 +351,8 @@ export function SettingsClient({ statuses, tiers, archivedLeads, tierRanges }: S
   return (
     <div className="space-y-6">
       <div className="rounded-lg border bg-card p-5 space-y-6">
-        <StatusList items={statuses} type="status" label="Lead Statuses" />
-        <TierRangeEditor initialRanges={tierRanges} />
-        <StatusList items={tiers} type="tier" label="Custom Tiers" />
+        <StatusList items={statuses} />
+        <UnifiedTierManager initialTiers={tiers} />
       </div>
 
       {/* Archived Leads */}
@@ -303,13 +375,9 @@ export function SettingsClient({ statuses, tiers, archivedLeads, tierRanges }: S
               <tbody>
                 {archivedLeads.map((lead) => (
                   <tr key={lead.id} className="border-b last:border-0">
-                    <td className="px-3 py-2">
-                      {lead.companyName || lead.fullName || "—"}
-                    </td>
+                    <td className="px-3 py-2">{lead.companyName || lead.fullName || "—"}</td>
                     <td className="px-3 py-2 text-xs">{lead.email || "—"}</td>
-                    <td className="px-3 py-2 text-xs">
-                      {format(new Date(lead.createdAt), "MM/dd/yy")}
-                    </td>
+                    <td className="px-3 py-2 text-xs">{format(new Date(lead.createdAt), "MM/dd/yy")}</td>
                     <td className="px-3 py-2">{lead.score ?? "—"}</td>
                     <td className="px-3 py-2 text-right">
                       <button

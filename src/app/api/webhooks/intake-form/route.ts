@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
       "state": Array.isArray(body.states) ? body.states[0] : body.states, // Primary state for scoring
       "account-volume": body.totalUnits || undefined,
       "urgency": body.debtsNow === "Yes" ? "high" : body.debtsNow === "No" ? "low" : undefined,
+      "_rawIntakeForm": body,
     };
 
     const metadata = {

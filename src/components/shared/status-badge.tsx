@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { LeadStatus, QualityTier } from "@prisma/client";
+import type { LeadStatus } from "@prisma/client";
 
 const statusColors: Record<LeadStatus, string> = {
   NEW: "bg-blue-100 text-blue-700",
@@ -44,23 +44,23 @@ export function StatusBadge({ status }: { status: LeadStatus }) {
   );
 }
 
-const tierColors: Record<QualityTier, string> = {
+const tierColors: Record<string, string> = {
   A: "bg-emerald-100 text-emerald-700",
   B: "bg-blue-100 text-blue-700",
   C: "bg-amber-100 text-amber-700",
   POOR: "bg-red-100 text-red-700",
 };
 
-export function TierBadge({ tier }: { tier: QualityTier | null }) {
+export function TierBadge({ tier }: { tier: string | null }) {
   if (!tier) return <span className="text-xs text-muted-foreground">—</span>;
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        tierColors[tier]
+        tierColors[tier] ?? "bg-purple-100 text-purple-700"
       )}
     >
-      {tier} Lead
+      {tier}
     </span>
   );
 }

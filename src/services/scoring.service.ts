@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { logEvent } from "./activity-log.service";
-import type { Lead, QualityTier } from "@prisma/client";
+import type { Lead } from "@prisma/client";
 
 interface RuleCondition {
   field: string;
@@ -90,10 +90,10 @@ function evaluateRule(
 }
 
 const DEFAULT_TIER_RANGES: TierRange[] = [
-  { tier: "A", min: 80, max: 100 },
-  { tier: "B", min: 60, max: 79 },
-  { tier: "C", min: 40, max: 59 },
-  { tier: "POOR", min: 0, max: 39 },
+  { tier: "A Lead", min: 80, max: 100 },
+  { tier: "B Lead", min: 60, max: 79 },
+  { tier: "C Lead", min: 40, max: 59 },
+  { tier: "Poor Fit", min: 0, max: 39 },
 ];
 
 async function getTierRangesFromDB(): Promise<TierRange[]> {
@@ -103,41 +103,43 @@ async function getTierRangesFromDB(): Promise<TierRange[]> {
     });
     if (!record) return DEFAULT_TIER_RANGES;
     const parsed = JSON.parse(record.color);
-    return parsed.map((r: TierRange) => ({ tier: r.tier, min: r.min, max: r.max }));
+    // New format has {id, name, color, min, max}; old format has {tier, min, max}
+    return parsed.map((r: { id?: string; name?: string; tier?: string; label?: string; min: number; max: number }) => ({
+      tier: r.name ?? r.label ?? r.tier ?? "Unknown",
+      min: r.min,
+      max: r.max,
+    }));
   } catch {
     return DEFAULT_TIER_RANGES;
   }
 }
 
-function mapScoreToTierWithRanges(score: number, ranges: TierRange[]): QualityTier {
+function mapScoreToTierWithRanges(score: number, ranges: TierRange[]): string | null {
   for (const range of ranges) {
     if (score >= range.min && score <= range.max) {
-      return range.tier as QualityTier;
+      return range.tier;
     }
   }
-  // Fallback
-  if (score >= 80) return "A";
-  if (score >= 60) return "B";
-  if (score >= 40) return "C";
-  return "POOR";
+  return null; // No matching tier (gap in ranges)
 }
 
 function determineAction(
   score: number,
-  tier: QualityTier,
+  tier: string | null,
   appliedRules: AppliedRule[]
 ): string {
   const hardStop = appliedRules.find((r) => r.hardStop);
   if (hardStop) return hardStop.action ?? "disqualify";
 
-  if (tier === "A" || tier === "B") return "contact";
-  if (tier === "C") return "review_manually";
+  // Use score-based heuristic since tier names are now user-defined
+  if (score >= 60) return "contact";
+  if (score >= 40) return "review_manually";
   return "refer_or_disqualify";
 }
 
 export async function scoreLead(lead: Lead): Promise<{
   score: number;
-  qualityTier: QualityTier;
+  qualityTier: string | null;
   recommendedAction: string;
   appliedRules: AppliedRule[];
 }> {

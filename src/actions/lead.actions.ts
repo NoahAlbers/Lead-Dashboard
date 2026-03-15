@@ -55,7 +55,7 @@ export async function getLeads(params: {
   }
 
   if (qualityTier?.length) {
-    where.qualityTier = { in: qualityTier as ("A" | "B" | "C" | "POOR")[] };
+    where.qualityTier = { in: qualityTier };
   }
 
   if (state) {
@@ -77,12 +77,20 @@ export async function getLeads(params: {
     "companyName",
     "fullName",
     "email",
+    "phone",
     "state",
     "score",
     "status",
     "qualityTier",
+    "recommendedAction",
     "lastActivityAt",
     "balanceAmount",
+    "industry",
+    "debtType",
+    "accountVolume",
+    "urgency",
+    "serviceRequested",
+    "businessType",
   ];
 
   const orderField = allowedSortFields.includes(sortField)

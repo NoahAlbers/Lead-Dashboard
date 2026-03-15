@@ -1,191 +1,169 @@
-# Lead Dashboard - Implementation Fixes & Improvements
+# Lead Dashboard - Round 2 Fixes
 
-Read the full codebase first, then implement these changes in order.
-
----
-
-## 1. LEAD INBOX - Quick Actions (FIX)
-
-The quick action buttons in the lead inbox table are incomplete and poorly implemented. Fix as follows:
-
-### Buttons needed (always visible, not just on hover):
-Show these icon buttons in a row in the rightmost column of each lead row:
-1. **Email** (envelope icon) - Opens email compose modal
-2. **Call** (phone icon) - Opens tel: link with lead's phone number  
-3. **Mark Contacted** (green checkmark icon)
-4. **Follow-Up Needed** (orange clock icon)
-5. **Mark Qualified** (gold star icon)
-6. **Disqualify** (red X icon)
-7. **Archive** (archive/box icon)
-
-### Tooltip implementation:
-Do NOT use HTML `title` attributes. Use CSS-only tooltips:
-```css
-.action-btn {
-  position: relative;
-}
-.action-btn::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1A1A2E;
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-  z-index: 10;
-}
-.action-btn:hover::after {
-  opacity: 1;
-}
-```
-
-Each button gets `data-tooltip="Mark Contacted"` etc. The icons should be small (16-18px), with subtle colors that match their meaning (green for contacted, orange for follow-up, gold for qualified, red for disqualify, grey for archive, blue for email/call).
-
-### Email button behavior:
-When clicked, opens a modal with:
-- A dropdown to select from saved email templates (from the Email Templates section)
-- When a template is selected, it auto-populates:
-  - Subject line (with merge fields replaced: {firstName}, {companyName}, {totalUnits}, etc.)
-  - Body content (with merge fields replaced)
-- The "To" field is pre-filled with the lead's email
-- A "Send" button and "Cancel" button
-- For now, "Send" can open the user's default mail client with `mailto:` populated with the subject and body, OR copy to clipboard with a toast notification. Full SMTP integration can come later.
+Read the full codebase before making any changes. These are 4 specific issues that need to be fixed properly.
 
 ---
 
-## 2. READ/UNREAD STATUS IN LEAD INBOX
+## 1. QUALITY TIER SCORE RANGES - Complete Rework
 
-### Add a read/unread indicator:
-- On the far LEFT of each row in the lead inbox table, add a small dot indicator:
-  - **Unread (new)**: Solid blue dot (8px circle, filled with #3D5AF1)
-  - **Read**: No dot (empty space, same width to maintain alignment)
-- A lead becomes "read" when a user clicks into its detail view
-- Store read/unread status per lead in the database
+The current implementation is fundamentally broken. Right now there are 4 hardcoded default ranges (A Lead, B Lead, C Lead, Poor Fit) that can have their numbers edited, and a separate "Custom Tiers" section below where you can add tiers but NOT set ranges on them. This entire system needs to be unified into a single, fully flexible tier management system.
 
-### Notification badge logic:
-- The red badge number on "Lead Inbox" in the sidebar = count of UNREAD leads
-- When a user enters a lead's detail view, mark it as read and decrement the badge count
-- When a new lead comes in, it starts as unread, incrementing the badge
+### What needs to change:
 
----
+**Remove the separation between "Quality Tier Score Ranges" and "Custom Tiers".** There should be ONE list of tiers. Every tier is equal - all can be added, removed, renamed, recolored, and have their range set.
 
-## 3. CUSTOM TIER RANGES (FIX)
+**There should be NO hardcoded default tiers that can't be deleted.** The system ships with 4 defaults (A Lead 80-100, B Lead 60-79, C Lead 40-59, Poor Fit 0-39) but the user should be able to delete any of them, rename them, change their ranges, change their colors, and add as many new ones as they want.
 
-The current implementation is broken - custom tiers cannot have their ranges edited. Fix:
+### UI for the unified tier list:
 
-### How it should work:
-- In Settings, the "Quality Tier Score Ranges" section should show ALL tiers (both default and custom)
-- Each tier card should have:
-  - The tier name (editable for custom tiers)
-  - A color indicator
-  - Two number inputs: min score and max score
-  - For custom tiers: a delete button
-- ALL tiers must have editable min/max ranges, including custom tiers added via "+ Add Tier"
-- When a new tier is added, auto-assign it the next available range gap, or split the lowest tier's range
-- Validation on save:
-  - Ranges must cover 0-100 completely with no gaps
-  - Ranges must not overlap
-  - Show inline error messages if validation fails
-- "Save Ranges" button applies changes and triggers lead score recalculation for all leads
+Display all tiers as cards in a single section called "Quality Tiers". Each card shows:
+- Color dot (clickable to change color via a small color picker or preset palette)
+- Tier name (editable inline text field)
+- Score range: two number inputs "min" and "max" (both editable)
+- Delete button (trash icon, with confirm dialog)
 
-### Data model for tiers:
-```
-{
-  id: string,
-  name: string,      // "A Lead", "B Lead", etc.
-  color: string,      // hex color for the dot/badge
-  minScore: number,   // inclusive
-  maxScore: number,   // inclusive
-  isDefault: boolean  // can't delete default tiers, only rename
-}
-```
+Below the tier cards:
+- "+ Add Tier" button that adds a new tier with a default name like "New Tier" and an empty range
+
+**Ranges CAN overlap.** The user explicitly said they want to be able to overlap ranges. Do NOT validate against overlaps. Do NOT show error messages about overlapping ranges. If two tiers cover the same score, the lead gets assigned to whichever tier appears first in the list (highest priority).
+
+**Ranges do NOT need to cover 0-100 completely.** If there's a gap, leads in that gap simply get "Untiered" or no tier assigned.
+
+**The order of the tier list determines priority.** Allow drag-and-drop reordering of the tier cards so users can set which tier takes priority in overlap situations.
+
+### On save:
+- Recalculate all lead tier assignments based on the new ranges
+- Show a toast: "Tiers updated. Recalculating X leads..."
 
 ---
 
-## 4. EMAIL TEMPLATE EDITOR (UPGRADE)
+## 2. REMOVE RED NOTIFICATION DOT FROM CONTENT AREA
 
-The email template editor needs to be a proper rich text editor, not just a plain textarea.
+In the main content area, there is a red notification badge next to the "Lead Inbox" heading text (the big h1). Remove it. 
 
-### Requirements:
-- Use a rich text editor. Good options for a React project:
-  - **TipTap** (recommended - lightweight, extensible, MIT license)
-  - **React-Quill** (easier but heavier)
-  - Or build a simple one with `contenteditable` and a formatting toolbar
-  
-### Editor toolbar should support:
-- Bold, italic, underline
-- Headings (H1, H2, H3)
-- Bullet lists and numbered lists
-- Links (insert/edit URL)
-- Images (paste URL or upload)
-- Text color
-- Alignment (left, center, right)
-- Insert merge field button → dropdown with: {firstName}, {lastName}, {companyName}, {email}, {phone}, {totalUnits}, {states}, {website}
-- HTML source view toggle (for power users)
+The red badge in the navy sidebar next to "Lead Inbox" in the left nav is fine and should stay. Only remove the one in the main content area heading.
 
-### Template data model:
-```
-{
-  id: string,
-  name: string,           // "Initial Outreach - A Lead"
-  subject: string,        // "Let's get {companyName} collecting"
-  bodyHtml: string,       // Rich HTML content
-  category: string,       // "outreach", "follow-up", "referral"
-  createdAt: timestamp,
-  updatedAt: timestamp
-}
-```
-
-### Pre-built default templates:
-Create these as defaults that users can edit:
-
-**Initial Outreach:**
-- Subject: "{companyName} + Advanced Collection Bureau"
-- Body: Professional intro, mention their unit count, contingency model, CTA to schedule a call
-
-**Follow-Up (No Response):**
-- Subject: "Following up - {companyName}"
-- Body: Brief, adds urgency without being pushy
-
-**Follow-Up (After Call):**
-- Subject: "Great speaking with you, {firstName}"
-- Body: Recap what was discussed, next steps
-
-**Referral:**
-- Subject: "A collection agency recommendation for {companyName}"
-- Body: For non-residential leads being referred to partner agencies
+Find the JSX/component that renders the Lead Inbox page heading and remove the badge element from there.
 
 ---
 
-## 5. GENERAL UI/UX FIXES
+## 3. FULL COLUMN CUSTOMIZATION IN LEAD INBOX TABLE
 
-### All timestamps in EST:
-Every timestamp displayed anywhere in the app should be in Eastern Standard Time. Use:
-```javascript
-new Date(timestamp).toLocaleString('en-US', { 
-  timeZone: 'America/New_York',
-  month: '2-digit', day: '2-digit', year: '2-digit',
-  hour: 'numeric', minute: '2-digit', hour12: true 
-}) + ' EST'
-```
+The lead inbox table currently has fixed columns. Implement full column customization with three interaction models:
 
-### Toast notifications:
-After any quick action (mark contacted, qualified, etc.), show a brief toast notification:
-- Green background for success actions
-- Slides in from the bottom-right
-- Auto-dismisses after 3 seconds
-- Shows the action: "Sunshine Property Management marked as Contacted"
+### A. Column picker modal:
+- Add a small gear/settings icon button to the right of the filter bar (next to the date pickers)
+- Clicking it opens a modal titled "Customize Columns"
+- The modal shows a checklist of ALL available columns with toggles to show/hide each one
+- The list should be reorderable via drag-and-drop within the modal
+- Available columns should include EVERY field from the intake form (see Section 4 for the full list), plus system fields like: Created, Score, Tier, Status, Read/Unread
+- A "Reset to Default" button that restores the original column layout
+- Changes apply immediately on close (or have an "Apply" button)
 
-### Lead detail view - Intake Form Details:
-Move the "Intake Form Details" section to the BOTTOM of the detail page, below the Activity Timeline. It's reference data, not the primary thing the sales rep needs to see.
+### B. Drag-and-drop column reordering:
+- In the table itself, column headers should be draggable
+- User can grab a column header and drag it to reorder
+- Visual feedback: show a blue insertion line where the column will drop
 
-### Multi-state support:
-In the lead detail view and lead inbox table, the "State" field should support and display multiple states. Show as comma-separated or as small pill badges. The intake form sends states as a comma-separated string like "Florida, Georgia, Alabama".
+### C. Right-click column header:
+- Right-clicking any column header shows a context menu with:
+  - "Hide this column"
+  - "Sort ascending"
+  - "Sort descending"  
+  - "Reset column order"
+
+### D. Sort by any column:
+- Clicking any column header sorts by that column (toggle asc/desc)
+- Show a small arrow indicator on the sorted column
+- The current sort indicators on "Created", "Company", and "Score" should work on ALL columns
+
+### Persistence:
+- Save the user's column configuration (which columns are visible, their order, and column widths if resizable) to localStorage so it persists across page loads
+
+---
+
+## 4. COMPLETE FORM FIELD DISPLAY IN LEAD DETAIL VIEW
+
+The intake form collects the following fields. ALL of them must be stored when a lead is created and ALL must be displayed somewhere in the lead detail view. Go through each field below and ensure it is:
+1. Properly received and stored from the form webhook/API
+2. Displayed in the lead detail view in the appropriate section
+
+### Complete field list from the intake form:
+
+**Contact & Company:**
+- fullName (text) - "Jane Smith"
+- companyName (text) - "Sunshine Property Management" 
+- noCompany (boolean) - if true, display "(Independent Owner)"
+- companyWebsite (text/URL) - should be a clickable link
+- noWebsite (boolean) - if true, display "(No website)"
+- email (text)
+- phone (text, formatted as 000-000-0000)
+
+**Certification:**
+- certifyNoDebt (boolean) - confirmed they don't owe ACB
+- certifyOwesDebt (boolean) - should never be true for a submitted lead
+
+**Business Details:**
+- priorAgency (text) - "Yes" or "No"
+- debtTypes (array of strings) - e.g. ["Residential Rental Debt", "Commercial Rental Debt"]
+- customDebtType (text) - free text if "Other" was selected
+- debtsNow (text) - "Yes, we have accounts ready" or "Not yet, but soon"
+- states (array of strings) - e.g. ["Florida", "Georgia", "Alabama"] - display as pill badges
+- ownershipType (text) - "We own them", "We manage for others", or "We own and manage for others"
+- ownPercent (number) - only relevant if ownershipType is "We own and manage for others", e.g. "60% own / 40% manage"
+- totalUnits (text/number) - e.g. "500"
+- rentalTypes (array of strings) - e.g. ["Luxury", "Conventional", "Student Housing"]
+- propertyTypes (array of strings) - e.g. ["Single Family Homes", "Multi-Family", "Communities / HOA"]
+- avgRent (number) - average rent per unit in dollars, e.g. 1500 → display as "$1,500/mo"
+- listingSites (array of strings) - e.g. ["Zillow", "Apartments.com", "Own Website"]
+- customListing (text) - free text if "Other" was selected
+- pmSoftware (array of strings) - e.g. ["Buildium", "AppFolio"] or ["None"]
+- customPM (text) - free text if "Other" was selected
+
+**Comments:**
+- comments (text) - free text, could be multiple paragraphs
+- noQuestions (boolean) - if true, display "(No questions)"
+
+**Tracking / Metadata:**
+- Location / IP (text) - e.g. "Anaheim, California, United States (IP: 139.104.3.32)"
+- Device (text) - e.g. "Desktop / Chrome / Windows"
+- Referrer (text) - e.g. "google.com/search" or "(Direct visit)" or UTM data
+- Clarity Recording (URL) - clickable link to Microsoft Clarity session recording
+- Likely Timezone (text) - e.g. "America/New_York"
+- Submitted EST (text) - e.g. "Sat, Mar 15, 2026, 3:36 AM EST"
+
+### How to organize in the lead detail view:
+
+**Section 1: Contact Information** (top, most prominent)
+- Name, Company, Email, Phone, Website, States (as pill badges)
+
+**Section 2: Portfolio Details**
+- Total Units, Avg Rent, Ownership Type (with percent split if applicable)
+- Rental Types (as pills), Property Types (as pills)
+- Listing Sites (as pills), PM Software (as pills)
+
+**Section 3: Collections Readiness**
+- Debt Types (as pills, with custom type shown if applicable)
+- Debts Ready Now (Yes/No with visual indicator)
+- Prior Agency Experience (Yes/No)
+- Comments (full text, or "(No questions)" if none)
+
+**Section 4: Qualification** (already exists - lead score, tier, applied rules)
+
+**Section 5: Activity Timeline** (already exists)
+
+**Section 6: Tracking & Source** (collapsible, expanded by default)
+- Location / IP
+- Device
+- Referrer / UTMs
+- Clarity Recording (clickable link, open in new tab)
+- Timezone
+- Submission Time (EST)
+
+### For array fields (states, debtTypes, rentalTypes, propertyTypes, listingSites, pmSoftware):
+Display these as small rounded pill badges, similar to how tags work. Use a subtle background color (light blue or light grey) with the text inside. If there are custom/Other entries, show them with a slightly different style (e.g. italic or different badge color) so they stand out.
+
+### Important:
+- If a field is empty/null/undefined, don't show an empty row. Either hide it or show "Not provided" in grey italic.
+- All these fields should also be available as column options in the Lead Inbox table (Section 3 above).
+- The webhook/API endpoint that receives form submissions must accept and store ALL of these fields, not just a subset.

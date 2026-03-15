@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/layout/stat-card";
 import { TimeRangeSelector, type TimeRange } from "@/components/shared/time-range-selector";
-import { type QualityTier } from "@prisma/client";
 import { format, toZonedTime } from "date-fns-tz";
 
 // ---------------------------------------------------------------------------
@@ -159,7 +158,7 @@ function buildBuckets(range: TimeRange): TimeBucket[] {
 }
 
 function bucketize(
-  leads: { createdAt: Date; qualityTier: QualityTier | null }[],
+  leads: { createdAt: Date; qualityTier: string | null }[],
   buckets: TimeBucket[]
 ) {
   const counts = buckets.map((b) => ({
@@ -178,7 +177,7 @@ function bucketize(
         bucket.total++;
         const tier = lead.qualityTier;
         if (tier && tier in TIER_COLORS) {
-          bucket[tier]++;
+          (bucket as unknown as Record<string, number>)[tier]++;
         }
         break;
       }

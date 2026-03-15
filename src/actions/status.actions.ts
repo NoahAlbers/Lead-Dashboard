@@ -54,65 +54,64 @@ export async function deleteCustomStatus(id: string) {
   revalidatePath("/admin/settings");
 }
 
-// Tier ranges are stored as a JSON string in a special CustomStatus record
+// Tier ranges stored as JSON in a special CustomStatus record
 const TIER_RANGES_ID = "system-tier-ranges";
 
-export async function getTierRanges() {
+interface TierItem {
+  id: string;
+  name: string;
+  color: string;
+  min: number;
+  max: number;
+}
+
+const DEFAULT_TIERS: TierItem[] = [
+  { id: "tier-a", name: "A Lead", color: "#B3E8D4", min: 80, max: 100 },
+  { id: "tier-b", name: "B Lead", color: "#B3D4FF", min: 60, max: 79 },
+  { id: "tier-c", name: "C Lead", color: "#FFF3B3", min: 40, max: 59 },
+  { id: "tier-poor", name: "Poor Fit", color: "#FFB3B3", min: 0, max: 39 },
+];
+
+export async function getTierRanges(): Promise<TierItem[]> {
   const record = await prisma.customStatus.findUnique({
     where: { id: TIER_RANGES_ID },
   });
 
-  if (!record) {
-    // Return defaults
-    return [
-      { tier: "A", label: "A Lead", min: 80, max: 100, color: "#B3E8D4" },
-      { tier: "B", label: "B Lead", min: 60, max: 79, color: "#B3D4FF" },
-      { tier: "C", label: "C Lead", min: 40, max: 59, color: "#FFF3B3" },
-      { tier: "POOR", label: "Poor Fit", min: 0, max: 39, color: "#FFB3B3" },
-    ];
-  }
+  if (!record) return DEFAULT_TIERS;
 
   try {
-    return JSON.parse(record.color); // We store the JSON in the color field for simplicity
+    const parsed = JSON.parse(record.color);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].id) {
+      return parsed;
+    }
+    // Legacy format without id — migrate
+    return parsed.map((r: { tier?: string; name?: string; label?: string; color?: string; min: number; max: number }, i: number) => ({
+      id: r.tier ?? `tier-${i}`,
+      name: r.name ?? r.label ?? r.tier ?? `Tier ${i}`,
+      color: r.color ?? DEFAULT_TIERS[i]?.color ?? "#D4D4D4",
+      min: r.min,
+      max: r.max,
+    }));
   } catch {
-    return [
-      { tier: "A", label: "A Lead", min: 80, max: 100, color: "#B3E8D4" },
-      { tier: "B", label: "B Lead", min: 60, max: 79, color: "#B3D4FF" },
-      { tier: "C", label: "C Lead", min: 40, max: 59, color: "#FFF3B3" },
-      { tier: "POOR", label: "Poor Fit", min: 0, max: 39, color: "#FFB3B3" },
-    ];
+    return DEFAULT_TIERS;
   }
 }
 
-export async function saveTierRanges(
-  ranges: Array<{ tier: string; min: number; max: number }>
-) {
-  const fullRanges = ranges.map((r) => {
-    const labels: Record<string, string> = { A: "A Lead", B: "B Lead", C: "C Lead", POOR: "Poor Fit" };
-    const colors: Record<string, string> = { A: "#B3E8D4", B: "#B3D4FF", C: "#FFF3B3", POOR: "#FFB3B3" };
-    return {
-      tier: r.tier,
-      label: labels[r.tier] ?? r.tier,
-      min: r.min,
-      max: r.max,
-      color: colors[r.tier] ?? "#D4D4D4",
-    };
-  });
-
+export async function saveTierRanges(tiers: TierItem[]) {
   await prisma.customStatus.upsert({
     where: { id: TIER_RANGES_ID },
-    update: { color: JSON.stringify(fullRanges) },
+    update: { color: JSON.stringify(tiers) },
     create: {
       id: TIER_RANGES_ID,
       name: "Tier Ranges Config",
-      color: JSON.stringify(fullRanges),
+      color: JSON.stringify(tiers),
       type: "config",
       sortOrder: 0,
       isDefault: true,
     },
   });
 
-  // Recalculate all leads with new tier boundaries
+  // Recalculate all active leads
   const leads = await prisma.lead.findMany({
     where: { status: { notIn: ["ARCHIVED", "DISQUALIFIED"] } },
     select: { id: true },

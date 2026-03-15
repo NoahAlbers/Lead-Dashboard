@@ -3,7 +3,6 @@ import { getLeads, getLeadStats } from "@/actions/lead.actions";
 import { prisma } from "@/lib/db";
 import { LeadTable } from "@/components/leads/lead-table";
 import { LeadFilters } from "@/components/leads/lead-filters";
-import { NewLeadIndicator } from "@/components/leads/new-lead-indicator";
 import { StatCard } from "@/components/layout/stat-card";
 import {
   Inbox,
@@ -63,14 +62,11 @@ export default async function LeadsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Lead Inbox</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {result.total} total leads
-          </p>
-        </div>
-        <NewLeadIndicator newCount={stats.newToday} />
+      <div>
+        <h1 className="text-2xl font-bold">Lead Inbox</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {result.total} total leads
+        </p>
       </div>
 
       {/* Quick Stats */}
