@@ -30,7 +30,16 @@ async function main() {
   });
   console.log("Seeded intake user:", intake.email);
 
+  // Delete old scoring rules that reference balanceAmount
+  await prisma.scoringRule.deleteMany({
+    where: {
+      name: { in: ["High Portfolio Value", "Very Small Portfolio"] },
+    },
+  });
+  console.log("Cleaned up old scoring rules referencing balanceAmount");
+
   // Seed default scoring rules — tuned for ACB's residential rental debt focus
+  // Only uses real form fields: state, debtType, urgency, accountVolume, email, phone, companyName
   const rules = [
     {
       name: "Missing Contact Info",
@@ -93,18 +102,6 @@ async function main() {
       },
     },
     {
-      name: "High Portfolio Value",
-      description: "Estimated portfolio value above $50,000",
-      priority: 25,
-      conditionsJson: [
-        { field: "balanceAmount", operator: "greater_than", value: 50000 },
-      ],
-      outcomesJson: {
-        scoreAdjustment: 15,
-        reason: "High portfolio value (>$50,000)",
-      },
-    },
-    {
       name: "Complete Contact Info",
       description: "Lead has both email and phone",
       priority: 30,
@@ -145,25 +142,17 @@ async function main() {
         reason: "Outside target geography",
       },
     },
-    {
-      name: "Very Small Portfolio",
-      description: "Estimated portfolio value under $5,000",
-      priority: 60,
-      conditionsJson: [
-        { field: "balanceAmount", operator: "less_than", value: 5000 },
-        { field: "balanceAmount", operator: "greater_than", value: 0 },
-      ],
-      outcomesJson: {
-        scoreAdjustment: -15,
-        reason: "Very small portfolio value (<$5,000)",
-      },
-    },
   ];
 
   for (const rule of rules) {
     await prisma.scoringRule.upsert({
       where: { id: rule.name.toLowerCase().replace(/\s+/g, "-") },
-      update: {},
+      update: {
+        conditionsJson: rule.conditionsJson,
+        outcomesJson: rule.outcomesJson,
+        description: rule.description,
+        priority: rule.priority,
+      },
       create: rule,
     });
   }
@@ -315,6 +304,41 @@ Best,
     },
   });
   console.log("Seeded sample referral partner");
+
+  // Seed default custom statuses with colors
+  const defaultStatuses = [
+    { name: "New", color: "#B3D4FF", type: "status", sortOrder: 1, isDefault: true },
+    { name: "Reviewed", color: "#D4F5D4", type: "status", sortOrder: 2, isDefault: true },
+    { name: "Qualified", color: "#D4F5D4", type: "status", sortOrder: 3, isDefault: true },
+    { name: "Contacted", color: "#B3E8F5", type: "status", sortOrder: 4, isDefault: true },
+    { name: "Follow-Up Needed", color: "#FFF3B3", type: "status", sortOrder: 5, isDefault: true },
+    { name: "Referred Out", color: "#FFDAB3", type: "status", sortOrder: 6, isDefault: true },
+    { name: "Imported to CRM", color: "#C7B3FF", type: "status", sortOrder: 7, isDefault: true },
+    { name: "Won", color: "#B3E8D4", type: "status", sortOrder: 8, isDefault: true },
+    { name: "Lost", color: "#FFB3B3", type: "status", sortOrder: 9, isDefault: true },
+    { name: "Disqualified", color: "#FFB3B3", type: "status", sortOrder: 10, isDefault: true },
+    { name: "Duplicate", color: "#D4D4D4", type: "status", sortOrder: 11, isDefault: true },
+    { name: "Archived", color: "#D4D4D4", type: "status", sortOrder: 12, isDefault: true },
+  ];
+
+  const defaultTiers = [
+    { name: "A Lead (80-100)", color: "#B3E8D4", type: "tier", sortOrder: 1, isDefault: true },
+    { name: "B Lead (60-79)", color: "#B3D4FF", type: "tier", sortOrder: 2, isDefault: true },
+    { name: "C Lead (40-59)", color: "#FFF3B3", type: "tier", sortOrder: 3, isDefault: true },
+    { name: "Poor Fit (0-39)", color: "#FFB3B3", type: "tier", sortOrder: 4, isDefault: true },
+  ];
+
+  for (const status of [...defaultStatuses, ...defaultTiers]) {
+    await prisma.customStatus.upsert({
+      where: { id: `${status.type}-${status.name.toLowerCase().replace(/\s+/g, "-")}` },
+      update: {},
+      create: {
+        id: `${status.type}-${status.name.toLowerCase().replace(/\s+/g, "-")}`,
+        ...status,
+      },
+    });
+  }
+  console.log("Seeded default custom statuses and tiers");
 }
 
 main()

@@ -1,4 +1,14 @@
-export default function SettingsPage() {
+import { getCustomStatuses, createCustomStatus, deleteCustomStatus } from "@/actions/status.actions";
+import { getArchivedLeads, unarchiveLead } from "@/actions/lead.actions";
+import { SettingsClient } from "./settings-client";
+
+export default async function SettingsPage() {
+  const [statuses, tiers, archivedLeads] = await Promise.all([
+    getCustomStatuses("status"),
+    getCustomStatuses("tier"),
+    getArchivedLeads(),
+  ]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -8,58 +18,30 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      <SettingsClient
+        statuses={statuses.map((s) => ({
+          id: s.id,
+          name: s.name,
+          color: s.color,
+          isDefault: s.isDefault,
+        }))}
+        tiers={tiers.map((t) => ({
+          id: t.id,
+          name: t.name,
+          color: t.color,
+          isDefault: t.isDefault,
+        }))}
+        archivedLeads={archivedLeads.map((l) => ({
+          id: l.id,
+          fullName: l.fullName,
+          companyName: l.companyName,
+          email: l.email,
+          createdAt: l.createdAt.toISOString(),
+          score: l.score,
+        }))}
+      />
+
       <div className="rounded-lg border bg-card p-5 space-y-6">
-        {/* Lead Statuses */}
-        <div>
-          <h2 className="font-semibold mb-2">Lead Statuses</h2>
-          <p className="text-sm text-muted-foreground mb-3">
-            The following statuses are available in the system:
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {[
-              { name: "New", desc: "Freshly received lead" },
-              { name: "Reviewed", desc: "Staff has looked at this lead" },
-              { name: "Qualified", desc: "Lead meets qualification criteria" },
-              { name: "Contacted", desc: "Outreach has been made" },
-              { name: "Follow-Up Needed", desc: "Requires another touch" },
-              { name: "Referred Out", desc: "Sent to a referral partner" },
-              { name: "Imported to CRM", desc: "Exported/pushed to Act!" },
-              { name: "Won", desc: "Became a client" },
-              { name: "Lost", desc: "Did not convert" },
-              { name: "Disqualified", desc: "Does not fit criteria" },
-              { name: "Duplicate", desc: "Duplicate of another lead" },
-            ].map((status) => (
-              <div key={status.name} className="rounded-md border p-3">
-                <p className="text-sm font-medium">{status.name}</p>
-                <p className="text-xs text-muted-foreground">{status.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quality Tiers */}
-        <div>
-          <h2 className="font-semibold mb-2">Quality Tiers</h2>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-md border p-3 border-emerald-200 bg-emerald-50">
-              <p className="text-sm font-medium text-emerald-700">A Lead</p>
-              <p className="text-xs text-emerald-600">Score 80–100</p>
-            </div>
-            <div className="rounded-md border p-3 border-blue-200 bg-blue-50">
-              <p className="text-sm font-medium text-blue-700">B Lead</p>
-              <p className="text-xs text-blue-600">Score 60–79</p>
-            </div>
-            <div className="rounded-md border p-3 border-amber-200 bg-amber-50">
-              <p className="text-sm font-medium text-amber-700">C Lead</p>
-              <p className="text-xs text-amber-600">Score 40–59</p>
-            </div>
-            <div className="rounded-md border p-3 border-red-200 bg-red-50">
-              <p className="text-sm font-medium text-red-700">Poor Fit</p>
-              <p className="text-xs text-red-600">Score 0–39</p>
-            </div>
-          </div>
-        </div>
-
         {/* CRM Field Mapping */}
         <div>
           <h2 className="font-semibold mb-2">Act! CRM Field Mapping</h2>
@@ -90,7 +72,6 @@ export default function SettingsPage() {
                   ["State", "state"],
                   ["Zip", "zip"],
                   ["Industry", "industry"],
-                  ["Balance Amount", "balanceAmount"],
                   ["Lead Score", "score"],
                   ["Quality Tier", "qualityTier"],
                   ["Status", "status"],
@@ -107,12 +88,12 @@ export default function SettingsPage() {
 
         {/* Webhook Info */}
         <div>
-          <h2 className="font-semibold mb-2">Webflow Webhook</h2>
+          <h2 className="font-semibold mb-2">Intake Form Webhook</h2>
           <p className="text-sm text-muted-foreground mb-2">
-            Configure Webflow Logic to POST form submissions to:
+            Configure your form to POST submissions to:
           </p>
           <code className="block rounded-md bg-muted px-3 py-2 text-sm font-mono">
-            POST /api/webhooks/webflow
+            POST /api/webhooks/intake-form
           </code>
           <p className="text-xs text-muted-foreground mt-2">
             Include header: <code>x-webhook-secret: [your secret]</code>

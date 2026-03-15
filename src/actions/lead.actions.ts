@@ -36,6 +36,13 @@ export async function getLeads(params: {
 
   const where: Prisma.LeadWhereInput = {};
 
+  // Exclude ARCHIVED leads by default unless explicitly filtering for them
+  if (status?.length) {
+    where.status = { in: status as LeadStatus[] };
+  } else {
+    where.status = { not: "ARCHIVED" };
+  }
+
   if (search) {
     where.OR = [
       { fullName: { contains: search, mode: "insensitive" } },
@@ -45,10 +52,6 @@ export async function getLeads(params: {
       { firstName: { contains: search, mode: "insensitive" } },
       { lastName: { contains: search, mode: "insensitive" } },
     ];
-  }
-
-  if (status?.length) {
-    where.status = { in: status as LeadStatus[] };
   }
 
   if (qualityTier?.length) {
@@ -164,6 +167,50 @@ export async function updateLeadStatus(leadId: string, newStatus: LeadStatus) {
   revalidatePath("/leads");
 }
 
+export async function archiveLead(leadId: string) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const oldStatus = lead.status;
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { status: "ARCHIVED" },
+  });
+
+  await logEvent(
+    leadId,
+    "status_changed",
+    { from: oldStatus, to: "ARCHIVED" },
+    session.user.id
+  );
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+}
+
+export async function unarchiveLead(leadId: string) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { status: "NEW" },
+  });
+
+  await logEvent(
+    leadId,
+    "status_changed",
+    { from: "ARCHIVED", to: "NEW" },
+    session.user.id
+  );
+
+  revalidatePath("/leads");
+  revalidatePath("/admin/settings");
+  revalidatePath(`/leads/${leadId}`);
+}
+
 export async function assignLead(leadId: string, userId: string | null) {
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
@@ -221,27 +268,37 @@ export async function getLeadStats() {
     newToday,
     uncontacted,
     highQuality,
-    referralCandidates,
     followUpNeeded,
-    duplicates,
     total,
   ] = await Promise.all([
     prisma.lead.count({ where: { createdAt: { gte: today }, status: "NEW" } }),
     prisma.lead.count({ where: { status: { in: ["NEW", "REVIEWED"] } } }),
-    prisma.lead.count({ where: { qualityTier: "A" } }),
-    prisma.lead.count({ where: { qualityTier: "POOR", recommendedReferralId: { not: null } } }),
+    prisma.lead.count({ where: { qualityTier: "A", status: { not: "ARCHIVED" } } }),
     prisma.lead.count({ where: { status: "FOLLOW_UP_NEEDED" } }),
-    prisma.lead.count({ where: { status: "DUPLICATE" } }),
-    prisma.lead.count(),
+    prisma.lead.count({ where: { status: { not: "ARCHIVED" } } }),
   ]);
 
   return {
     newToday,
     uncontacted,
     highQuality,
-    referralCandidates,
     followUpNeeded,
-    duplicates,
     total,
   };
+}
+
+export async function getArchivedLeads() {
+  const leads = await prisma.lead.findMany({
+    where: { status: "ARCHIVED" },
+    select: {
+      id: true,
+      fullName: true,
+      companyName: true,
+      email: true,
+      createdAt: true,
+      score: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  return leads;
 }

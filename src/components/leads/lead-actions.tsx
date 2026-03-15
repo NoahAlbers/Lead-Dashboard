@@ -17,7 +17,16 @@ import {
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
+import { EmailDialog } from "@/components/leads/email-dialog";
 import type { LeadStatus } from "@prisma/client";
+
+interface EmailTemplate {
+  id: string;
+  name: string;
+  type: string;
+  subjectTemplate: string;
+  bodyTemplate: string;
+}
 
 interface LeadActionsProps {
   leadId: string;
@@ -25,6 +34,16 @@ interface LeadActionsProps {
   phone: string | null;
   currentStatus: LeadStatus;
   mailtoLink?: string;
+  templates?: EmailTemplate[];
+  leadData?: {
+    fullName?: string | null;
+    companyName?: string | null;
+    phone?: string | null;
+    state?: string | null;
+    industry?: string | null;
+    notesFromForm?: string | null;
+  };
+  assignedUserName?: string;
 }
 
 export function LeadActions({
@@ -33,22 +52,31 @@ export function LeadActions({
   phone,
   currentStatus,
   mailtoLink,
+  templates = [],
+  leadData,
+  assignedUserName,
 }: LeadActionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [showStatusSelect, setShowStatusSelect] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
 
   function handleEmailAction() {
-    if (mailtoLink) {
+    if (templates.length > 0 && email) {
+      setShowEmailDialog(true);
+    } else if (mailtoLink) {
       window.open(mailtoLink, "_self");
+      startTransition(async () => {
+        await logQuickAction(leadId, "contacted_email");
+      });
     } else if (email) {
       window.open(`mailto:${email}`, "_self");
+      startTransition(async () => {
+        await logQuickAction(leadId, "contacted_email");
+      });
     }
-    startTransition(async () => {
-      await logQuickAction(leadId, "contacted_email");
-    });
   }
 
   function handleCallAction() {
@@ -205,7 +233,7 @@ export function LeadActions({
         </button>
         {showStatusSelect && (
           <select
-            className="mt-2 w-full rounded-md border border-input bg-background p-2 text-sm"
+            className="mt-2 w-full rounded-md border border-input bg-card p-2 text-sm"
             value={currentStatus}
             onChange={(e) =>
               handleStatusChange(e.target.value as LeadStatus)
@@ -223,6 +251,7 @@ export function LeadActions({
               "LOST",
               "DISQUALIFIED",
               "DUPLICATE",
+              "ARCHIVED",
             ].map((s) => (
               <option key={s} value={s}>
                 {s.replace(/_/g, " ")}
@@ -239,7 +268,7 @@ export function LeadActions({
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
             placeholder="Type your note..."
-            className="w-full rounded-md border border-input bg-background p-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px]"
+            className="w-full rounded-md border border-input bg-card p-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px]"
           />
           <div className="flex gap-2">
             <button
@@ -260,6 +289,26 @@ export function LeadActions({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Email Dialog */}
+      {email && (
+        <EmailDialog
+          open={showEmailDialog}
+          onClose={() => setShowEmailDialog(false)}
+          lead={{
+            id: leadId,
+            email,
+            fullName: leadData?.fullName,
+            companyName: leadData?.companyName,
+            phone: leadData?.phone ?? phone,
+            state: leadData?.state,
+            industry: leadData?.industry,
+            notesFromForm: leadData?.notesFromForm,
+          }}
+          templates={templates}
+          assignedUserName={assignedUserName}
+        />
       )}
     </div>
   );

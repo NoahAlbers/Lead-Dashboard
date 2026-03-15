@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
+import { useTransition, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -16,7 +17,12 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ArrowUpDown,
+  Mail,
+  Phone,
+  Archive,
 } from "lucide-react";
+import { archiveLead } from "@/actions/lead.actions";
+import { logQuickAction } from "@/actions/note.actions";
 import type { LeadStatus, QualityTier } from "@prisma/client";
 
 interface LeadRow {
@@ -87,6 +93,69 @@ function SortableHeader({
   );
 }
 
+function QuickActions({ lead }: { lead: LeadRow }) {
+  const [isPending, startTransition] = useTransition();
+
+  function handleEmail(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (lead.email) {
+      window.open(`mailto:${lead.email}`, "_self");
+      startTransition(async () => {
+        await logQuickAction(lead.id, "contacted_email");
+      });
+    }
+  }
+
+  function handleCall(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (lead.phone) {
+      window.open(`tel:${lead.phone}`, "_self");
+      startTransition(async () => {
+        await logQuickAction(lead.id, "contacted_phone");
+      });
+    }
+  }
+
+  function handleArchive(e: React.MouseEvent) {
+    e.stopPropagation();
+    startTransition(async () => {
+      await archiveLead(lead.id);
+    });
+  }
+
+  const iconBtn =
+    "rounded p-1 transition-colors disabled:opacity-30";
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <button
+        onClick={handleEmail}
+        disabled={!lead.email || isPending}
+        className={`${iconBtn} hover:bg-blue-50 text-blue-500`}
+        title="Email"
+      >
+        <Mail className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={handleCall}
+        disabled={!lead.phone || isPending}
+        className={`${iconBtn} hover:bg-green-50 text-green-500`}
+        title="Call"
+      >
+        <Phone className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={handleArchive}
+        disabled={isPending}
+        className={`${iconBtn} hover:bg-muted text-muted-foreground`}
+        title="Archive"
+      >
+        <Archive className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export function LeadTable({
   leads,
   total,
@@ -128,6 +197,7 @@ export function LeadTable({
         <Link
           href={`/leads/${row.original.id}`}
           className="font-medium text-primary hover:underline"
+          onClick={(e) => e.stopPropagation()}
         >
           {row.original.companyName || "—"}
         </Link>
@@ -148,21 +218,6 @@ export function LeadTable({
     {
       accessorKey: "state",
       header: "State",
-    },
-    {
-      accessorKey: "balanceAmount",
-      header: () => (
-        <SortableHeader
-          label="Balance"
-          field="balanceAmount"
-          currentSort={sortField}
-          currentDir={sortDirection}
-        />
-      ),
-      cell: ({ row }) =>
-        row.original.balanceAmount
-          ? `$${row.original.balanceAmount.toLocaleString()}`
-          : "—",
     },
     {
       accessorKey: "score",
@@ -203,6 +258,11 @@ export function LeadTable({
       accessorKey: "assignedUser",
       header: "Assigned",
       cell: ({ row }) => row.original.assignedUser?.name || "—",
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: ({ row }) => <QuickActions lead={row.original} />,
     },
   ];
 

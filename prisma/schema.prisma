@@ -26,6 +26,7 @@ enum LeadStatus {
   LOST
   DISQUALIFIED
   DUPLICATE
+  ARCHIVED
 }
 
 enum QualityTier {
@@ -272,4 +273,17 @@ model CrmExport {
 
   @@index([leadId])
   @@map("crm_exports")
+}
+
+model CustomStatus {
+  id        String   @id @default(cuid())
+  name      String
+  color     String
+  type      String   // "status" or "tier"
+  sortOrder Int      @default(0) @map("sort_order")
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("custom_statuses")
 }

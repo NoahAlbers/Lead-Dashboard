@@ -78,16 +78,6 @@ export async function POST(request: NextRequest) {
       notesParts.push("Certified: no debt owed");
     }
 
-    // Estimate balance from units and avg rent (rough proxy)
-    let estimatedBalance: number | undefined;
-    if (body.totalUnits && body.avgRent) {
-      const units = parseInt(body.totalUnits, 10);
-      if (!isNaN(units) && units > 0) {
-        // Rough estimate: avg rent * units as a proxy for portfolio size
-        estimatedBalance = units * Number(body.avgRent);
-      }
-    }
-
     // Map to canonical lead fields
     const formData: Record<string, unknown> = {
       "full_name": body.fullName,
@@ -101,7 +91,6 @@ export async function POST(request: NextRequest) {
       "industry": joinArray(body.propertyTypes),
       "state": Array.isArray(body.states) ? body.states[0] : body.states, // Primary state for scoring
       "account-volume": body.totalUnits || undefined,
-      "balance_amount": estimatedBalance,
       "urgency": body.debtsNow === "Yes" ? "high" : body.debtsNow === "No" ? "low" : undefined,
     };
 

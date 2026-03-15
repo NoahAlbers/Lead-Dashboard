@@ -6,8 +6,6 @@ import { getLead } from "@/actions/lead.actions";
 import { getLeadNotes } from "@/actions/note.actions";
 import { getLeadEvents } from "@/services/activity-log.service";
 import { evaluateReferral } from "@/services/referral.service";
-import { getTemplatesByType } from "@/services/email-template.service";
-import { buildMailtoLink } from "@/services/email-template.service";
 import { StatusBadge, TierBadge, ScoreBadge } from "@/components/shared/status-badge";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
@@ -97,21 +95,18 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   if (!lead) notFound();
 
-  // Build mailto link from intro template
-  let mailtoLink: string | undefined;
-  const introTemplates = await getTemplatesByType("intro");
-  if (introTemplates.length > 0 && lead.email) {
-    const tmpl = introTemplates[0];
-    const fullName = lead.fullName || `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "there";
-    const subject = tmpl.subjectTemplate
-      .replaceAll("{{company_name}}", lead.companyName ?? "")
-      .replaceAll("{{full_name}}", fullName);
-    const body = tmpl.bodyTemplate
-      .replaceAll("{{full_name}}", fullName)
-      .replaceAll("{{company_name}}", lead.companyName ?? "")
-      .replaceAll("{{assigned_user_name}}", session?.user.name ?? "ACB Team");
-    mailtoLink = buildMailtoLink(lead.email, subject, body);
-  }
+  // Get all active email templates for the dialog
+  const allTemplates = await prisma.emailTemplate.findMany({
+    where: { active: true },
+    orderBy: { type: "asc" },
+  });
+  const serializedTemplates = allTemplates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    type: t.type,
+    subjectTemplate: t.subjectTemplate,
+    bodyTemplate: t.bodyTemplate,
+  }));
 
   // Get referral recommendations
   const leadForReferral = await prisma.lead.findUnique({ where: { id } });
@@ -349,13 +344,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Quick Stats Row — for intake form leads */}
           {isIntakeForm && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {lead.balanceAmount && (
-                <div className="rounded-lg border bg-card p-4 text-center">
-                  <p className="text-xs text-muted-foreground">Est. Portfolio Value</p>
-                  <p className="text-lg font-bold mt-1">${lead.balanceAmount.toLocaleString()}</p>
-                </div>
-              )}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               {intakeFields?.totalUnits && (
                 <div className="rounded-lg border bg-card p-4 text-center">
                   <p className="text-xs text-muted-foreground">Total Units</p>
@@ -482,7 +471,16 @@ export default async function LeadDetailPage({ params }: PageProps) {
               email={lead.email}
               phone={lead.phone}
               currentStatus={lead.status}
-              mailtoLink={mailtoLink}
+              templates={serializedTemplates}
+              leadData={{
+                fullName: lead.fullName,
+                companyName: lead.companyName,
+                phone: lead.phone,
+                state: lead.state,
+                industry: lead.industry,
+                notesFromForm: lead.notesFromForm,
+              }}
+              assignedUserName={session?.user.name ?? "ACB Team"}
             />
 
             {/* CRM Status */}
