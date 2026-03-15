@@ -45,3 +45,29 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* CSS-only tooltips for action buttons */
+.action-btn {
+  position: relative;
+}
+.action-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1A1A2E;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+}
+.action-btn:hover::after {
+  opacity: 1;
+}

@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   createTemplate,
   updateTemplate,
   deleteTemplate,
 } from "@/actions/template.actions";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { RichTextEditor } from "@/components/admin/rich-text-editor";
+import { toast } from "@/components/ui/use-toast";
 
 interface Template {
   id: string;
@@ -26,26 +29,12 @@ const TEMPLATE_TYPES = [
   { value: "internal_handoff", label: "Internal Handoff" },
 ];
 
-const MERGE_VARS = [
-  "{{full_name}}",
-  "{{first_name}}",
-  "{{last_name}}",
-  "{{company_name}}",
-  "{{email}}",
-  "{{phone}}",
-  "{{state}}",
-  "{{industry}}",
-  "{{balance_amount}}",
-  "{{notes_from_form}}",
-  "{{assigned_user_name}}",
-  "{{referral_partner_name}}",
-];
-
 export function TemplatesManager({
   initialTemplates,
 }: {
   initialTemplates: Template[];
 }) {
+  const router = useRouter();
   const [templates, setTemplates] = useState(initialTemplates);
   const [editing, setEditing] = useState<Template | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -87,11 +76,13 @@ export function TemplatesManager({
     startTransition(async () => {
       if (editing) {
         await updateTemplate(editing.id, form);
+        toast({ title: "Template updated" });
       } else {
         await createTemplate(form);
+        toast({ title: "Template created" });
       }
       resetForm();
-      window.location.reload();
+      router.refresh();
     });
   }
 
@@ -100,11 +91,12 @@ export function TemplatesManager({
     startTransition(async () => {
       await deleteTemplate(id);
       setTemplates(templates.filter((t) => t.id !== id));
+      toast({ title: "Template deleted" });
     });
   }
 
   const inputClass =
-    "mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
+    "mt-1 flex h-9 w-full rounded-md border border-input bg-card px-3 text-sm";
 
   return (
     <div className="space-y-4">
@@ -186,41 +178,18 @@ export function TemplatesManager({
                 setForm({ ...form, subjectTemplate: e.target.value })
               }
               className={inputClass}
+              placeholder="Use {{company_name}}, {{full_name}}, etc."
             />
           </div>
 
           <div>
             <label className="text-sm font-medium">Body *</label>
-            <textarea
-              value={form.bodyTemplate}
-              onChange={(e) =>
-                setForm({ ...form, bodyTemplate: e.target.value })
-              }
-              rows={8}
-              className="mt-1 w-full rounded-md border border-input bg-background p-3 text-sm font-mono"
-            />
-          </div>
-
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">
-              Available merge variables:
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {MERGE_VARS.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      bodyTemplate: form.bodyTemplate + v,
-                    })
-                  }
-                  className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono hover:bg-muted-foreground/20"
-                >
-                  {v}
-                </button>
-              ))}
+            <div className="mt-1">
+              <RichTextEditor
+                content={form.bodyTemplate}
+                onChange={(html) => setForm({ ...form, bodyTemplate: html })}
+                placeholder="Write your email template..."
+              />
             </div>
           </div>
 

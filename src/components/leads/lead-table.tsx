@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
-import { useTransition } from "react";
+import { useTransition, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -17,12 +17,18 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ArrowUpDown,
+  Mail,
+  Phone,
   CheckCircle,
   Clock,
   Star,
   XCircle,
+  Archive,
 } from "lucide-react";
-import { updateLeadStatus } from "@/actions/lead.actions";
+import { updateLeadStatus, archiveLead } from "@/actions/lead.actions";
+import { logQuickAction } from "@/actions/note.actions";
+import { toast } from "@/components/ui/use-toast";
+import { EmailDialog } from "@/components/leads/email-dialog";
 import type { LeadStatus, QualityTier } from "@prisma/client";
 
 interface LeadRow {
@@ -41,8 +47,17 @@ interface LeadRow {
   recommendedAction: string | null;
   status: LeadStatus;
   lastActivityAt: string | null;
+  isRead: boolean;
   assignedUser: { id: string; name: string } | null;
   recommendedReferral: { id: string; name: string } | null;
+}
+
+interface EmailTemplate {
+  id: string;
+  name: string;
+  type: string;
+  subjectTemplate: string;
+  bodyTemplate: string;
 }
 
 interface LeadTableProps {
@@ -53,6 +68,7 @@ interface LeadTableProps {
   totalPages: number;
   sortField: string;
   sortDirection: string;
+  emailTemplates?: EmailTemplate[];
 }
 
 function SortableHeader({
@@ -93,52 +109,109 @@ function SortableHeader({
   );
 }
 
-function RowQuickActions({ lead }: { lead: LeadRow }) {
+function RowQuickActions({
+  lead,
+  onEmailClick,
+}: {
+  lead: LeadRow;
+  onEmailClick: (lead: LeadRow) => void;
+}) {
   const [isPending, startTransition] = useTransition();
 
-  function handleStatusChange(e: React.MouseEvent, newStatus: LeadStatus) {
+  function handleStatusChange(e: React.MouseEvent, newStatus: LeadStatus, label: string) {
     e.stopPropagation();
     startTransition(async () => {
       await updateLeadStatus(lead.id, newStatus);
+      toast({
+        title: `${lead.companyName || lead.fullName || "Lead"} marked as ${label}`,
+      });
     });
   }
 
-  const iconBtn =
-    "rounded p-1 transition-all disabled:opacity-30 opacity-0 group-hover:opacity-100";
+  function handleEmail(e: React.MouseEvent) {
+    e.stopPropagation();
+    onEmailClick(lead);
+  }
+
+  function handleCall(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (lead.phone) {
+      window.open(`tel:${lead.phone}`, "_self");
+      startTransition(async () => {
+        await logQuickAction(lead.id, "contacted_phone");
+        toast({ title: `Called ${lead.companyName || lead.fullName || "Lead"}` });
+      });
+    }
+  }
+
+  function handleArchive(e: React.MouseEvent) {
+    e.stopPropagation();
+    startTransition(async () => {
+      await archiveLead(lead.id);
+      toast({ title: `${lead.companyName || lead.fullName || "Lead"} archived` });
+    });
+  }
+
+  const btnBase =
+    "action-btn relative rounded p-1 transition-all disabled:opacity-30";
 
   return (
     <div className="flex items-center gap-0.5">
       <button
-        onClick={(e) => handleStatusChange(e, "CONTACTED")}
-        disabled={isPending}
-        className={`${iconBtn} hover:bg-green-50 text-green-600`}
-        title="Mark Contacted"
+        onClick={handleEmail}
+        disabled={!lead.email || isPending}
+        className={`${btnBase} hover:bg-blue-50 text-blue-500`}
+        data-tooltip="Email"
       >
-        <CheckCircle className="h-3.5 w-3.5" />
+        <Mail className="h-4 w-4" />
       </button>
       <button
-        onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED")}
-        disabled={isPending}
-        className={`${iconBtn} hover:bg-amber-50 text-amber-600`}
-        title="Follow-Up Needed"
+        onClick={handleCall}
+        disabled={!lead.phone || isPending}
+        className={`${btnBase} hover:bg-sky-50 text-sky-500`}
+        data-tooltip="Call"
       >
-        <Clock className="h-3.5 w-3.5" />
+        <Phone className="h-4 w-4" />
       </button>
       <button
-        onClick={(e) => handleStatusChange(e, "QUALIFIED")}
+        onClick={(e) => handleStatusChange(e, "CONTACTED", "Contacted")}
         disabled={isPending}
-        className={`${iconBtn} hover:bg-blue-50 text-blue-600`}
-        title="Mark Qualified"
+        className={`${btnBase} hover:bg-green-50 text-green-600`}
+        data-tooltip="Mark Contacted"
       >
-        <Star className="h-3.5 w-3.5" />
+        <CheckCircle className="h-4 w-4" />
       </button>
       <button
-        onClick={(e) => handleStatusChange(e, "DISQUALIFIED")}
+        onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED", "Follow-Up")}
         disabled={isPending}
-        className={`${iconBtn} hover:bg-red-50 text-red-500`}
-        title="Disqualify"
+        className={`${btnBase} hover:bg-amber-50 text-amber-600`}
+        data-tooltip="Follow-Up Needed"
       >
-        <XCircle className="h-3.5 w-3.5" />
+        <Clock className="h-4 w-4" />
+      </button>
+      <button
+        onClick={(e) => handleStatusChange(e, "QUALIFIED", "Qualified")}
+        disabled={isPending}
+        className={`${btnBase} hover:bg-yellow-50 text-yellow-600`}
+        data-tooltip="Mark Qualified"
+      >
+        <Star className="h-4 w-4" />
+      </button>
+      <button
+        onClick={(e) => handleStatusChange(e, "DISQUALIFIED", "Disqualified")}
+        disabled={isPending}
+        className={`${btnBase} hover:bg-red-50 text-red-500`}
+        data-tooltip="Disqualify"
+      >
+        <XCircle className="h-4 w-4" />
+      </button>
+      <button
+        onClick={handleArchive}
+        disabled={isPending}
+        className={`${btnBase} hover:bg-muted text-muted-foreground`}
+        data-tooltip="Archive"
+      >
+        <Archive className="h-4 w-4" />
       </button>
     </div>
   );
@@ -152,12 +225,26 @@ export function LeadTable({
   totalPages,
   sortField,
   sortDirection,
+  emailTemplates = [],
 }: LeadTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [emailDialogLead, setEmailDialogLead] = useState<LeadRow | null>(null);
 
   const columns: ColumnDef<LeadRow>[] = [
+    {
+      id: "readIndicator",
+      header: "",
+      size: 24,
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center w-3">
+          {!row.original.isRead && (
+            <span className="block h-2 w-2 rounded-full bg-primary" />
+          )}
+        </div>
+      ),
+    },
     {
       accessorKey: "createdAt",
       header: () => (
@@ -232,7 +319,12 @@ export function LeadTable({
     {
       id: "actions",
       header: "",
-      cell: ({ row }) => <RowQuickActions lead={row.original} />,
+      cell: ({ row }) => (
+        <RowQuickActions
+          lead={row.original}
+          onEmailClick={(lead) => setEmailDialogLead(lead)}
+        />
+      ),
     },
   ];
 
@@ -287,11 +379,11 @@ export function LeadTable({
                 </tr>
               ) : (
                 table.getRowModel().rows.map((row) => {
-                  const isNew = row.original.status === "NEW";
+                  const isUnread = !row.original.isRead;
                   return (
                     <tr
                       key={row.id}
-                      className={`group border-b hover:bg-muted/30 transition-colors cursor-pointer ${isNew ? "font-semibold" : ""}`}
+                      className={`border-b hover:bg-muted/30 transition-colors cursor-pointer ${isUnread ? "font-semibold" : ""}`}
                       onClick={() => router.push(`/leads/${row.original.id}`)}
                     >
                       {row.getVisibleCells().map((cell) => (
@@ -351,6 +443,24 @@ export function LeadTable({
           </button>
         </div>
       </div>
+
+      {/* Email Dialog */}
+      {emailDialogLead && emailDialogLead.email && (
+        <EmailDialog
+          open={!!emailDialogLead}
+          onClose={() => setEmailDialogLead(null)}
+          lead={{
+            id: emailDialogLead.id,
+            email: emailDialogLead.email,
+            fullName: emailDialogLead.fullName,
+            companyName: emailDialogLead.companyName,
+            phone: emailDialogLead.phone,
+            state: emailDialogLead.state,
+            industry: emailDialogLead.industry,
+          }}
+          templates={emailTemplates}
+        />
+      )}
     </div>
   );
 }

@@ -110,6 +110,9 @@ model Lead {
   scoreReasons      Json?        @map("score_reasons")
   lastActivityAt    DateTime?    @map("last_activity_at")
 
+  // Read/Unread
+  isRead Boolean @default(false) @map("is_read")
+
   // CRM
   crmStatus     String? @map("crm_status")
   crmExternalId String? @map("crm_external_id")

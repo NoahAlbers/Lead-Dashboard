@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getLeads, getLeadStats } from "@/actions/lead.actions";
+import { prisma } from "@/lib/db";
 import { LeadTable } from "@/components/leads/lead-table";
 import { LeadFilters } from "@/components/leads/lead-filters";
 import { NewLeadIndicator } from "@/components/leads/new-lead-indicator";
@@ -36,9 +37,13 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     sortDirection: (params.sortDirection as "asc" | "desc") ?? "desc",
   };
 
-  const [result, stats] = await Promise.all([
+  const [result, stats, emailTemplates] = await Promise.all([
     getLeads(filters),
     getLeadStats(),
+    prisma.emailTemplate.findMany({
+      where: { active: true },
+      orderBy: { type: "asc" },
+    }),
   ]);
 
   const serializedLeads = result.leads.map((l) => ({
@@ -46,6 +51,14 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     lastActivityAt: l.lastActivityAt?.toISOString() ?? null,
+  }));
+
+  const serializedTemplates = emailTemplates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    type: t.type,
+    subjectTemplate: t.subjectTemplate,
+    bodyTemplate: t.bodyTemplate,
   }));
 
   return (
@@ -87,6 +100,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
           totalPages={result.totalPages}
           sortField={filters.sortField}
           sortDirection={filters.sortDirection}
+          emailTemplates={serializedTemplates}
         />
       </Suspense>
     </div>

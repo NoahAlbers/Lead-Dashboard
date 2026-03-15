@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
-import { prisma } from "@/lib/db";
+import { getUnreadCount } from "@/actions/lead.actions";
 
 export default async function DashboardLayout({
   children,
@@ -12,15 +12,13 @@ export default async function DashboardLayout({
   const session = await auth();
   if (!session) redirect("/login");
 
-  const uncontactedCount = await prisma.lead.count({
-    where: { status: { in: ["NEW", "REVIEWED"] } },
-  });
+  const unreadCount = await getUnreadCount();
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
         userRole={session.user.role}
-        uncontactedCount={uncontactedCount}
+        uncontactedCount={unreadCount}
       />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header

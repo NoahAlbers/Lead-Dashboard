@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format, toZonedTime } from "date-fns-tz";
 import { ArrowLeft } from "lucide-react";
-import { getLead } from "@/actions/lead.actions";
+import { getLead, markLeadAsRead } from "@/actions/lead.actions";
 import { getLeadNotes } from "@/actions/note.actions";
 import { getLeadEvents } from "@/services/activity-log.service";
 import { evaluateReferral } from "@/services/referral.service";
@@ -96,6 +96,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
   ]);
 
   if (!lead) notFound();
+
+  // Mark as read when user views the detail
+  if (!lead.isRead) {
+    await markLeadAsRead(id);
+  }
 
   // Get all active email templates for the dialog
   const allTemplates = await prisma.emailTemplate.findMany({

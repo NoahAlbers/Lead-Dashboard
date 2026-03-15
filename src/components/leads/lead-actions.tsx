@@ -18,6 +18,7 @@ import { updateLeadStatus } from "@/actions/lead.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
 import { EmailDialog } from "@/components/leads/email-dialog";
+import { toast } from "@/components/ui/use-toast";
 import type { LeadStatus } from "@prisma/client";
 
 interface EmailTemplate {
@@ -88,9 +89,10 @@ export function LeadActions({
     });
   }
 
-  function handleQuickLog(actionType: string) {
+  function handleQuickLog(actionType: string, label: string) {
     startTransition(async () => {
       await logQuickAction(leadId, actionType);
+      toast({ title: label });
     });
   }
 
@@ -98,6 +100,7 @@ export function LeadActions({
     startTransition(async () => {
       await updateLeadStatus(leadId, newStatus);
       setShowStatusSelect(false);
+      toast({ title: `Status changed to ${newStatus.replace(/_/g, " ")}` });
     });
   }
 
@@ -107,6 +110,7 @@ export function LeadActions({
       await addNote(leadId, noteText.trim());
       setNoteText("");
       setShowNoteForm(false);
+      toast({ title: "Note added" });
     });
   }
 
@@ -152,7 +156,7 @@ export function LeadActions({
         </button>
 
         <button
-          onClick={() => handleQuickLog("contacted_email")}
+          onClick={() => handleQuickLog("contacted_email", "Marked as Contacted")}
           disabled={isPending}
           className={actionBtnClass}
         >
@@ -161,7 +165,7 @@ export function LeadActions({
         </button>
 
         <button
-          onClick={() => handleQuickLog("follow_up_scheduled")}
+          onClick={() => handleQuickLog("follow_up_scheduled", "Marked for Follow-Up")}
           disabled={isPending}
           className={actionBtnClass}
         >
@@ -188,7 +192,7 @@ export function LeadActions({
         </button>
 
         <button
-          onClick={() => handleQuickLog("referral_sent")}
+          onClick={() => handleQuickLog("referral_sent", "Marked as Referred")}
           disabled={isPending}
           className={actionBtnClass}
         >
@@ -197,7 +201,7 @@ export function LeadActions({
         </button>
 
         <button
-          onClick={() => handleQuickLog("duplicate_found")}
+          onClick={() => handleQuickLog("duplicate_found", "Marked as Duplicate")}
           disabled={isPending}
           className={actionBtnClass}
         >

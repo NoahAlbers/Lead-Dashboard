@@ -287,6 +287,20 @@ export async function getLeadStats() {
   };
 }
 
+export async function markLeadAsRead(leadId: string) {
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { isRead: true },
+  });
+  revalidatePath("/leads");
+}
+
+export async function getUnreadCount() {
+  return prisma.lead.count({
+    where: { isRead: false, status: { not: "ARCHIVED" } },
+  });
+}
+
 export async function getArchivedLeads() {
   const leads = await prisma.lead.findMany({
     where: { status: "ARCHIVED" },
