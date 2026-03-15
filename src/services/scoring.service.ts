@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { logEvent } from "./activity-log.service";
 import type { Lead, QualityTier } from "@prisma/client";
 
@@ -126,8 +127,8 @@ export async function scoreLead(lead: Lead): Promise<{
   const appliedRules: AppliedRule[] = [];
 
   for (const rule of rules) {
-    const conditions = rule.conditionsJson as RuleCondition[];
-    const outcomes = rule.outcomesJson as RuleOutcome;
+    const conditions = rule.conditionsJson as unknown as RuleCondition[];
+    const outcomes = rule.outcomesJson as unknown as RuleOutcome;
 
     if (evaluateRule(leadData, conditions)) {
       score += outcomes.scoreAdjustment;
@@ -160,7 +161,7 @@ export async function scoreAndUpdateLead(leadId: string) {
       score: result.score,
       qualityTier: result.qualityTier,
       recommendedAction: result.recommendedAction,
-      scoreReasons: result.appliedRules as unknown as Record<string, unknown>[],
+      scoreReasons: result.appliedRules as unknown as Prisma.InputJsonValue,
     },
   });
 

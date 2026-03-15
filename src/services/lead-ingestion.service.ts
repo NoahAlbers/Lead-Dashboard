@@ -126,7 +126,7 @@ export async function ingestLead(
       notesFromForm: mapped.notesFromForm as string | undefined,
       urgency: mapped.urgency as string | undefined,
       businessType: mapped.businessType as string | undefined,
-      rawPayloadJson: formData,
+      rawPayloadJson: formData as Record<string, string>,
       source: metadata?.source ?? "webflow",
       leadSource: metadata?.source ?? "website",
       sourcePage: metadata?.sourcePage,
