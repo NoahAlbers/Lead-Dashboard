@@ -5,6 +5,21 @@ import { auth, assertRole } from "@/lib/auth";
 import { scoringRuleSchema } from "@/lib/validators/admin";
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { scoreAndUpdateLead } from "@/services/scoring.service";
+
+async function recalculateAllLeads() {
+  const leads = await prisma.lead.findMany({
+    where: { status: { notIn: ["ARCHIVED", "DISQUALIFIED"] } },
+    select: { id: true },
+  });
+
+  for (const lead of leads) {
+    await scoreAndUpdateLead(lead.id);
+  }
+
+  revalidatePath("/leads");
+  return leads.length;
+}
 
 export async function getRules() {
   return prisma.scoringRule.findMany({ orderBy: { priority: "asc" } });
@@ -23,8 +38,11 @@ export async function createRule(data: unknown) {
       outcomesJson: parsed.outcomesJson as unknown as Prisma.InputJsonValue,
     },
   });
+
+  const count = await recalculateAllLeads();
+
   revalidatePath("/admin/rules");
-  return rule;
+  return { rule, recalculatedCount: count };
 }
 
 export async function updateRule(id: string, data: unknown) {
@@ -41,8 +59,11 @@ export async function updateRule(id: string, data: unknown) {
       outcomesJson: parsed.outcomesJson as unknown as Prisma.InputJsonValue,
     },
   });
+
+  const count = await recalculateAllLeads();
+
   revalidatePath("/admin/rules");
-  return rule;
+  return { rule, recalculatedCount: count };
 }
 
 export async function deleteRule(id: string) {
@@ -50,7 +71,11 @@ export async function deleteRule(id: string) {
   assertRole(session, "ADMIN");
 
   await prisma.scoringRule.delete({ where: { id } });
+
+  const count = await recalculateAllLeads();
+
   revalidatePath("/admin/rules");
+  return { recalculatedCount: count };
 }
 
 export async function toggleRule(id: string, enabled: boolean) {
@@ -58,5 +83,9 @@ export async function toggleRule(id: string, enabled: boolean) {
   assertRole(session, "ADMIN");
 
   await prisma.scoringRule.update({ where: { id }, data: { enabled } });
+
+  const count = await recalculateAllLeads();
+
   revalidatePath("/admin/rules");
+  return { recalculatedCount: count };
 }
