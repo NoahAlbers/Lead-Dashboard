@@ -54,6 +54,8 @@ import { CSS } from "@dnd-kit/utilities";
 import type { LeadStatus } from "@prisma/client";
 import { getStateColor } from "@/lib/state-colors";
 import { SlaBadge } from "@/components/leads/sla-badge";
+import { AssignDropdown } from "@/components/leads/assign-dropdown";
+import { BulkActionBar } from "@/components/leads/bulk-action-bar";
 
 interface LeadRow {
   id: string;
@@ -242,6 +244,9 @@ function RowQuickActions({ lead, onEmailClick }: { lead: LeadRow; onEmailClick: 
       <button onClick={(e) => handleStatusChange(e, "QUALIFIED", "Qualified")} disabled={isPending} className={`${b} hover:bg-yellow-50 text-yellow-600`} data-tooltip="Mark Qualified"><Star className="h-4 w-4" /></button>
       <button onClick={(e) => handleStatusChange(e, "DISQUALIFIED", "Disqualified")} disabled={isPending} className={`${b} hover:bg-red-50 text-red-500`} data-tooltip="Disqualify"><XCircle className="h-4 w-4" /></button>
       <button onClick={handleArchive} disabled={isPending} className={`${b} hover:bg-muted text-muted-foreground`} data-tooltip="Archive"><Archive className="h-4 w-4" /></button>
+      <span onClick={(e) => e.stopPropagation()}>
+        <AssignDropdown leadId={lead.id} currentAssigneeId={lead.assignedUser?.id} leadLabel={lead.companyName || lead.fullName || "Lead"} compact />
+      </span>
     </div>
   );
 }
@@ -254,6 +259,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   const [emailDialogLead, setEmailDialogLead] = useState<LeadRow | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; colId: string } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Column config from localStorage
   const [visibleCols, setVisibleCols] = useState<Set<string>>(DEFAULT_VISIBLE);
@@ -420,6 +426,9 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
 
   return (
     <div className="space-y-4">
+      {/* Bulk Action Bar */}
+      <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} />
+
       {/* Filter bar + Column picker */}
       <div className="flex flex-wrap items-center gap-3">
         {filterBar}
@@ -522,6 +531,21 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
           <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: totalTableWidth }}>
             <thead>
               <tr className="border-b bg-muted/50">
+                <th className="px-2 py-3 w-10" style={{ width: 40, minWidth: 40 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size > 0 && leads.every((l) => selectedIds.has(l.id))}
+                    onChange={() => {
+                      if (leads.every((l) => selectedIds.has(l.id))) {
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectedIds(new Set(leads.map((l) => l.id)));
+                      }
+                    }}
+                    className="rounded border-gray-300"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </th>
                 {activeColumns.map((colId) => {
                   const col = colConfigMap[colId];
                   if (!col) return null;
@@ -562,7 +586,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
             <tbody>
               {leads.length === 0 ? (
                 <tr>
-                  <td colSpan={activeColumns.length} className="px-4 py-12 text-center text-muted-foreground">No leads found</td>
+                  <td colSpan={activeColumns.length + 1} className="px-4 py-12 text-center text-muted-foreground">No leads found</td>
                 </tr>
               ) : (
                 leads.map((lead) => (
@@ -571,6 +595,22 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
                     className={`group border-b hover:bg-muted/30 transition-colors cursor-pointer ${!lead.isRead ? "font-semibold" : ""}`}
                     onClick={() => router.push(`/leads/${lead.id}`)}
                   >
+                    <td className="px-2 py-3" style={{ width: 40 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(lead.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id);
+                            return next;
+                          });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded border-gray-300"
+                      />
+                    </td>
                     {activeColumns.map((colId) => (
                       <td key={colId} className="px-4 py-3 overflow-hidden text-ellipsis" style={{ width: colWidths[colId] ?? DEFAULT_COLUMN_WIDTHS[colId] ?? 100 }}>{renderCell(colId, lead)}</td>
                     ))}

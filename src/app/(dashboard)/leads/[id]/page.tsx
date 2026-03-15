@@ -478,6 +478,21 @@ export default async function LeadDetailPage({ params }: PageProps) {
               referralPartners={activePartners}
             />
 
+            {/* Assignment */}
+            <div className="mt-6 pt-4 border-t">
+              <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2">Assignment</h3>
+              {lead.assignedUser ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                    {lead.assignedUser.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="font-medium">{lead.assignedUser.name}</span>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">Unassigned</p>
+              )}
+            </div>
+
             {/* CRM Status */}
             <div className="mt-6 pt-4 border-t">
               <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-2">CRM Status</h3>

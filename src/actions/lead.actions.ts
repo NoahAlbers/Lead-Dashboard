@@ -239,23 +239,107 @@ export async function unarchiveLead(leadId: string) {
   revalidatePath(`/leads/${leadId}`);
 }
 
-export async function assignLead(leadId: string, userId: string | null) {
+export async function assignLead(leadId: string, userId: string | null, reason?: string) {
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
 
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId }, select: { assignedUserId: true, companyName: true, fullName: true, qualityTier: true } });
+  const fromUserId = lead.assignedUserId;
+
   await prisma.lead.update({
     where: { id: leadId },
-    data: { assignedUserId: userId },
+    data: {
+      assignedUserId: userId,
+      assignedAt: userId ? new Date() : null,
+      claimedBySelf: false,
+    },
+  });
+
+  // Create assignment log
+  await prisma.assignmentLog.create({
+    data: {
+      leadId,
+      fromUserId,
+      toUserId: userId,
+      assignedByUserId: session.user.id,
+      reason,
+    },
   });
 
   await logEvent(
     leadId,
     "assigned_user_changed",
-    { assignedUserId: userId },
+    { fromUserId, toUserId: userId, reason },
     session.user.id
   );
 
+  // Notify the new assignee
+  if (userId && userId !== session.user.id) {
+    const { createNotification } = await import("@/services/notification.service");
+    const leadLabel = lead.companyName || lead.fullName || "Lead";
+    await createNotification(
+      userId,
+      "lead_assigned",
+      `Assigned: ${leadLabel}`,
+      `You've been assigned ${leadLabel} (${lead.qualityTier ?? "Unscored"})`,
+      leadId,
+      "NORMAL"
+    ).catch(() => {});
+  }
+
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+}
+
+export async function claimLead(leadId: string) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId }, select: { assignedUserId: true } });
+
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      assignedUserId: session.user.id,
+      assignedAt: new Date(),
+      claimedBySelf: true,
+    },
+  });
+
+  await prisma.assignmentLog.create({
+    data: {
+      leadId,
+      fromUserId: lead.assignedUserId,
+      toUserId: session.user.id,
+      assignedByUserId: session.user.id,
+      reason: "Self-claimed",
+    },
+  });
+
+  await logEvent(leadId, "assigned_user_changed", { toUserId: session.user.id, selfClaimed: true }, session.user.id);
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+}
+
+export async function bulkAssignLeads(leadIds: string[], userId: string, reason?: string) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  for (const leadId of leadIds) {
+    await assignLead(leadId, userId, reason);
+  }
+
+  revalidatePath("/leads");
+}
+
+export async function bulkUpdateStatus(leadIds: string[], newStatus: LeadStatus) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  for (const leadId of leadIds) {
+    await updateLeadStatus(leadId, newStatus);
+  }
+
   revalidatePath("/leads");
 }
 
