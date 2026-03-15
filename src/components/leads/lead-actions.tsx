@@ -92,7 +92,7 @@ export function LeadActions({
   function handleQuickLog(actionType: string, label: string) {
     startTransition(async () => {
       await logQuickAction(leadId, actionType);
-      toast({ title: label });
+      toast({ title: label, variant: "success" });
     });
   }
 
@@ -100,7 +100,7 @@ export function LeadActions({
     startTransition(async () => {
       await updateLeadStatus(leadId, newStatus);
       setShowStatusSelect(false);
-      toast({ title: `Status changed to ${newStatus.replace(/_/g, " ")}` });
+      toast({ title: `Status changed to ${newStatus.replace(/_/g, " ")}`, variant: "success" });
     });
   }
 
@@ -110,7 +110,7 @@ export function LeadActions({
       await addNote(leadId, noteText.trim());
       setNoteText("");
       setShowNoteForm(false);
-      toast({ title: "Note added" });
+      toast({ title: "Note added", variant: "success" });
     });
   }
 

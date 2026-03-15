@@ -124,6 +124,7 @@ function RowQuickActions({
       await updateLeadStatus(lead.id, newStatus);
       toast({
         title: `${lead.companyName || lead.fullName || "Lead"} marked as ${label}`,
+        variant: "success",
       });
     });
   }
@@ -139,7 +140,7 @@ function RowQuickActions({
       window.open(`tel:${lead.phone}`, "_self");
       startTransition(async () => {
         await logQuickAction(lead.id, "contacted_phone");
-        toast({ title: `Called ${lead.companyName || lead.fullName || "Lead"}` });
+        toast({ title: `Called ${lead.companyName || lead.fullName || "Lead"}`, variant: "success" });
       });
     }
   }
@@ -148,7 +149,7 @@ function RowQuickActions({
     e.stopPropagation();
     startTransition(async () => {
       await archiveLead(lead.id);
-      toast({ title: `${lead.companyName || lead.fullName || "Lead"} archived` });
+      toast({ title: `${lead.companyName || lead.fullName || "Lead"} archived`, variant: "success" });
     });
   }
 
@@ -293,6 +294,24 @@ export function LeadTable({
     {
       accessorKey: "state",
       header: "State",
+      cell: ({ row }) => {
+        const state = row.original.state;
+        if (!state) return "—";
+        const states = state.split(",").map((s) => s.trim()).filter(Boolean);
+        if (states.length <= 1) return <span className="text-xs">{state}</span>;
+        return (
+          <div className="flex flex-wrap gap-0.5">
+            {states.slice(0, 3).map((s, i) => (
+              <span key={i} className="rounded bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-medium">
+                {s}
+              </span>
+            ))}
+            {states.length > 3 && (
+              <span className="text-[10px] text-muted-foreground">+{states.length - 3}</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "score",
