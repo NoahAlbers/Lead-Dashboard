@@ -8,7 +8,8 @@ const ranges = [
   { label: "7d", value: "7d" },
   { label: "30d", value: "30d" },
   { label: "90d", value: "90d" },
-  { label: "All Time", value: "all" },
+  { label: "1y", value: "1y" },
+  { label: "All", value: "all" },
 ] as const;
 
 export type TimeRange = (typeof ranges)[number]["value"];

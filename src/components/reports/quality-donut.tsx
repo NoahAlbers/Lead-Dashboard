@@ -32,10 +32,7 @@ export function QualityDonut({ data }: { data: TierData[] }) {
               <Cell key={d.tier} fill={TIER_COLORS[d.tier] ?? "#8889A0"} />
             ))}
           </Pie>
-          <Tooltip
-            formatter={(value: number, name: string) => [`${value} (${Math.round((value / total) * 100)}%)`, name]}
-            contentStyle={{ fontSize: 12, borderRadius: 8 }}
-          />
+          <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
           <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
         </PieChart>
       </ResponsiveContainer>
