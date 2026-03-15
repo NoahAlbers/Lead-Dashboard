@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { format, toZonedTime } from "date-fns-tz";
 
 interface TimelineEvent {
   id: string;
@@ -43,6 +43,13 @@ function formatEventDetail(event: TimelineEvent): string | null {
   return null;
 }
 
+const EST_TZ = "America/New_York";
+
+function formatEST(date: Date): string {
+  const zoned = toZonedTime(date, EST_TZ);
+  return format(zoned, "MMM d, yyyy h:mm a", { timeZone: EST_TZ }) + " EST";
+}
+
 export function ActivityTimeline({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return (
@@ -62,7 +69,7 @@ export function ActivityTimeline({ events }: { events: TimelineEvent[] }) {
             </div>
             <div className="pb-3">
               <p className="text-xs text-muted-foreground">
-                {format(new Date(event.createdAt), "MMM d, yyyy h:mm a")}
+                {formatEST(new Date(event.createdAt))}
                 {event.user && (
                   <span className="ml-1">— {event.user.name}</span>
                 )}

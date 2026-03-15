@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { format } from "date-fns";
+import { format, toZonedTime } from "date-fns-tz";
 import { ArrowLeft } from "lucide-react";
 import { getLead } from "@/actions/lead.actions";
 import { getLeadNotes } from "@/actions/note.actions";
@@ -12,6 +12,8 @@ import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { LeadNotes } from "@/components/leads/lead-notes";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+
+const EST_TZ = "America/New_York";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -123,6 +125,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const intakeFields = getIntakeFormFields(lead.rawPayloadJson as Record<string, unknown> | null);
   const isIntakeForm = lead.source === "intake_form" || !!intakeFields?.debtTypes;
 
+  // Build display state: show all states from intake form, or fallback to lead.state
+  const displayStates = intakeFields?.states && intakeFields.states.length > 0
+    ? intakeFields.states.join(", ")
+    : lead.state;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -143,7 +150,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
             <TierBadge tier={lead.qualityTier} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Created {format(new Date(lead.createdAt), "MMMM d, yyyy 'at' h:mm a")}
+            Created {format(toZonedTime(new Date(lead.createdAt), EST_TZ), "MMMM d, yyyy 'at' h:mm a", { timeZone: EST_TZ })} EST
             {lead.assignedUser && (
               <> &middot; Assigned to {lead.assignedUser.name}</>
             )}
@@ -173,7 +180,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
               <InfoRow label="Phone" value={lead.phone} />
               <InfoRow label="Alt. Phone" value={lead.alternatePhone} />
               <InfoRow label="Title" value={lead.title} />
-              <InfoRow label="State" value={lead.state} />
+              {/* Show all states as pill badges */}
+              {displayStates && (
+                <div className="py-1.5 sm:col-span-2">
+                  <p className="text-sm text-muted-foreground mb-1">States</p>
+                  <TagList items={displayStates} />
+                </div>
+              )}
               <InfoRow
                 label="Address"
                 value={
@@ -183,7 +196,17 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 }
               />
               {intakeFields?.companyWebsite && (
-                <InfoRow label="Website" value={intakeFields.companyWebsite} />
+                <div className="flex justify-between py-1.5 text-sm">
+                  <span className="text-muted-foreground">Website</span>
+                  <a
+                    href={intakeFields.companyWebsite.startsWith("http") ? intakeFields.companyWebsite : `https://${intakeFields.companyWebsite}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-primary hover:underline text-right max-w-[60%] truncate"
+                  >
+                    {intakeFields.companyWebsite}
+                  </a>
+                </div>
               )}
               {intakeFields?.noCompany && (
                 <InfoRow label="Company Status" value="Independent owner" />
@@ -191,120 +214,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
             </div>
           </SectionCard>
 
-          {/* ACB Intake Form Details — only shown for intake form leads */}
-          {isIntakeForm && intakeFields && (
-            <SectionCard title="Intake Form Details">
-              <div className="space-y-4">
-                {/* Debt & Collection Info */}
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                    Debt & Collection Info
-                  </p>
-                  <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-                    {intakeFields.debtTypes && intakeFields.debtTypes.length > 0 && (
-                      <div className="py-1.5">
-                        <p className="text-sm text-muted-foreground mb-1">Debt Types</p>
-                        <TagList items={intakeFields.debtTypes.join(", ") + (intakeFields.customDebtType ? `, ${intakeFields.customDebtType}` : "")} />
-                      </div>
-                    )}
-                    <InfoRow label="Debts Ready Now" value={intakeFields.debtsNow} />
-                    <InfoRow label="Prior Collection Agency" value={intakeFields.priorAgency} />
-                    {intakeFields.certifyOwesDebt && (
-                      <InfoRow label="Certification" value="Tenants owe debt" />
-                    )}
-                    {intakeFields.certifyNoDebt && (
-                      <InfoRow label="Certification" value="No debt owed" />
-                    )}
-                  </div>
-                </div>
-
-                {/* States Served */}
-                {intakeFields.states && intakeFields.states.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                      Geographic Coverage
-                    </p>
-                    <TagList items={intakeFields.states.join(", ")} />
-                  </div>
-                )}
-
-                {/* Property Details */}
-                {(intakeFields.totalUnits || intakeFields.ownershipType || intakeFields.rentalTypes?.length) && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                      Property Portfolio
-                    </p>
-                    <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-                      <InfoRow label="Ownership" value={
-                        intakeFields.ownershipType
-                          ? intakeFields.ownershipType + (
-                              intakeFields.ownershipType === "We own and manage for others" && intakeFields.ownPercent != null
-                                ? ` (${intakeFields.ownPercent}% own / ${100 - intakeFields.ownPercent}% manage)`
-                                : ""
-                            )
-                          : undefined
-                      } />
-                      <InfoRow label="Total Units" value={intakeFields.totalUnits} />
-                      <InfoRow label="Avg Rent / Unit" value={
-                        intakeFields.avgRent
-                          ? `$${intakeFields.avgRent.toLocaleString()}`
-                          : undefined
-                      } />
-                      {intakeFields.rentalTypes && intakeFields.rentalTypes.length > 0 && (
-                        <div className="py-1.5">
-                          <p className="text-sm text-muted-foreground mb-1">Rental Types</p>
-                          <TagList items={intakeFields.rentalTypes.join(", ")} />
-                        </div>
-                      )}
-                      {intakeFields.propertyTypes && intakeFields.propertyTypes.length > 0 && (
-                        <div className="py-1.5">
-                          <p className="text-sm text-muted-foreground mb-1">Property Types</p>
-                          <TagList items={intakeFields.propertyTypes.join(", ")} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Software & Listings */}
-                {(intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                      Software & Listings
-                    </p>
-                    <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-                      {intakeFields.listingSites && intakeFields.listingSites.length > 0 && (
-                        <div className="py-1.5">
-                          <p className="text-sm text-muted-foreground mb-1">Listing Sites</p>
-                          <TagList items={intakeFields.listingSites.join(", ") + (intakeFields.customListing ? `, ${intakeFields.customListing}` : "")} />
-                        </div>
-                      )}
-                      {intakeFields.pmSoftware && intakeFields.pmSoftware.length > 0 && (
-                        <div className="py-1.5">
-                          <p className="text-sm text-muted-foreground mb-1">PM Software</p>
-                          <TagList items={intakeFields.pmSoftware.join(", ") + (intakeFields.customPM ? `, ${intakeFields.customPM}` : "")} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Comments */}
-                {intakeFields.comments && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                      Comments / Questions
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap rounded-md bg-muted/50 p-3">
-                      {intakeFields.comments}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </SectionCard>
-          )}
-
-          {/* Generic Intake Summary — for non-intake-form leads or as fallback */}
+          {/* Generic Intake Summary — for non-intake-form leads */}
           {!isIntakeForm && (
             <SectionCard title="Intake Summary">
               <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
@@ -461,6 +371,119 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <SectionCard title="Notes">
             <LeadNotes notes={notes} />
           </SectionCard>
+
+          {/* ACB Intake Form Details — MOVED TO BOTTOM */}
+          {isIntakeForm && intakeFields && (
+            <SectionCard title="Intake Form Details">
+              <div className="space-y-4">
+                {/* Debt & Collection Info */}
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                    Debt & Collection Info
+                  </p>
+                  <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                    {intakeFields.debtTypes && intakeFields.debtTypes.length > 0 && (
+                      <div className="py-1.5">
+                        <p className="text-sm text-muted-foreground mb-1">Debt Types</p>
+                        <TagList items={intakeFields.debtTypes.join(", ") + (intakeFields.customDebtType ? `, ${intakeFields.customDebtType}` : "")} />
+                      </div>
+                    )}
+                    <InfoRow label="Debts Ready Now" value={intakeFields.debtsNow} />
+                    <InfoRow label="Prior Collection Agency" value={intakeFields.priorAgency} />
+                    {intakeFields.certifyOwesDebt && (
+                      <InfoRow label="Certification" value="Tenants owe debt" />
+                    )}
+                    {intakeFields.certifyNoDebt && (
+                      <InfoRow label="Certification" value="No debt owed" />
+                    )}
+                  </div>
+                </div>
+
+                {/* States Served */}
+                {intakeFields.states && intakeFields.states.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Geographic Coverage
+                    </p>
+                    <TagList items={intakeFields.states.join(", ")} />
+                  </div>
+                )}
+
+                {/* Property Details */}
+                {(intakeFields.totalUnits || intakeFields.ownershipType || intakeFields.rentalTypes?.length) && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Property Portfolio
+                    </p>
+                    <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                      <InfoRow label="Ownership" value={
+                        intakeFields.ownershipType
+                          ? intakeFields.ownershipType + (
+                              intakeFields.ownershipType === "We own and manage for others" && intakeFields.ownPercent != null
+                                ? ` (${intakeFields.ownPercent}% own / ${100 - intakeFields.ownPercent}% manage)`
+                                : ""
+                            )
+                          : undefined
+                      } />
+                      <InfoRow label="Total Units" value={intakeFields.totalUnits} />
+                      <InfoRow label="Avg Rent / Unit" value={
+                        intakeFields.avgRent
+                          ? `$${intakeFields.avgRent.toLocaleString()}`
+                          : undefined
+                      } />
+                      {intakeFields.rentalTypes && intakeFields.rentalTypes.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">Rental Types</p>
+                          <TagList items={intakeFields.rentalTypes.join(", ")} />
+                        </div>
+                      )}
+                      {intakeFields.propertyTypes && intakeFields.propertyTypes.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">Property Types</p>
+                          <TagList items={intakeFields.propertyTypes.join(", ")} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Software & Listings */}
+                {(intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Software & Listings
+                    </p>
+                    <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                      {intakeFields.listingSites && intakeFields.listingSites.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">Listing Sites</p>
+                          <TagList items={intakeFields.listingSites.join(", ") + (intakeFields.customListing ? `, ${intakeFields.customListing}` : "")} />
+                        </div>
+                      )}
+                      {intakeFields.pmSoftware && intakeFields.pmSoftware.length > 0 && (
+                        <div className="py-1.5">
+                          <p className="text-sm text-muted-foreground mb-1">PM Software</p>
+                          <TagList items={intakeFields.pmSoftware.join(", ") + (intakeFields.customPM ? `, ${intakeFields.customPM}` : "")} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Comments */}
+                {intakeFields.comments && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Comments / Questions
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap rounded-md bg-muted/50 p-3">
+                      {intakeFields.comments}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+          )}
         </div>
 
         {/* Right Column - Actions */}

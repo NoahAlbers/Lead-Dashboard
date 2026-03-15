@@ -2,14 +2,14 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
-import { useTransition, useState } from "react";
+import { useTransition } from "react";
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
 } from "@tanstack/react-table";
-import { format } from "date-fns";
+import { format, toZonedTime } from "date-fns-tz";
 import { StatusBadge, TierBadge, ScoreBadge } from "@/components/shared/status-badge";
 import {
   ChevronLeft,
@@ -17,12 +17,12 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ArrowUpDown,
-  Mail,
-  Phone,
-  Archive,
+  CheckCircle,
+  Clock,
+  Star,
+  XCircle,
 } from "lucide-react";
-import { archiveLead } from "@/actions/lead.actions";
-import { logQuickAction } from "@/actions/note.actions";
+import { updateLeadStatus } from "@/actions/lead.actions";
 import type { LeadStatus, QualityTier } from "@prisma/client";
 
 interface LeadRow {
@@ -93,64 +93,52 @@ function SortableHeader({
   );
 }
 
-function QuickActions({ lead }: { lead: LeadRow }) {
+function RowQuickActions({ lead }: { lead: LeadRow }) {
   const [isPending, startTransition] = useTransition();
 
-  function handleEmail(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (lead.email) {
-      window.open(`mailto:${lead.email}`, "_self");
-      startTransition(async () => {
-        await logQuickAction(lead.id, "contacted_email");
-      });
-    }
-  }
-
-  function handleCall(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (lead.phone) {
-      window.open(`tel:${lead.phone}`, "_self");
-      startTransition(async () => {
-        await logQuickAction(lead.id, "contacted_phone");
-      });
-    }
-  }
-
-  function handleArchive(e: React.MouseEvent) {
+  function handleStatusChange(e: React.MouseEvent, newStatus: LeadStatus) {
     e.stopPropagation();
     startTransition(async () => {
-      await archiveLead(lead.id);
+      await updateLeadStatus(lead.id, newStatus);
     });
   }
 
   const iconBtn =
-    "rounded p-1 transition-colors disabled:opacity-30";
+    "rounded p-1 transition-all disabled:opacity-30 opacity-0 group-hover:opacity-100";
 
   return (
     <div className="flex items-center gap-0.5">
       <button
-        onClick={handleEmail}
-        disabled={!lead.email || isPending}
-        className={`${iconBtn} hover:bg-blue-50 text-blue-500`}
-        title="Email"
-      >
-        <Mail className="h-3.5 w-3.5" />
-      </button>
-      <button
-        onClick={handleCall}
-        disabled={!lead.phone || isPending}
-        className={`${iconBtn} hover:bg-green-50 text-green-500`}
-        title="Call"
-      >
-        <Phone className="h-3.5 w-3.5" />
-      </button>
-      <button
-        onClick={handleArchive}
+        onClick={(e) => handleStatusChange(e, "CONTACTED")}
         disabled={isPending}
-        className={`${iconBtn} hover:bg-muted text-muted-foreground`}
-        title="Archive"
+        className={`${iconBtn} hover:bg-green-50 text-green-600`}
+        title="Mark Contacted"
       >
-        <Archive className="h-3.5 w-3.5" />
+        <CheckCircle className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED")}
+        disabled={isPending}
+        className={`${iconBtn} hover:bg-amber-50 text-amber-600`}
+        title="Follow-Up Needed"
+      >
+        <Clock className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={(e) => handleStatusChange(e, "QUALIFIED")}
+        disabled={isPending}
+        className={`${iconBtn} hover:bg-blue-50 text-blue-600`}
+        title="Mark Qualified"
+      >
+        <Star className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={(e) => handleStatusChange(e, "DISQUALIFIED")}
+        disabled={isPending}
+        className={`${iconBtn} hover:bg-red-50 text-red-500`}
+        title="Disqualify"
+      >
+        <XCircle className="h-3.5 w-3.5" />
       </button>
     </div>
   );
@@ -181,7 +169,7 @@ export function LeadTable({
         />
       ),
       cell: ({ row }) =>
-        format(new Date(row.original.createdAt), "MM/dd/yy h:mm a"),
+        format(toZonedTime(new Date(row.original.createdAt), "America/New_York"), "MM/dd/yy h:mm a", { timeZone: "America/New_York" }),
     },
     {
       accessorKey: "companyName",
@@ -242,27 +230,9 @@ export function LeadTable({
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
     {
-      accessorKey: "recommendedAction",
-      header: "Action",
-      cell: ({ row }) => {
-        const action = row.original.recommendedAction;
-        if (!action) return "—";
-        return (
-          <span className="text-xs capitalize">
-            {action.replace(/_/g, " ")}
-          </span>
-        );
-      },
-    },
-    {
-      accessorKey: "assignedUser",
-      header: "Assigned",
-      cell: ({ row }) => row.original.assignedUser?.name || "—",
-    },
-    {
       id: "actions",
       header: "",
-      cell: ({ row }) => <QuickActions lead={row.original} />,
+      cell: ({ row }) => <RowQuickActions lead={row.original} />,
     },
   ];
 
@@ -316,22 +286,25 @@ export function LeadTable({
                   </td>
                 </tr>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={() => router.push(`/leads/${row.original.id}`)}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3">
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                ))
+                table.getRowModel().rows.map((row) => {
+                  const isNew = row.original.status === "NEW";
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`group border-b hover:bg-muted/30 transition-colors cursor-pointer ${isNew ? "font-semibold" : ""}`}
+                      onClick={() => router.push(`/leads/${row.original.id}`)}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td key={cell.id} className="px-4 py-3">
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

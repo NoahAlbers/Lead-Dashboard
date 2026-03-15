@@ -6,17 +6,20 @@ import {
   Inbox,
   Star,
   TrendingUp,
-  DollarSign,
+  Building2,
   MapPin,
   Activity,
 } from "lucide-react";
 import { StatCard } from "@/components/layout/stat-card";
 import { TimeRangeSelector, type TimeRange } from "@/components/shared/time-range-selector";
 import { type QualityTier } from "@prisma/client";
+import { format, toZonedTime } from "date-fns-tz";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const EST_TZ = "America/New_York";
 
 function getRangeDate(range: TimeRange): Date | null {
   const now = new Date();
@@ -36,11 +39,6 @@ function formatDate(d: Date): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function formatWeek(d: Date): string {
-  const end = new Date(d.getTime() + 6 * 24 * 60 * 60 * 1000);
-  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
-}
-
 function formatMonth(d: Date): string {
   return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
@@ -57,6 +55,7 @@ const STATUS_LABELS: Record<string, string> = {
   LOST: "Lost",
   DISQUALIFIED: "Disqualified",
   DUPLICATE: "Duplicate",
+  ARCHIVED: "Archived",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -71,6 +70,7 @@ const STATUS_COLORS: Record<string, string> = {
   LOST: "bg-gray-400",
   DISQUALIFIED: "bg-red-500",
   DUPLICATE: "bg-orange-400",
+  ARCHIVED: "bg-gray-300",
 };
 
 const TIER_COLORS: Record<string, { bar: string; bg: string; text: string }> = {
@@ -110,9 +110,10 @@ function buildBuckets(range: TimeRange): TimeBucket[] {
   const now = new Date();
   const buckets: TimeBucket[] = [];
 
-  if (range === "7d") {
-    // daily buckets for 7 days
-    for (let i = 6; i >= 0; i--) {
+  if (range === "7d" || range === "30d") {
+    // Daily buckets
+    const days = range === "7d" ? 7 : 30;
+    for (let i = days - 1; i >= 0; i--) {
       const start = new Date(now);
       start.setHours(0, 0, 0, 0);
       start.setDate(start.getDate() - i);
@@ -125,22 +126,17 @@ function buildBuckets(range: TimeRange): TimeBucket[] {
         end,
       });
     }
-  } else if (range === "30d" || range === "90d") {
-    // weekly buckets
-    const days = range === "30d" ? 30 : 90;
-    const weeks = Math.ceil(days / 7);
-    for (let i = weeks - 1; i >= 0; i--) {
+  } else if (range === "90d") {
+    // Daily buckets for 90d too
+    for (let i = 89; i >= 0; i--) {
       const start = new Date(now);
       start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - i * 7);
+      start.setDate(start.getDate() - i);
       const end = new Date(start);
-      end.setDate(end.getDate() + 7);
-      if (end > now) {
-        end.setTime(now.getTime());
-      }
+      end.setDate(end.getDate() + 1);
       buckets.push({
         key: start.toISOString().slice(0, 10),
-        label: formatWeek(start),
+        label: formatDate(start),
         start,
         end,
       });
@@ -221,7 +217,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     totalLeads,
     wonLeads,
     avgScore,
-    totalValue,
+    totalUnitsResult,
     leadsForTimeline,
     byStatus,
     byState,
@@ -230,7 +226,11 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     prisma.lead.count({ where }),
     prisma.lead.count({ where: { ...where, status: "WON" } }),
     prisma.lead.aggregate({ where, _avg: { score: true } }),
-    prisma.lead.aggregate({ where, _sum: { balanceAmount: true } }),
+    // Sum totalUnits from raw payload using accountVolume field
+    prisma.lead.findMany({
+      where,
+      select: { accountVolume: true },
+    }),
     prisma.lead.findMany({
       where,
       select: { createdAt: true, qualityTier: true },
@@ -262,7 +262,12 @@ export default async function ReportsPage({ searchParams }: PageProps) {
   const conversionRate =
     totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0;
   const avgScoreValue = Math.round(avgScore._avg.score ?? 0);
-  const totalValueNum = Number(totalValue._sum.balanceAmount ?? 0);
+
+  // Sum total units from accountVolume
+  const totalUnitsNum = totalUnitsResult.reduce((sum, lead) => {
+    const units = parseInt(lead.accountVolume ?? "0", 10);
+    return sum + (isNaN(units) ? 0 : units);
+  }, 0);
 
   // ---- Build time series data ----
   const buckets = buildBuckets(range);
@@ -278,6 +283,9 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     ...byStatus.map((s) => s._count.id),
     1
   );
+
+  // For 30d and 90d, only show every Nth label to avoid overcrowding
+  const showEveryNth = range === "90d" ? 7 : range === "30d" ? 3 : 1;
 
   return (
     <div className="space-y-6">
@@ -304,17 +312,17 @@ export default async function ReportsPage({ searchParams }: PageProps) {
           icon={TrendingUp}
         />
         <StatCard
-          label="Est. Value"
-          value={totalValueNum}
-          icon={DollarSign}
+          label="Est. Units"
+          value={totalUnitsNum.toLocaleString()}
+          icon={Building2}
         />
       </div>
 
       {/* Leads Over Time — Bar Chart */}
       <div className="rounded-lg border bg-card p-5">
         <h2 className="font-semibold mb-4">Leads Over Time</h2>
-        <div className="flex items-end gap-1 h-48">
-          {timeData.map((bucket) => {
+        <div className="flex items-end gap-px h-48">
+          {timeData.map((bucket, idx) => {
             const pct = maxCount > 0 ? (bucket.total / maxCount) * 100 : 0;
             return (
               <div
@@ -323,15 +331,19 @@ export default async function ReportsPage({ searchParams }: PageProps) {
               >
                 {/* Tooltip */}
                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-foreground text-background text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                  {bucket.total} lead{bucket.total !== 1 ? "s" : ""}
+                  {bucket.label}: {bucket.total} lead{bucket.total !== 1 ? "s" : ""}
                 </div>
                 <div
                   className="w-full rounded-t bg-primary/80 hover:bg-primary transition-colors min-h-[2px]"
                   style={{ height: `${Math.max(pct, 1)}%` }}
                 />
-                <span className="text-[10px] text-muted-foreground mt-1 truncate w-full text-center">
-                  {bucket.label.split(" – ")[0]}
-                </span>
+                {idx % showEveryNth === 0 ? (
+                  <span className="text-[9px] text-muted-foreground mt-1 truncate w-full text-center">
+                    {bucket.label.split(" ")[1] ?? bucket.label}
+                  </span>
+                ) : (
+                  <span className="text-[9px] mt-1">&nbsp;</span>
+                )}
               </div>
             );
           })}
@@ -351,8 +363,8 @@ export default async function ReportsPage({ searchParams }: PageProps) {
             </div>
           ))}
         </div>
-        <div className="flex items-end gap-1 h-48">
-          {timeData.map((bucket) => {
+        <div className="flex items-end gap-px h-48">
+          {timeData.map((bucket, idx) => {
             const bucketTotal = bucket.A + bucket.B + bucket.C + bucket.POOR;
             const pct =
               maxStacked > 0 ? (bucketTotal / maxStacked) * 100 : 0;
@@ -390,9 +402,13 @@ export default async function ReportsPage({ searchParams }: PageProps) {
                     style={{ height: segHeight(bucket.A) }}
                   />
                 </div>
-                <span className="text-[10px] text-muted-foreground mt-1 truncate w-full text-center">
-                  {bucket.label.split(" – ")[0]}
-                </span>
+                {idx % showEveryNth === 0 ? (
+                  <span className="text-[9px] text-muted-foreground mt-1 truncate w-full text-center">
+                    {bucket.label.split(" ")[1] ?? bucket.label}
+                  </span>
+                ) : (
+                  <span className="text-[9px] mt-1">&nbsp;</span>
+                )}
               </div>
             );
           })}
@@ -484,6 +500,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
             const actor = event.user?.name ?? "System";
             const eventLabel =
               EVENT_LABELS[event.eventType] ?? event.eventType;
+            const estTime = toZonedTime(event.createdAt, EST_TZ);
             return (
               <div
                 key={event.id}
@@ -501,14 +518,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
                   </p>
                 </div>
                 <time className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                  {event.createdAt.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}{" "}
-                  {event.createdAt.toLocaleTimeString("en-US", {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
+                  {format(estTime, "MMM d, h:mm a", { timeZone: EST_TZ })} EST
                 </time>
               </div>
             );

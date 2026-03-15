@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { createRule, updateRule, deleteRule, toggleRule } from "@/actions/rule.actions";
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 
 interface RuleCondition {
   field: string;
@@ -43,15 +45,17 @@ const OPERATORS = [
 
 const LEAD_FIELDS = [
   "state", "email", "phone", "companyName", "fullName", "industry",
-  "debtType", "balanceAmount", "estimatedClaimValue", "serviceRequested",
-  "urgency", "businessType", "accountVolume", "city", "zip",
+  "debtType", "serviceRequested", "urgency", "businessType",
+  "accountVolume", "city", "zip",
 ];
 
 export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
+  const router = useRouter();
   const [rules, setRules] = useState(initialRules);
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [recalculating, setRecalculating] = useState(false);
 
   // Form state
   const [name, setName] = useState("");
@@ -93,6 +97,13 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
     setIsCreating(true);
   }
 
+  function showRecalcToast(count: number) {
+    toast({
+      title: "Scores recalculated",
+      description: `Updated scores for ${count} lead${count !== 1 ? "s" : ""}.`,
+    });
+  }
+
   function handleSave() {
     const data = {
       name,
@@ -107,35 +118,52 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
       },
     };
 
+    setRecalculating(true);
     startTransition(async () => {
+      let result;
       if (editingRule) {
-        await updateRule(editingRule.id, data);
+        result = await updateRule(editingRule.id, data);
       } else {
-        await createRule(data);
+        result = await createRule(data);
       }
       resetForm();
-      // Refresh
-      window.location.reload();
+      setRecalculating(false);
+      showRecalcToast(result.recalculatedCount);
+      router.refresh();
     });
   }
 
   function handleDelete(id: string) {
     if (!confirm("Delete this rule?")) return;
+    setRecalculating(true);
     startTransition(async () => {
-      await deleteRule(id);
+      const result = await deleteRule(id);
       setRules(rules.filter((r) => r.id !== id));
+      setRecalculating(false);
+      showRecalcToast(result.recalculatedCount);
     });
   }
 
   function handleToggle(id: string, enabled: boolean) {
+    setRecalculating(true);
     startTransition(async () => {
-      await toggleRule(id, enabled);
+      const result = await toggleRule(id, enabled);
       setRules(rules.map((r) => (r.id === id ? { ...r, enabled } : r)));
+      setRecalculating(false);
+      showRecalcToast(result.recalculatedCount);
     });
   }
 
   return (
     <div className="space-y-4">
+      {/* Recalculating indicator */}
+      {recalculating && (
+        <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-primary">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          Recalculating all lead scores...
+        </div>
+      )}
+
       {/* Rules List */}
       <div className="space-y-2">
         {rules.map((rule) => {
@@ -152,6 +180,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                       type="checkbox"
                       checked={rule.enabled}
                       onChange={(e) => handleToggle(rule.id, e.target.checked)}
+                      disabled={isPending}
                       className="rounded border-gray-300"
                     />
                   </label>
@@ -181,12 +210,14 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                   )}
                   <button
                     onClick={() => startEdit(rule)}
+                    disabled={isPending}
                     className="p-1 hover:bg-muted rounded"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => handleDelete(rule.id)}
+                    disabled={isPending}
                     className="p-1 hover:bg-muted rounded text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -211,7 +242,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-card px-3 text-sm"
               />
             </div>
             <div>
@@ -220,7 +251,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                 type="number"
                 value={priority}
                 onChange={(e) => setPriority(Number(e.target.value))}
-                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-card px-3 text-sm"
               />
             </div>
           </div>
@@ -230,7 +261,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="mt-1 flex h-9 w-full rounded-md border border-input bg-card px-3 text-sm"
             />
           </div>
 
@@ -247,7 +278,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                       updated[i].field = e.target.value;
                       setConditions(updated);
                     }}
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    className="h-9 rounded-md border border-input bg-card px-2 text-sm"
                   >
                     {LEAD_FIELDS.map((f) => (
                       <option key={f} value={f}>
@@ -262,7 +293,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                       updated[i].operator = e.target.value;
                       setConditions(updated);
                     }}
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    className="h-9 rounded-md border border-input bg-card px-2 text-sm"
                   >
                     {OPERATORS.map((op) => (
                       <option key={op.value} value={op.value}>
@@ -274,7 +305,6 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                     value={String(cond.value ?? "")}
                     onChange={(e) => {
                       const updated = [...conditions];
-                      // Try to parse as array if it contains commas
                       const val = e.target.value;
                       if (
                         (cond.operator === "in" || cond.operator === "not_in") &&
@@ -287,7 +317,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                       setConditions(updated);
                     }}
                     placeholder="Value (comma-separated for lists)"
-                    className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    className="flex-1 h-9 rounded-md border border-input bg-card px-3 text-sm"
                   />
                   {conditions.length > 1 && (
                     <button
@@ -323,7 +353,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                 type="number"
                 value={scoreAdj}
                 onChange={(e) => setScoreAdj(Number(e.target.value))}
-                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-card px-3 text-sm"
               />
             </div>
             <div>
@@ -331,7 +361,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
               <input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="mt-1 flex h-9 w-full rounded-md border border-input bg-card px-3 text-sm"
               />
             </div>
           </div>
@@ -349,7 +379,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
               <select
                 value={action}
                 onChange={(e) => setAction(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                className="h-9 rounded-md border border-input bg-card px-2 text-sm"
               >
                 <option value="disqualify">Disqualify</option>
                 <option value="refer">Refer Out</option>

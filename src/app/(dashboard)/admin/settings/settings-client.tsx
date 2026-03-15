@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2, Plus, RotateCcw } from "lucide-react";
-import { createCustomStatus, deleteCustomStatus } from "@/actions/status.actions";
+import { Trash2, Plus, RotateCcw, Save } from "lucide-react";
+import { createCustomStatus, deleteCustomStatus, saveTierRanges } from "@/actions/status.actions";
 import { unarchiveLead } from "@/actions/lead.actions";
 import { format } from "date-fns";
+import { toast } from "@/components/ui/use-toast";
 
 const PASTEL_COLORS = [
   "#FFB3B3", "#FFDAB3", "#FFF3B3", "#D4F5D4",
@@ -17,6 +18,14 @@ interface StatusItem {
   name: string;
   color: string;
   isDefault: boolean;
+}
+
+interface TierRange {
+  tier: string;
+  label: string;
+  min: number;
+  max: number;
+  color: string;
 }
 
 interface ArchivedLead {
@@ -32,6 +41,7 @@ interface SettingsClientProps {
   statuses: StatusItem[];
   tiers: StatusItem[];
   archivedLeads: ArchivedLead[];
+  tierRanges: TierRange[];
 }
 
 function StatusList({
@@ -148,7 +158,115 @@ function StatusList({
   );
 }
 
-export function SettingsClient({ statuses, tiers, archivedLeads }: SettingsClientProps) {
+function TierRangeEditor({ initialRanges }: { initialRanges: TierRange[] }) {
+  const [ranges, setRanges] = useState(initialRanges);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function updateRange(tier: string, field: "min" | "max", value: number) {
+    setRanges((prev) =>
+      prev.map((r) => (r.tier === tier ? { ...r, [field]: value } : r))
+    );
+    setError(null);
+  }
+
+  function validate(): boolean {
+    // Sort by min descending (A has highest range)
+    const sorted = [...ranges].sort((a, b) => b.min - a.min);
+
+    // Check no overlaps and full coverage
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].min > sorted[i].max) {
+        setError(`${sorted[i].label}: min cannot exceed max.`);
+        return false;
+      }
+      if (i > 0 && sorted[i].max >= sorted[i - 1].min) {
+        setError(`${sorted[i].label} overlaps with ${sorted[i - 1].label}.`);
+        return false;
+      }
+    }
+
+    // Check coverage of 0-100
+    const highest = sorted[0];
+    const lowest = sorted[sorted.length - 1];
+    if (highest.max !== 100) {
+      setError("Top tier must end at 100.");
+      return false;
+    }
+    if (lowest.min !== 0) {
+      setError("Bottom tier must start at 0.");
+      return false;
+    }
+
+    return true;
+  }
+
+  function handleSave() {
+    if (!validate()) return;
+    startTransition(async () => {
+      await saveTierRanges(ranges.map((r) => ({ tier: r.tier, min: r.min, max: r.max })));
+      toast({ title: "Tier ranges saved", description: "Quality tier boundaries updated." });
+    });
+  }
+
+  const TIER_DISPLAY_COLORS: Record<string, string> = {
+    A: "border-emerald-200 bg-emerald-50",
+    B: "border-blue-200 bg-blue-50",
+    C: "border-amber-200 bg-amber-50",
+    POOR: "border-red-200 bg-red-50",
+  };
+
+  return (
+    <div>
+      <h2 className="font-semibold mb-3">Quality Tier Score Ranges</h2>
+      <p className="text-sm text-muted-foreground mb-3">
+        Define which score ranges map to each tier. Ranges must cover 0-100 without overlap.
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {ranges.map((range) => (
+          <div
+            key={range.tier}
+            className={`rounded-lg border p-3 ${TIER_DISPLAY_COLORS[range.tier] ?? ""}`}
+          >
+            <p className="text-sm font-semibold mb-2">{range.label}</p>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={range.min}
+                onChange={(e) => updateRange(range.tier, "min", Number(e.target.value))}
+                className="w-14 rounded border border-input bg-card px-2 py-1 text-sm text-center"
+              />
+              <span className="text-xs text-muted-foreground">to</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={range.max}
+                onChange={(e) => updateRange(range.tier, "max", Number(e.target.value))}
+                className="w-14 rounded border border-input bg-card px-2 py-1 text-sm text-center"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      {error && (
+        <p className="text-sm text-red-600 mt-2">{error}</p>
+      )}
+      <button
+        onClick={handleSave}
+        disabled={isPending}
+        className="mt-3 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+      >
+        <Save className="h-3.5 w-3.5" />
+        Save Ranges
+      </button>
+    </div>
+  );
+}
+
+export function SettingsClient({ statuses, tiers, archivedLeads, tierRanges }: SettingsClientProps) {
   const [isPending, startTransition] = useTransition();
 
   function handleRestore(leadId: string) {
@@ -161,7 +279,8 @@ export function SettingsClient({ statuses, tiers, archivedLeads }: SettingsClien
     <div className="space-y-6">
       <div className="rounded-lg border bg-card p-5 space-y-6">
         <StatusList items={statuses} type="status" label="Lead Statuses" />
-        <StatusList items={tiers} type="tier" label="Quality Tiers" />
+        <TierRangeEditor initialRanges={tierRanges} />
+        <StatusList items={tiers} type="tier" label="Custom Tiers" />
       </div>
 
       {/* Archived Leads */}

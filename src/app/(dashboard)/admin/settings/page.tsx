@@ -1,12 +1,13 @@
-import { getCustomStatuses, createCustomStatus, deleteCustomStatus } from "@/actions/status.actions";
-import { getArchivedLeads, unarchiveLead } from "@/actions/lead.actions";
+import { getCustomStatuses, getTierRanges } from "@/actions/status.actions";
+import { getArchivedLeads } from "@/actions/lead.actions";
 import { SettingsClient } from "./settings-client";
 
 export default async function SettingsPage() {
-  const [statuses, tiers, archivedLeads] = await Promise.all([
+  const [statuses, tiers, archivedLeads, tierRanges] = await Promise.all([
     getCustomStatuses("status"),
     getCustomStatuses("tier"),
     getArchivedLeads(),
+    getTierRanges(),
   ]);
 
   return (
@@ -39,6 +40,7 @@ export default async function SettingsPage() {
           createdAt: l.createdAt.toISOString(),
           score: l.score,
         }))}
+        tierRanges={tierRanges}
       />
 
       <div className="rounded-lg border bg-card p-5 space-y-6">

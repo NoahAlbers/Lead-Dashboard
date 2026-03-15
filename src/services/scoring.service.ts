@@ -24,6 +24,12 @@ interface AppliedRule {
   action?: string;
 }
 
+interface TierRange {
+  tier: string;
+  min: number;
+  max: number;
+}
+
 function getLeadFieldValue(lead: Record<string, unknown>, field: string): unknown {
   return lead[field] ?? null;
 }
@@ -83,7 +89,33 @@ function evaluateRule(
   return conditions.every((cond) => evaluateCondition(lead, cond));
 }
 
-function mapScoreToTier(score: number): QualityTier {
+const DEFAULT_TIER_RANGES: TierRange[] = [
+  { tier: "A", min: 80, max: 100 },
+  { tier: "B", min: 60, max: 79 },
+  { tier: "C", min: 40, max: 59 },
+  { tier: "POOR", min: 0, max: 39 },
+];
+
+async function getTierRangesFromDB(): Promise<TierRange[]> {
+  try {
+    const record = await prisma.customStatus.findUnique({
+      where: { id: "system-tier-ranges" },
+    });
+    if (!record) return DEFAULT_TIER_RANGES;
+    const parsed = JSON.parse(record.color);
+    return parsed.map((r: TierRange) => ({ tier: r.tier, min: r.min, max: r.max }));
+  } catch {
+    return DEFAULT_TIER_RANGES;
+  }
+}
+
+function mapScoreToTierWithRanges(score: number, ranges: TierRange[]): QualityTier {
+  for (const range of ranges) {
+    if (score >= range.min && score <= range.max) {
+      return range.tier as QualityTier;
+    }
+  }
+  // Fallback
   if (score >= 80) return "A";
   if (score >= 60) return "B";
   if (score >= 40) return "C";
@@ -109,10 +141,13 @@ export async function scoreLead(lead: Lead): Promise<{
   recommendedAction: string;
   appliedRules: AppliedRule[];
 }> {
-  const rules = await prisma.scoringRule.findMany({
-    where: { enabled: true },
-    orderBy: { priority: "asc" },
-  });
+  const [rules, tierRanges] = await Promise.all([
+    prisma.scoringRule.findMany({
+      where: { enabled: true },
+      orderBy: { priority: "asc" },
+    }),
+    getTierRangesFromDB(),
+  ]);
 
   const leadData = lead as unknown as Record<string, unknown>;
   // Convert Decimal fields to numbers for comparison
@@ -145,7 +180,7 @@ export async function scoreLead(lead: Lead): Promise<{
   // Clamp score
   score = Math.max(0, Math.min(100, score));
 
-  const qualityTier = mapScoreToTier(score);
+  const qualityTier = mapScoreToTierWithRanges(score, tierRanges);
   const recommendedAction = determineAction(score, qualityTier, appliedRules);
 
   return { score, qualityTier, recommendedAction, appliedRules };
