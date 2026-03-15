@@ -6,11 +6,11 @@ const prisma = new PrismaClient();
 async function main() {
   // Seed admin user
   const admin = await prisma.user.upsert({
-    where: { email: "admin@advancedcb.com" },
+    where: { email: "advancedcollectionbureau@gmail.com" },
     update: {},
     create: {
       name: "Admin",
-      email: "admin@advancedcb.com",
+      email: "advancedcollectionbureau@gmail.com",
       passwordHash: hashSync("admin123", 12),
       role: "ADMIN",
     },
