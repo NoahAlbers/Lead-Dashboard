@@ -31,7 +31,7 @@ export function LeadVolumeChart({ data }: { data: VolumeData[] }) {
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart data={formatted} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
         <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
         <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />

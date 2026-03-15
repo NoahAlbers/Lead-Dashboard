@@ -69,9 +69,10 @@ export function getDefaultWidgetIds(): string[] {
 
 interface InboxWidgetsProps {
   metrics: Record<string, number | string>;
+  titleRow?: React.ReactNode;
 }
 
-export function InboxWidgets({ metrics }: InboxWidgetsProps) {
+export function InboxWidgets({ metrics, titleRow }: InboxWidgetsProps) {
   const [widgetIds, setWidgetIds] = useState<string[]>(DEFAULT_WIDGETS);
   const [showConfig, setShowConfig] = useState(false);
 
@@ -103,16 +104,28 @@ export function InboxWidgets({ metrics }: InboxWidgetsProps) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div />
-        <button
-          onClick={() => setShowConfig(!showConfig)}
-          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        >
-          <Settings2 className="h-3.5 w-3.5" />
-          Customize
-        </button>
-      </div>
+      {titleRow ? (
+        <div className="flex items-center justify-between mb-4">
+          {titleRow}
+          <button
+            onClick={() => setShowConfig(!showConfig)}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Customize
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-end mb-4">
+          <button
+            onClick={() => setShowConfig(!showConfig)}
+            className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Customize
+          </button>
+        </div>
+      )}
 
       {/* Config Modal */}
       {showConfig && (

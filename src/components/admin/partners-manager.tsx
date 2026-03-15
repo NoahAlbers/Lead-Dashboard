@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { createPartner, updatePartner, deletePartner } from "@/actions/partner.actions";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { getStateColor } from "@/lib/state-colors";
 
 interface Partner {
   id: string;
@@ -26,7 +27,7 @@ interface Partner {
   updatedAt: string;
 }
 
-export function PartnersManager({ initialPartners }: { initialPartners: Partner[] }) {
+export function PartnersManager({ initialPartners, stateClassifications = {} }: { initialPartners: Partner[]; stateClassifications?: Record<string, string> }) {
   const [partners, setPartners] = useState(initialPartners);
   const [editing, setEditing] = useState<Partner | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -179,14 +180,18 @@ export function PartnersManager({ initialPartners }: { initialPartners: Partner[
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {Array.isArray(partner.statesServedJson) &&
-                    (partner.statesServedJson as string[]).map((s) => (
-                      <span
-                        key={s}
-                        className="rounded bg-muted px-1.5 py-0.5 text-xs"
-                      >
-                        {s}
-                      </span>
-                    ))}
+                    (partner.statesServedJson as string[]).map((s) => {
+                      const cls = stateClassifications[s.toUpperCase()] ?? "unknown";
+                      const colors = getStateColor(cls);
+                      return (
+                        <span
+                          key={s}
+                          className={`rounded px-1.5 py-0.5 text-xs font-medium ${colors.bg} ${colors.text}`}
+                        >
+                          {s}
+                        </span>
+                      );
+                    })}
                 </div>
               </div>
               <div className="flex gap-2">

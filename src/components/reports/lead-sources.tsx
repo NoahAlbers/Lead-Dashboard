@@ -20,7 +20,7 @@ export function LeadSources({ data }: { data: SourceData[] }) {
   if (data.length === 0) return <EmptyState />;
 
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 10 }}>
         <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
         <YAxis type="category" dataKey="source" tick={{ fontSize: 11 }} width={110} />

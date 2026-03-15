@@ -1,8 +1,12 @@
 import { getPartners } from "@/actions/partner.actions";
+import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { PartnersManager } from "@/components/admin/partners-manager";
 
 export default async function PartnersPage() {
-  const partners = await getPartners();
+  const [partners, stateClassifications] = await Promise.all([
+    getPartners(),
+    getStateClassificationMap(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -20,6 +24,7 @@ export default async function PartnersPage() {
           createdAt: p.createdAt.toISOString(),
           updatedAt: p.updatedAt.toISOString(),
         }))}
+        stateClassifications={stateClassifications}
       />
     </div>
   );

@@ -16,7 +16,7 @@ export function QualityDonut({ data }: { data: TierData[] }) {
 
   return (
     <div className="relative">
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
             data={data}

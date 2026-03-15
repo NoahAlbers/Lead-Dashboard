@@ -92,11 +92,21 @@ export function GeoHeatmap({ data, stateClassifications = {} }: GeoHeatmapProps)
         </div>
       )}
 
-      {/* Color scale */}
-      <div className="flex items-center gap-2 mt-2 justify-center">
-        <span className="text-[10px] text-muted-foreground">0</span>
-        <div className="w-24 h-2 rounded-full" style={{ background: "linear-gradient(to right, #EEF1FE, #3D5AF1)" }} />
-        <span className="text-[10px] text-muted-foreground">{maxCount}</span>
+      {/* Color scale legend */}
+      <div className="flex items-center justify-center gap-6 mt-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground">Good</span>
+          <div className="w-16 h-2 rounded-full" style={{ background: "linear-gradient(to right, #dcfce7, #16a34a)" }} />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground">Restricted</span>
+          <div className="w-16 h-2 rounded-full" style={{ background: "linear-gradient(to right, #fecaca, #dc2626)" }} />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground">Other</span>
+          <div className="w-4 h-2 rounded-full bg-muted" />
+        </div>
+        <span className="text-[10px] text-muted-foreground italic">Darker = more leads</span>
       </div>
     </div>
   );

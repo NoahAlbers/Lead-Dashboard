@@ -21,7 +21,7 @@ export function ResponseTime({ data }: { data: ResponseData }) {
       </div>
 
       {data.distribution.length > 0 && data.distribution.some((d) => d.count > 0) && (
-        <ResponsiveContainer width="100%" height={100}>
+        <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data.distribution} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
             <XAxis dataKey="label" tick={{ fontSize: 9 }} />
             <YAxis hide />

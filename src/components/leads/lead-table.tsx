@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
-import { useTransition, useState, useEffect, useRef, useCallback } from "react";
+import { useTransition, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -99,6 +99,7 @@ interface LeadTableProps {
   sortDirection: string;
   emailTemplates?: EmailTemplate[];
   stateClassifications?: Record<string, string>;
+  filterBar?: React.ReactNode;
 }
 
 // --- All available column definitions ---
@@ -135,25 +136,33 @@ const DEFAULT_VISIBLE = new Set([
 ]);
 const DEFAULT_ORDER = ALL_COLUMNS.map((c) => c.id);
 
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  readIndicator: 40, createdAt: 140, companyName: 200, fullName: 140,
+  email: 200, phone: 120, state: 80, score: 70, qualityTier: 70,
+  status: 110, recommendedAction: 120, industry: 120, debtType: 120,
+  accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, actions: 220,
+};
+
 const STORAGE_KEY = "lead-table-config";
 
-function loadConfig(): { visible: Set<string>; order: string[] } {
-  if (typeof window === "undefined") return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER };
+function loadConfig(): { visible: Set<string>; order: string[]; widths: Record<string, number> } {
+  if (typeof window === "undefined") return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER, widths: DEFAULT_COLUMN_WIDTHS };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER };
+    if (!raw) return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER, widths: DEFAULT_COLUMN_WIDTHS };
     const parsed = JSON.parse(raw);
     return {
       visible: new Set(parsed.visible ?? [...DEFAULT_VISIBLE]),
       order: parsed.order ?? DEFAULT_ORDER,
+      widths: { ...DEFAULT_COLUMN_WIDTHS, ...(parsed.widths ?? {}) },
     };
   } catch {
-    return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER };
+    return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER, widths: DEFAULT_COLUMN_WIDTHS };
   }
 }
 
-function saveConfig(visible: Set<string>, order: string[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ visible: [...visible], order }));
+function saveConfig(visible: Set<string>, order: string[], widths?: Record<string, number>) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ visible: [...visible], order, widths: widths ?? DEFAULT_COLUMN_WIDTHS }));
 }
 
 // --- Sortable column row for picker modal ---
@@ -218,7 +227,7 @@ function RowQuickActions({ lead, onEmailClick }: { lead: LeadRow; onEmailClick: 
 }
 
 // --- Main Component ---
-export function LeadTable({ leads, total, page, pageSize, totalPages, sortField, sortDirection, emailTemplates = [], stateClassifications = {} }: LeadTableProps) {
+export function LeadTable({ leads, total, page, pageSize, totalPages, sortField, sortDirection, emailTemplates = [], stateClassifications = {}, filterBar }: LeadTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -229,14 +238,40 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   // Column config from localStorage
   const [visibleCols, setVisibleCols] = useState<Set<string>>(DEFAULT_VISIBLE);
   const [colOrder, setColOrder] = useState<string[]>(DEFAULT_ORDER);
+  const [colWidths, setColWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
 
   useEffect(() => {
     const cfg = loadConfig();
     setVisibleCols(cfg.visible);
     setColOrder(cfg.order);
+    setColWidths(cfg.widths);
   }, []);
 
-  useEffect(() => { saveConfig(visibleCols, colOrder); }, [visibleCols, colOrder]);
+  useEffect(() => { saveConfig(visibleCols, colOrder, colWidths); }, [visibleCols, colOrder, colWidths]);
+
+  // Column resize handler
+  function handleResizeStart(e: React.MouseEvent, colId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = colWidths[colId] ?? DEFAULT_COLUMN_WIDTHS[colId] ?? 100;
+
+    function onMouseMove(ev: MouseEvent) {
+      const delta = ev.clientX - startX;
+      const newWidth = Math.max(40, startWidth + delta);
+      setColWidths((prev) => ({ ...prev, [colId]: newWidth }));
+    }
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }
+
+  // Compute total table width for fixed layout
+  const activeColumns = colOrder.filter((id) => visibleCols.has(id));
+  const totalTableWidth = activeColumns.reduce((sum, id) => sum + (colWidths[id] ?? DEFAULT_COLUMN_WIDTHS[id] ?? 100), 0);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -336,8 +371,6 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
     }
   }
 
-  // Ordered + visible columns
-  const activeColumns = colOrder.filter((id) => visibleCols.has(id));
   const colConfigMap = Object.fromEntries(ALL_COLUMNS.map((c) => [c.id, c]));
 
   function goToPage(newPage: number) {
@@ -349,6 +382,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   function resetColumns() {
     setVisibleCols(new Set(DEFAULT_VISIBLE));
     setColOrder([...DEFAULT_ORDER]);
+    setColWidths({ ...DEFAULT_COLUMN_WIDTHS });
   }
 
   function handlePickerDragEnd(event: DragEndEvent) {
@@ -364,11 +398,12 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
 
   return (
     <div className="space-y-4">
-      {/* Column picker button */}
-      <div className="flex justify-end">
+      {/* Filter bar + Column picker */}
+      <div className="flex flex-wrap items-center gap-3">
+        {filterBar}
         <button
           onClick={() => setShowPicker(true)}
-          className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         >
           <Settings2 className="h-4 w-4" />
           Columns
@@ -462,17 +497,19 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       {/* Table */}
       <div className="rounded-lg border bg-card">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="text-sm" style={{ tableLayout: "fixed", width: totalTableWidth }}>
             <thead>
               <tr className="border-b bg-muted/50">
                 {activeColumns.map((colId) => {
                   const col = colConfigMap[colId];
                   if (!col) return null;
                   const isSorted = col.sortField && sortField === col.sortField;
+                  const w = colWidths[colId] ?? DEFAULT_COLUMN_WIDTHS[colId] ?? 100;
                   return (
                     <th
                       key={colId}
-                      className="px-4 py-3 text-left text-xs font-medium text-muted-foreground"
+                      className="relative px-4 py-3 text-left text-xs font-medium text-muted-foreground"
+                      style={{ width: w, minWidth: 40 }}
                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, colId }); }}
                     >
                       {col.sortField ? (
@@ -490,6 +527,11 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
                       ) : (
                         col.id === "readIndicator" ? "" : col.label
                       )}
+                      {/* Resize handle */}
+                      <div
+                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-10"
+                        onMouseDown={(e) => handleResizeStart(e, colId)}
+                      />
                     </th>
                   );
                 })}
@@ -508,7 +550,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
                     onClick={() => router.push(`/leads/${lead.id}`)}
                   >
                     {activeColumns.map((colId) => (
-                      <td key={colId} className="px-4 py-3">{renderCell(colId, lead)}</td>
+                      <td key={colId} className="px-4 py-3 overflow-hidden text-ellipsis" style={{ width: colWidths[colId] ?? DEFAULT_COLUMN_WIDTHS[colId] ?? 100 }}>{renderCell(colId, lead)}</td>
                     ))}
                   </tr>
                 ))

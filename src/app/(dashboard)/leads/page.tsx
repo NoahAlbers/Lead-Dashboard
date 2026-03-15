@@ -68,24 +68,23 @@ export default async function LeadsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Lead Inbox</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {result.total} total leads
-        </p>
-      </div>
+      {/* Title + Quick Stats — configurable */}
+      <InboxWidgets
+        metrics={widgetMetrics}
+        titleRow={
+          <div>
+            <h1 className="text-2xl font-bold">Lead Inbox</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {result.total} total leads
+            </p>
+          </div>
+        }
+      />
 
-      {/* Quick Stats — configurable */}
-      <InboxWidgets metrics={widgetMetrics} />
-
-      {/* Filters */}
-      <Suspense fallback={null}>
-        <LeadFilters />
-      </Suspense>
-
-      {/* Lead Table */}
+      {/* Lead Table with integrated filters */}
       <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Loading leads...</div>}>
         <LeadTable
+          filterBar={<LeadFilters />}
           leads={serializedLeads as never}
           total={result.total}
           page={result.page}

@@ -12,7 +12,7 @@ export function UnitDistribution({ data }: { data: BucketData[] }) {
   if (data.every((d) => d.count === 0)) return <EmptyState />;
 
   return (
-    <ResponsiveContainer width="100%" height={200}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
         <XAxis dataKey="label" tick={{ fontSize: 10 }} />
         <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />

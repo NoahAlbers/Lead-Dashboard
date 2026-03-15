@@ -19,7 +19,7 @@ export function StatusBreakdown({ data }: { data: StatusData[] }) {
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart data={formatted} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 0 }}>
         <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
         <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={80} />

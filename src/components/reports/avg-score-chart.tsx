@@ -17,7 +17,7 @@ export function AvgScoreChart({ data }: { data: ScoreData[] }) {
   }));
 
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height="100%">
       <LineChart data={formatted} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
         <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
         <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} />
