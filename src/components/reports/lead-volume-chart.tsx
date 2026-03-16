@@ -1,7 +1,7 @@
 "use client";
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { TIER_COLORS } from "./chart-colors";
+import { TIER_COLORS, darkenForChart } from "./chart-colors";
 import { EmptyState } from "./dashboard-widget";
 
 interface VolumeData {
@@ -21,7 +21,7 @@ function getTierKeys(data: VolumeData[]): string[] {
   return [...keys];
 }
 
-export function LeadVolumeChart({ data }: { data: VolumeData[] }) {
+export function LeadVolumeChart({ data, tierColorMap }: { data: VolumeData[]; tierColorMap?: Record<string, string> }) {
   if (data.length === 0) return <EmptyState />;
 
   const tierKeys = getTierKeys(data);
@@ -45,7 +45,7 @@ export function LeadVolumeChart({ data }: { data: VolumeData[] }) {
             key={tier}
             dataKey={tier}
             stackId="stack"
-            fill={TIER_COLORS[tier] ?? "#8889A0"}
+            fill={darkenForChart(tierColorMap?.[tier] ?? TIER_COLORS[tier] ?? "#8889A0")}
             radius={[0, 0, 0, 0]}
             name={tier}
           />

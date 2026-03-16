@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Plus, X } from "lucide-react";
 import { getCustomChartData } from "@/actions/report.actions";
 import { CustomChart } from "./custom-chart";
@@ -57,24 +57,37 @@ function saveCharts(charts: ChartConfig[]) {
 function CustomChartCard({ config, onRemove, dateRange }: { config: ChartConfig; onRemove: () => void; dateRange: { from: Date; to: Date } | null }) {
   const [data, setData] = useState<ChartData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    getCustomChartData(config.field, dateRange).then((d) => {
-      setData(d);
-      setLoading(false);
-    });
+    setError(null);
+    getCustomChartData(config.field, dateRange)
+      .then((d) => {
+        setData(d);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err?.message ?? "Failed to load data");
+        setLoading(false);
+      });
   }, [config.field, dateRange]);
 
   return (
-    <div className="rounded-lg border bg-card h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 pt-3">
+    <div className="rounded-lg border bg-card flex flex-col overflow-hidden h-[320px]">
+      <div className="flex items-center justify-between px-4 pt-3 pb-1">
         <h3 className="font-semibold text-sm">{config.title}</h3>
-        <button onClick={onRemove} className="rounded p-1 hover:bg-muted text-muted-foreground"><X className="h-3.5 w-3.5" /></button>
+        <button onClick={onRemove} className="rounded p-1 hover:bg-muted text-muted-foreground">
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <div className="p-4 flex-1 min-h-0">
+      <div className="px-4 pb-4 flex-1 min-h-0">
         {loading ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading...</div>
+        ) : error ? (
+          <div className="flex items-center justify-center h-full text-sm text-red-500">{error}</div>
+        ) : data.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data available</div>
         ) : (
           <CustomChart data={data} chartType={config.chartType} />
         )}
@@ -89,8 +102,12 @@ export function CustomChartManager({ dateRange }: { dateRange: { from: Date; to:
   const [newField, setNewField] = useState("states");
   const [newType, setNewType] = useState<"bar" | "pie" | "line">("bar");
   const [newTitle, setNewTitle] = useState("");
+  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setCharts(loadCharts()); }, []);
+  useEffect(() => {
+    setCharts(loadCharts());
+    setMounted(true);
+  }, []);
 
   function addChart() {
     const fieldLabel = AVAILABLE_FIELDS.find((f) => f.value === newField)?.label ?? newField;
@@ -113,16 +130,29 @@ export function CustomChartManager({ dateRange }: { dateRange: { from: Date; to:
     saveCharts(updated);
   }
 
+  if (!mounted) return null;
+
   return (
-    <>
-      {charts.map((config) => (
-        <div key={config.id} className="h-full">
-          <CustomChartCard config={config} onRemove={() => removeChart(config.id)} dateRange={dateRange} />
+    <div className="mt-6">
+      {(charts.length > 0 || showBuilder) && (
+        <h2 className="font-semibold text-lg mb-4">Custom Charts</h2>
+      )}
+
+      {charts.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {charts.map((config) => (
+            <CustomChartCard
+              key={config.id}
+              config={config}
+              onRemove={() => removeChart(config.id)}
+              dateRange={dateRange}
+            />
+          ))}
         </div>
-      ))}
+      )}
 
       {showBuilder ? (
-        <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div className="rounded-lg border bg-card p-4 space-y-3 max-w-lg">
           <h3 className="font-semibold text-sm">New Custom Chart</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -165,16 +195,14 @@ export function CustomChartManager({ dateRange }: { dateRange: { from: Date; to:
           </div>
         </div>
       ) : (
-        <div>
-          <button
-            onClick={() => setShowBuilder(true)}
-            className="flex items-center gap-2 rounded-lg border border-dashed w-full justify-center py-8 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Add Custom Chart
-          </button>
-        </div>
+        <button
+          onClick={() => setShowBuilder(true)}
+          className="flex items-center gap-2 rounded-lg border border-dashed w-full justify-center py-8 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Add Custom Chart
+        </button>
       )}
-    </>
+    </div>
   );
 }

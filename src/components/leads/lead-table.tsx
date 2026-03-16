@@ -337,7 +337,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
             {!row.isRead ? (
               <Mail className="h-[18px] w-[18px] text-primary" />
             ) : (
-              <MailOpen className="h-[18px] w-[18px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <MailOpen className="h-[18px] w-[18px] text-muted-foreground/40" />
             )}
           </button>
         );

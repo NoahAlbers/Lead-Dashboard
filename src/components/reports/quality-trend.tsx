@@ -1,7 +1,7 @@
 "use client";
 
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { TIER_COLORS } from "./chart-colors";
+import { TIER_COLORS, darkenForChart } from "./chart-colors";
 import { EmptyState } from "./dashboard-widget";
 
 interface VolumeData {
@@ -37,8 +37,8 @@ export function QualityTrend({ data, tierColorMap }: { data: VolumeData[]; tierC
             type="monotone"
             dataKey={tier}
             stackId="1"
-            stroke={tierColorMap?.[tier] ?? TIER_COLORS[tier] ?? "#8889A0"}
-            fill={tierColorMap?.[tier] ?? TIER_COLORS[tier] ?? "#8889A0"}
+            stroke={darkenForChart(tierColorMap?.[tier] ?? TIER_COLORS[tier] ?? "#8889A0")}
+            fill={darkenForChart(tierColorMap?.[tier] ?? TIER_COLORS[tier] ?? "#8889A0")}
             fillOpacity={0.6}
             name={tier}
           />

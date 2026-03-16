@@ -70,7 +70,6 @@ const DEFAULT_LAYOUT = [
   { i: "rent", w: 1 },
   { i: "response", w: 1 },
   { i: "activity", w: 1 },
-  { i: "custom", w: 2 },
 ];
 
 const WIDGET_KEYS = DEFAULT_LAYOUT.map((l) => l.i);
@@ -142,7 +141,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
         {/* Volume */}
         <DashboardWidget title="Lead Volume Over Time" subtitle="Daily new leads by tier">
-          <LeadVolumeChart data={volumeByDay} />
+          <LeadVolumeChart data={volumeByDay} tierColorMap={tierColorMap} />
         </DashboardWidget>
 
         {/* Quality */}
@@ -200,11 +199,10 @@ export default async function ReportsPage({ searchParams }: PageProps) {
           <ActivityFeed activities={activity} />
         </DashboardWidget>
 
-        {/* Custom Charts */}
-        <div>
-          <CustomChartManager dateRange={dateRangeJson ? { from: new Date(dateRangeJson.from), to: new Date(dateRangeJson.to) } : null} />
-        </div>
       </DashboardGrid>
+
+      {/* Custom Charts — outside grid for proper sizing */}
+      <CustomChartManager dateRange={dateRangeJson ? { from: new Date(dateRangeJson.from), to: new Date(dateRangeJson.to) } : null} />
     </div>
   );
 }

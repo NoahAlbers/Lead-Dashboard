@@ -1,7 +1,7 @@
 "use client";
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
-import { TIER_COLORS } from "./chart-colors";
+import { TIER_COLORS, darkenForChart } from "./chart-colors";
 import { EmptyState } from "./dashboard-widget";
 
 interface TierData {
@@ -29,7 +29,7 @@ export function QualityDonut({ data, tierColorMap }: { data: TierData[]; tierCol
             paddingAngle={2}
           >
             {data.map((d) => (
-              <Cell key={d.tier} fill={tierColorMap?.[d.tier] ?? TIER_COLORS[d.tier] ?? "#8889A0"} />
+              <Cell key={d.tier} fill={darkenForChart(tierColorMap?.[d.tier] ?? TIER_COLORS[d.tier] ?? "#8889A0")} />
             ))}
           </Pie>
           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
