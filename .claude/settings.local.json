@@ -5,7 +5,8 @@
       "Bash(find:*)",
       "Bash(file:*)",
       "Bash(grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(rm:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\alber\\Desktop\\acb-form"

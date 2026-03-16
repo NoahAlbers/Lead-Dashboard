@@ -42,6 +42,7 @@ const ALL_METRICS: MetricDefinition[] = [
   // SLA
   { id: "sla_breached", label: "SLA Breached", icon: AlertTriangle, group: "SLA" },
   { id: "sla_at_risk", label: "SLA At Risk", icon: Clock, group: "SLA" },
+  { id: "aging_stale", label: "Aging (7d+)", icon: Clock, group: "SLA" },
 ];
 
 const DEFAULT_WIDGETS = ["new_today", "uncontacted", "a_leads", "follow_up"];

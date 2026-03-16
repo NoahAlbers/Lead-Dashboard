@@ -1,13 +1,17 @@
 import { Suspense } from "react";
 import { getLeads, getLeadStats, getWidgetMetrics } from "@/actions/lead.actions";
+import { getSystemConfig } from "@/actions/config.actions";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { getTierColorMap } from "@/actions/status.actions";
 import { getActivePartners } from "@/actions/partner.actions";
+import { getSavedViews } from "@/actions/saved-view.actions";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { LeadTable } from "@/components/leads/lead-table";
 import { LeadFilters } from "@/components/leads/lead-filters";
 import { InboxWidgets } from "@/components/leads/inbox-widget-config";
 import { StartWorkingButton } from "@/components/leads/start-working-button";
+import { AutoRefreshBar } from "@/components/shared/auto-refresh-bar";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -32,6 +36,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     dateFrom: params.dateFrom as string | undefined,
     dateTo: params.dateTo as string | undefined,
     isRead: params.isRead as string | undefined,
+    ageMin: params.ageMin ? Number(params.ageMin) : undefined,
     page: params.page ? Number(params.page) : 1,
     pageSize: params.pageSize ? Number(params.pageSize) : 25,
     sortField: (params.sortField as string) ?? "createdAt",
@@ -44,9 +49,12 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     "a_leads", "b_leads", "c_leads", "poor_leads", "follow_up", "referred",
     "contacted", "disqualified", "duplicates", "avg_score", "good_states",
     "bad_states", "total_value", "total_units", "sla_breached", "sla_at_risk",
+    "aging_stale",
   ];
 
-  const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners] = await Promise.all([
+  const session = await auth();
+
+  const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners, agingThresholds, savedViews] = await Promise.all([
     getLeads(filters),
     getLeadStats(),
     prisma.emailTemplate.findMany({
@@ -58,6 +66,8 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     getWidgetMetrics(allMetricIds),
     getTierColorMap(),
     getActivePartners(),
+    getSystemConfig("aging_thresholds"),
+    getSavedViews(),
   ]);
 
   const serializedLeads = result.leads.map((l) => ({
@@ -78,6 +88,8 @@ export default async function LeadsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
+      <AutoRefreshBar variant="inbox" />
+
       {/* Title + Quick Stats — configurable */}
       <InboxWidgets
         metrics={widgetMetrics}
@@ -97,7 +109,21 @@ export default async function LeadsPage({ searchParams }: PageProps) {
       {/* Lead Table with integrated filters */}
       <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Loading leads...</div>}>
         <LeadTable
-          filterBar={<LeadFilters />}
+          filterBar={
+            <LeadFilters
+              savedViews={savedViews.map((v) => ({
+                id: v.id,
+                name: v.name,
+                filtersJson: v.filtersJson as Record<string, string> | null,
+                sortJson: v.sortJson as Record<string, string> | null,
+                isTeamView: v.isTeamView,
+                isSystem: v.isSystem,
+                userId: v.userId,
+              }))}
+              currentUserId={session?.user?.id}
+              userRole={session?.user?.role}
+            />
+          }
           leads={serializedLeads as never}
           total={result.total}
           page={result.page}
@@ -109,6 +135,8 @@ export default async function LeadsPage({ searchParams }: PageProps) {
           stateClassifications={stateClassifications}
           tierColorMap={tierColorMap}
           referralPartners={activePartners}
+          agingThresholds={agingThresholds as any}
+          userRole={session?.user?.role}
         />
       </Suspense>
     </div>

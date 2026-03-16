@@ -418,6 +418,247 @@ const INTAKE_SINGLE_FIELDS = new Set([
   "ownershipType", "priorAgency", "debtsNow",
 ]);
 
+export async function getWinLossStats(range: DateRange | null) {
+  const where = range ? { outcomeDate: { gte: range.from, lte: range.to } } : {};
+  const results = await prisma.leadOutcome.groupBy({
+    by: ["outcomeType"],
+    where,
+    _count: { id: true },
+  });
+  return results.map((r) => ({ outcomeType: r.outcomeType, count: r._count.id }));
+}
+
+export async function getOutcomeReasonBreakdown(range: DateRange | null, outcomeType: string) {
+  const dateWhere = range ? { outcomeDate: { gte: range.from, lte: range.to } } : {};
+  const results = await prisma.leadOutcome.groupBy({
+    by: ["reason"],
+    where: { ...dateWhere, outcomeType },
+    _count: { id: true },
+    orderBy: { _count: { id: "desc" } },
+  });
+  return results.map((r) => ({ reason: r.reason, count: r._count.id }));
+}
+
+export async function getWinRateTrend(range: DateRange | null) {
+  const dateWhere = range ? { outcomeDate: { gte: range.from, lte: range.to } } : {};
+  const outcomes = await prisma.leadOutcome.findMany({
+    where: { ...dateWhere, outcomeType: { in: ["won", "lost"] } },
+    select: { outcomeType: true, outcomeDate: true },
+    orderBy: { outcomeDate: "asc" },
+  });
+
+  const monthly: Record<string, { won: number; lost: number }> = {};
+  for (const o of outcomes) {
+    const month = `${o.outcomeDate.getFullYear()}-${String(o.outcomeDate.getMonth() + 1).padStart(2, "0")}`;
+    if (!monthly[month]) monthly[month] = { won: 0, lost: 0 };
+    if (o.outcomeType === "won") monthly[month].won++;
+    else monthly[month].lost++;
+  }
+
+  return Object.entries(monthly).map(([month, d]) => ({
+    month,
+    winRate: d.won + d.lost > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : 0,
+  }));
+}
+
+export async function getAvgDealValue(range: DateRange | null) {
+  const dateWhere = range ? { outcomeDate: { gte: range.from, lte: range.to } } : {};
+  const result = await prisma.leadOutcome.aggregate({
+    where: { ...dateWhere, outcomeType: "won", estimatedValue: { not: null } },
+    _avg: { estimatedValue: true },
+    _count: { id: true },
+  });
+  return {
+    avgValue: Number(result._avg.estimatedValue ?? 0),
+    count: result._count.id,
+  };
+}
+
+export async function getCouldHaveWonBreakdown(range: DateRange | null) {
+  const dateWhere = range ? { outcomeDate: { gte: range.from, lte: range.to } } : {};
+  const results = await prisma.leadOutcome.groupBy({
+    by: ["couldHaveWon"],
+    where: { ...dateWhere, outcomeType: "lost", couldHaveWon: { not: null } },
+    _count: { id: true },
+  });
+  return results.map((r) => ({ answer: r.couldHaveWon ?? "unknown", count: r._count.id }));
+}
+
+export async function getPartnerLeaderboard(range: DateRange | null) {
+  const where = range ? {
+    outcomeDate: { gte: range.from, lte: range.to },
+  } : {};
+
+  const outcomes = await prisma.leadOutcome.findMany({
+    where: { ...where, outcomeType: "referred_out", referralPartnerId: { not: null } },
+    include: { referralPartner: { select: { id: true, name: true } } },
+    orderBy: { outcomeDate: "desc" },
+  });
+
+  // Group by partner, compute counts and values
+  const partnerMap = new Map<string, { partnerId: string; partnerName: string; referralCount: number; totalValue: number; lastReferralDate: Date | null }>();
+
+  for (const o of outcomes) {
+    if (!o.referralPartner) continue;
+    const existing = partnerMap.get(o.referralPartner.id) ?? {
+      partnerId: o.referralPartner.id,
+      partnerName: o.referralPartner.name,
+      referralCount: 0,
+      totalValue: 0,
+      lastReferralDate: null,
+    };
+    existing.referralCount++;
+    existing.totalValue += Number(o.estimatedValue ?? 0);
+    if (!existing.lastReferralDate || o.outcomeDate > existing.lastReferralDate) {
+      existing.lastReferralDate = o.outcomeDate;
+    }
+    partnerMap.set(o.referralPartner.id, existing);
+  }
+
+  return [...partnerMap.values()]
+    .map(p => ({ ...p, avgValue: p.referralCount > 0 ? p.totalValue / p.referralCount : 0, lastReferralDate: p.lastReferralDate?.toISOString() ?? null }))
+    .sort((a, b) => b.totalValue - a.totalValue);
+}
+
+type RuleSignal = "strong_positive" | "positive" | "neutral" | "negative" | "misleading" | "insufficient_data";
+
+export async function getEnhancedRuleEffectiveness(range: DateRange | null): Promise<Array<{
+  name: string; points: number; matched: number; avgImpact: number; pctOfLeads: number;
+  winRate: number; baselineWinRate: number; lift: number; sampleSize: number; signal: RuleSignal;
+}>> {
+  // Get all enabled scoring rules
+  const rules = await prisma.scoringRule.findMany({ where: { enabled: true } });
+
+  // Get all leads (with scoreReasons) in range
+  const where = buildWhere(range);
+  const allLeads = await prisma.lead.findMany({
+    where: { ...where, status: { not: "ARCHIVED" } },
+    select: { id: true, scoreReasons: true, status: true },
+  });
+
+  // Get terminal outcomes
+  const outcomeWhere = range ? { outcomeDate: { gte: range.from, lte: range.to } } : {};
+  const outcomes = await prisma.leadOutcome.findMany({
+    where: outcomeWhere,
+    select: { leadId: true, outcomeType: true },
+  });
+  const outcomeMap = new Map(outcomes.map((o) => [o.leadId, o.outcomeType]));
+
+  // Baseline win rate
+  const totalWithOutcome = outcomes.length;
+  const totalWon = outcomes.filter((o) => o.outcomeType === "won").length;
+  const baselineWinRate = totalWithOutcome > 0 ? (totalWon / totalWithOutcome) * 100 : 0;
+
+  // Per-rule analysis
+  const results = [];
+  for (const rule of rules) {
+    const outcomesJson = rule.outcomesJson as { scoreAdjustment?: number } | null;
+    const points = typeof outcomesJson?.scoreAdjustment === "number" ? outcomesJson.scoreAdjustment : 0;
+
+    // Find leads where this rule fired
+    const matchedLeads = allLeads.filter((lead) => {
+      const sr = lead.scoreReasons as Array<{ ruleName: string; scoreAdjustment: number }> | null;
+      return sr?.some((r) => r.ruleName === rule.name);
+    });
+
+    const matched = matchedLeads.length;
+    const pctOfLeads = allLeads.length > 0 ? (matched / allLeads.length) * 100 : 0;
+
+    // Conversion metrics for matched leads
+    const matchedWithOutcome = matchedLeads.filter((l) => outcomeMap.has(l.id));
+    const matchedWon = matchedLeads.filter((l) => outcomeMap.get(l.id) === "won");
+    const sampleSize = matchedWithOutcome.length;
+    const winRate = sampleSize > 0 ? (matchedWon.length / sampleSize) * 100 : 0;
+    const lift = baselineWinRate > 0 && sampleSize >= 20 ? winRate / baselineWinRate : 0;
+
+    // Determine signal
+    let signal: RuleSignal;
+    if (sampleSize < 20) {
+      signal = "insufficient_data";
+    } else if (points > 0 && lift >= 1.5) {
+      signal = "strong_positive";
+    } else if (points > 0 && lift >= 1.0) {
+      signal = "positive";
+    } else if (points > 0 && lift < 1.0) {
+      signal = "misleading";
+    } else if (points < 0 && winRate < 20) {
+      signal = "negative";
+    } else {
+      signal = "neutral";
+    }
+
+    // Avg impact
+    const avgImpact =
+      matchedLeads.length > 0
+        ? matchedLeads.reduce((sum, l) => {
+            const sr = l.scoreReasons as Array<{ ruleName: string; scoreAdjustment: number }> | null;
+            const match = sr?.find((r) => r.ruleName === rule.name);
+            return sum + (match?.scoreAdjustment ?? 0);
+          }, 0) / matchedLeads.length
+        : 0;
+
+    results.push({
+      name: rule.name,
+      points,
+      matched,
+      avgImpact: Math.round(avgImpact * 10) / 10,
+      pctOfLeads: Math.round(pctOfLeads),
+      winRate,
+      baselineWinRate,
+      lift,
+      sampleSize,
+      signal,
+    });
+  }
+
+  return results.sort((a, b) => b.matched - a.matched);
+}
+
+export async function generateScoringInsights(
+  stats: Array<{
+    name: string;
+    points: number;
+    winRate: number;
+    baselineWinRate: number;
+    lift: number;
+    signal: string;
+  }>
+): Promise<string[]> {
+  const insights: string[] = [];
+
+  // Sort so misleading comes first, then strong_positive, then negative
+  const ordered = [...stats].sort((a, b) => {
+    const priority: Record<string, number> = { misleading: 0, strong_positive: 1, negative: 2 };
+    return (priority[a.signal] ?? 99) - (priority[b.signal] ?? 99);
+  });
+
+  for (const rule of ordered) {
+    if (rule.signal === "insufficient_data") continue;
+    if (rule.signal === "misleading") {
+      insights.push(
+        `"${rule.name}" awards +${rule.points} points but leads matching it convert at only ${rule.winRate.toFixed(0)}% (below ${rule.baselineWinRate.toFixed(0)}% baseline). Consider reducing its weight.`
+      );
+    }
+    if (rule.signal === "strong_positive") {
+      insights.push(
+        `"${rule.name}" has a ${rule.lift.toFixed(1)}x conversion lift (${rule.winRate.toFixed(0)}% win rate). This rule is a strong predictor of success.`
+      );
+    }
+    if (rule.signal === "negative" && rule.points < 0) {
+      insights.push(
+        `"${rule.name}" (${rule.points} pts) correctly identifies low-conversion leads — only ${rule.winRate.toFixed(0)}% win rate. The penalty appears appropriate.`
+      );
+    }
+  }
+
+  if (insights.length === 0) {
+    insights.push(
+      "Not enough terminal outcomes to generate meaningful insights yet. Keep processing leads to build the dataset."
+    );
+  }
+  return insights;
+}
+
 export async function getCustomChartData(
   field: string,
   range: DateRange | null

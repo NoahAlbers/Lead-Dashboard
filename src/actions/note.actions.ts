@@ -28,6 +28,15 @@ export async function addNote(leadId: string, noteBody: string) {
   return note;
 }
 
+export async function bulkAddNote(leadIds: string[], noteBody: string) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+  for (const id of leadIds) {
+    await addNote(id, noteBody);
+  }
+  revalidatePath("/leads");
+}
+
 export async function getLeadNotes(leadId: string) {
   return prisma.leadNote.findMany({
     where: { leadId },

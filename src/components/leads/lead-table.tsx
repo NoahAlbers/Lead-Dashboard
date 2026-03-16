@@ -55,8 +55,10 @@ import { CSS } from "@dnd-kit/utilities";
 import type { LeadStatus } from "@prisma/client";
 import { getStateColor } from "@/lib/state-colors";
 import { SlaBadge } from "@/components/leads/sla-badge";
+import { AgingBadge } from "@/components/leads/aging-badge";
 import { AssignDropdown } from "@/components/leads/assign-dropdown";
 import { BulkActionBar } from "@/components/leads/bulk-action-bar";
+import { useKeyboardShortcuts } from "@/components/shared/keyboard-shortcut-provider";
 
 interface LeadRow {
   id: string;
@@ -107,6 +109,8 @@ interface LeadTableProps {
   stateClassifications?: Record<string, string>;
   tierColorMap?: Record<string, string>;
   filterBar?: React.ReactNode;
+  userRole?: string;
+  agingThresholds?: { green: number; yellow: number; orange: number; red: number };
   referralPartners?: Array<{
     id: string;
     name: string;
@@ -134,6 +138,7 @@ interface ColumnConfig {
 const ALL_COLUMNS: ColumnConfig[] = [
   { id: "readIndicator", label: "Read" },
   { id: "createdAt", label: "Created", sortField: "createdAt" },
+  { id: "age", label: "Age", sortField: "createdAt" },
   { id: "companyName", label: "Company", sortField: "companyName" },
   { id: "fullName", label: "Contact", sortField: "fullName" },
   { id: "email", label: "Email", sortField: "email" },
@@ -154,13 +159,13 @@ const ALL_COLUMNS: ColumnConfig[] = [
 ];
 
 const DEFAULT_VISIBLE = new Set([
-  "readIndicator", "createdAt", "companyName", "fullName", "email", "state",
+  "readIndicator", "createdAt", "age", "companyName", "fullName", "email", "state",
   "score", "qualityTier", "status", "sla", "actions",
 ]);
 const DEFAULT_ORDER = ALL_COLUMNS.map((c) => c.id);
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
-  readIndicator: 40, createdAt: 140, companyName: 200, fullName: 140,
+  readIndicator: 40, createdAt: 140, age: 60, companyName: 200, fullName: 140,
   email: 200, phone: 120, state: 80, score: 70, qualityTier: 70,
   status: 110, recommendedAction: 120, industry: 120, debtType: 120,
   accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, sla: 110, actions: 220,
@@ -253,7 +258,7 @@ function RowQuickActions({ lead, onEmailClick }: { lead: LeadRow; onEmailClick: 
 }
 
 // --- Main Component ---
-export function LeadTable({ leads, total, page, pageSize, totalPages, sortField, sortDirection, emailTemplates = [], stateClassifications = {}, tierColorMap, filterBar, referralPartners = [] }: LeadTableProps) {
+export function LeadTable({ leads, total, page, pageSize, totalPages, sortField, sortDirection, emailTemplates = [], stateClassifications = {}, tierColorMap, filterBar, referralPartners = [], agingThresholds, userRole }: LeadTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -261,6 +266,73 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   const [showPicker, setShowPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; colId: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const lastClickedIndex = useRef<number>(-1);
+  const { registerHandler } = useKeyboardShortcuts();
+
+  // Reset focused index when leads change (new filter/page)
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [leads]);
+
+  // Register inbox keyboard shortcut handler
+  useEffect(() => {
+    const unregister = registerHandler("inbox", (key: string) => {
+      if (leads.length === 0) return false;
+
+      if (key === "j" || key === "ArrowDown") {
+        setFocusedIndex((prev) => Math.min(prev + 1, leads.length - 1));
+        return true;
+      }
+      if (key === "k" || key === "ArrowUp") {
+        setFocusedIndex((prev) => Math.max(prev - 1, 0));
+        return true;
+      }
+      if (key === "Enter" || key === "o") {
+        setFocusedIndex((cur) => {
+          if (cur >= 0 && cur < leads.length) {
+            router.push(`/leads/${leads[cur].id}`);
+          }
+          return cur;
+        });
+        return focusedIndex >= 0;
+      }
+      if (key === "x") {
+        setFocusedIndex((cur) => {
+          if (cur >= 0 && cur < leads.length) {
+            const lead = leads[cur];
+            setSelectedIds((prev) => {
+              const next = new Set(prev);
+              if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id);
+              return next;
+            });
+          }
+          return cur;
+        });
+        return focusedIndex >= 0;
+      }
+      if (key === "r") {
+        setFocusedIndex((cur) => {
+          if (cur >= 0 && cur < leads.length) {
+            toggleReadStatus(leads[cur].id);
+          }
+          return cur;
+        });
+        return focusedIndex >= 0;
+      }
+      if (key === "w") {
+        // Try to find and click the "Start Working" button
+        const workingBtn = document.querySelector('[data-working-mode-trigger]') as HTMLButtonElement | null;
+        if (workingBtn) {
+          workingBtn.click();
+          return true;
+        }
+        return false;
+      }
+      return false;
+    });
+    return unregister;
+  }, [leads, focusedIndex, registerHandler, router]);
 
   // Column config from localStorage
   const [visibleCols, setVisibleCols] = useState<Set<string>>(DEFAULT_VISIBLE);
@@ -393,6 +465,8 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
         return row.lastActivityAt ? format(toZonedTime(new Date(row.lastActivityAt), "America/New_York"), "MM/dd/yy", { timeZone: "America/New_York" }) : "—";
       case "sla":
         return <SlaBadge slaStatus={row.slaStatus} remainingMinutes={row.slaRemainingMinutes ?? undefined} compact />;
+      case "age":
+        return <AgingBadge createdAt={row.createdAt} thresholds={agingThresholds} />;
       case "actions":
         return <RowQuickActions lead={row} onEmailClick={(l) => setEmailDialogLead(l)} />;
       default:
@@ -428,7 +502,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   return (
     <div className="space-y-4">
       {/* Bulk Action Bar */}
-      <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} />
+      <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} userRole={userRole} />
 
       {/* Filter bar + Column picker */}
       <div className="flex flex-wrap items-center gap-3">
@@ -590,10 +664,10 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
                   <td colSpan={activeColumns.length + 1} className="px-4 py-12 text-center text-muted-foreground">No leads found</td>
                 </tr>
               ) : (
-                leads.map((lead) => (
+                leads.map((lead, rowIndex) => (
                   <tr
                     key={lead.id}
-                    className={`group border-b hover:bg-muted/30 transition-colors cursor-pointer ${!lead.isRead ? "font-semibold" : ""}`}
+                    className={`group border-b hover:bg-muted/30 transition-colors cursor-pointer ${!lead.isRead ? "font-semibold" : ""} ${rowIndex === focusedIndex ? "ring-2 ring-primary/50" : ""}`}
                     onClick={() => router.push(`/leads/${lead.id}`)}
                   >
                     <td className="px-2 py-3" style={{ width: 40 }}>
@@ -602,11 +676,25 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
                         checked={selectedIds.has(lead.id)}
                         onChange={(e) => {
                           e.stopPropagation();
-                          setSelectedIds((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id);
-                            return next;
-                          });
+                          const isShift = e.nativeEvent instanceof MouseEvent && (e.nativeEvent as MouseEvent).shiftKey;
+                          if (isShift && lastClickedIndex.current >= 0) {
+                            const start = Math.min(lastClickedIndex.current, rowIndex);
+                            const end = Math.max(lastClickedIndex.current, rowIndex);
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              for (let i = start; i <= end; i++) {
+                                next.add(leads[i].id);
+                              }
+                              return next;
+                            });
+                          } else {
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(lead.id)) next.delete(lead.id); else next.add(lead.id);
+                              return next;
+                            });
+                          }
+                          lastClickedIndex.current = rowIndex;
                         }}
                         onClick={(e) => e.stopPropagation()}
                         className="rounded border-gray-300"

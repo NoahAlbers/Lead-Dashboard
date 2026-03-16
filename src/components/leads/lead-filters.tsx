@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Search, X, Bookmark } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Search, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { getActiveUsers } from "@/actions/assignment.actions";
+import { SavedViewsPanel } from "./saved-views-panel";
 
 const STATUS_OPTIONS = [
   { value: "NEW", label: "New" },
@@ -33,32 +34,43 @@ const SLA_OPTIONS = [
   { value: "escalated", label: "Escalated" },
 ];
 
-interface SavedViewDef {
-  label: string;
-  params: Record<string, string>;
+interface SavedView {
+  id: string;
+  name: string;
+  filtersJson: Record<string, string> | null;
+  sortJson: Record<string, string> | null;
+  isTeamView: boolean;
+  isSystem: boolean;
+  userId: string | null;
 }
 
-const SAVED_VIEWS: SavedViewDef[] = [
-  { label: "New Today", params: { status: "NEW", dateFrom: new Date().toISOString().slice(0, 10) } },
-  { label: "Uncontacted", params: { status: "NEW,REVIEWED" } },
-  { label: "SLA At Risk", params: { slaStatus: "warning,breached,escalated" } },
-  { label: "Follow-Up Needed", params: { status: "FOLLOW_UP_NEEDED" } },
-  { label: "Unassigned", params: { assignedUserId: "__unassigned__" } },
-  { label: "Duplicates", params: { status: "DUPLICATE" } },
-];
+interface LeadFiltersProps {
+  savedViews?: SavedView[];
+  currentUserId?: string;
+  userRole?: string;
+}
 
-export function LeadFilters() {
+export function LeadFilters({ savedViews, currentUserId, userRole }: LeadFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchInput, setSearchInput] = useState(
     searchParams.get("search") ?? ""
   );
   const [users, setUsers] = useState<{ id: string; name: string; role: string }[]>([]);
-  const [showViews, setShowViews] = useState(false);
 
   useEffect(() => {
     getActiveUsers().then(setUsers);
+  }, []);
+
+  // Listen for focus-search custom event from keyboard shortcut provider
+  useEffect(() => {
+    function handleFocusSearch() {
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener("focus-search", handleFocusSearch);
+    return () => window.removeEventListener("focus-search", handleFocusSearch);
   }, []);
 
   function updateParam(key: string, value: string | null) {
@@ -82,16 +94,6 @@ export function LeadFilters() {
     setSearchInput("");
   }
 
-  function applyView(view: SavedViewDef) {
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(view.params)) {
-      params.set(k, v);
-    }
-    params.set("page", "1");
-    router.push(`${pathname}?${params.toString()}`);
-    setShowViews(false);
-  }
-
   const isUnreadFilter = searchParams.get("isRead") === "false";
 
   const hasFilters =
@@ -102,13 +104,15 @@ export function LeadFilters() {
     searchParams.has("dateFrom") ||
     searchParams.has("isRead") ||
     searchParams.has("assignedUserId") ||
-    searchParams.has("slaStatus");
+    searchParams.has("slaStatus") ||
+    searchParams.has("ageMin");
 
   return (
     <div className="flex flex-wrap gap-3">
       <form onSubmit={handleSearch} className="relative flex-1 min-w-[200px]">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
+          ref={searchInputRef}
           type="text"
           placeholder="Search leads..."
           value={searchInput}
@@ -171,6 +175,18 @@ export function LeadFilters() {
         placeholder="To"
       />
 
+      <select
+        value={searchParams.get("ageMin") ?? ""}
+        onChange={(e) => updateParam("ageMin", e.target.value || null)}
+        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
+      >
+        <option value="">Any Age</option>
+        <option value="3">3+ days</option>
+        <option value="7">7+ days</option>
+        <option value="14">14+ days</option>
+        <option value="30">30+ days</option>
+      </select>
+
       <button
         onClick={() => updateParam("isRead", isUnreadFilter ? null : "false")}
         className={`h-9 rounded-md border px-3 text-sm font-medium transition-colors ${
@@ -183,28 +199,13 @@ export function LeadFilters() {
       </button>
 
       {/* Saved Views */}
-      <div className="relative">
-        <button
-          onClick={() => setShowViews(!showViews)}
-          className="h-9 rounded-md border border-input bg-card px-3 text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
-        >
-          <Bookmark className="h-3.5 w-3.5" />
-          Views
-        </button>
-        {showViews && (
-          <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border bg-card shadow-lg z-50 py-1">
-            {SAVED_VIEWS.map((view) => (
-              <button
-                key={view.label}
-                onClick={() => applyView(view)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-              >
-                {view.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {savedViews && currentUserId && userRole && (
+        <SavedViewsPanel
+          views={savedViews}
+          currentUserId={currentUserId}
+          userRole={userRole}
+        />
+      )}
 
       {hasFilters && (
         <button

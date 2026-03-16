@@ -18,6 +18,7 @@ export async function getLeads(params: {
   dateFrom?: string;
   dateTo?: string;
   isRead?: string;
+  ageMin?: number;
   page?: number;
   pageSize?: number;
   sortField?: string;
@@ -86,6 +87,14 @@ export async function getLeads(params: {
     where.isRead = false;
   } else if (isRead === "true") {
     where.isRead = true;
+  }
+
+  if (params.ageMin && params.ageMin > 0) {
+    const cutoff = new Date(Date.now() - params.ageMin * 86400000);
+    where.createdAt = {
+      ...(where.createdAt as Record<string, Date> | undefined),
+      lte: cutoff,
+    };
   }
 
   const allowedSortFields = [
@@ -476,6 +485,7 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     },
     sla_breached: () => prisma.lead.count({ where: { slaStatus: { in: ["breached", "escalated"] }, ...notArchived } }),
     sla_at_risk: () => prisma.lead.count({ where: { slaStatus: { in: ["warning", "breached", "escalated"] }, ...notArchived } }),
+    aging_stale: () => prisma.lead.count({ where: { createdAt: { lte: new Date(Date.now() - 7 * 86400000) }, ...notArchived } }),
   };
 
   const promises = metricIds.map(async (id) => {
@@ -518,6 +528,74 @@ export async function getUnreadCount() {
   return prisma.lead.count({
     where: { isRead: false, status: { notIn: ["ARCHIVED", "MERGED"] } },
   });
+}
+
+export async function bulkArchiveLeads(leadIds: string[]) {
+  const session = await auth();
+  if (!session || !["ADMIN", "MANAGER"].includes(session.user.role)) {
+    throw new Error("Unauthorized: Manager or Admin required");
+  }
+  for (const id of leadIds) {
+    await updateLeadStatus(id, "ARCHIVED");
+  }
+  revalidatePath("/leads");
+}
+
+export async function logResearch(
+  leadId: string,
+  data: {
+    sources: string[];
+    companyVerified: string;
+    contactVerified: string;
+    companySize: string;
+    redFlags: string[];
+    recommendation: string;
+    findings: string;
+  }
+) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  // Create event
+  await prisma.leadEvent.create({
+    data: {
+      leadId,
+      eventType: "research_completed",
+      eventDataJson: data,
+      userId: session.user.id,
+    },
+  });
+
+  // Create formatted note
+  const noteLines = [
+    `Research completed by ${session.user.name}`,
+    `Sources: ${data.sources.join(", ")}`,
+    `Company verified: ${data.companyVerified}`,
+    `Contact verified: ${data.contactVerified}`,
+    `Company size: ${data.companySize}`,
+    data.redFlags.length > 0 ? `Red flags: ${data.redFlags.join(", ")}` : null,
+    `Recommendation: ${data.recommendation}`,
+    data.findings ? `Findings: ${data.findings}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  await prisma.leadNote.create({
+    data: {
+      leadId,
+      noteBody: noteLines,
+      userId: session.user.id,
+    },
+  });
+
+  // Update lastActivityAt
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { lastActivityAt: new Date() },
+  });
+
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
 }
 
 export async function getArchivedLeads() {

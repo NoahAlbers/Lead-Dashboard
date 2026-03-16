@@ -5,6 +5,9 @@ import { Header } from "@/components/layout/header";
 import { FaviconManager } from "@/components/layout/favicon-manager";
 import { SoundProvider } from "@/components/layout/sound-manager";
 import { WorkingModeProvider } from "@/components/leads/working-mode-provider";
+import { AutoRefreshProvider } from "@/components/shared/auto-refresh-provider";
+import { KeyboardShortcutProvider } from "@/components/shared/keyboard-shortcut-provider";
+import { ShortcutHelpModal } from "@/components/shared/shortcut-help-modal";
 import { getUnreadCount } from "@/actions/lead.actions";
 
 export default async function DashboardLayout({
@@ -19,6 +22,8 @@ export default async function DashboardLayout({
 
   return (
     <SoundProvider>
+    <AutoRefreshProvider>
+    <KeyboardShortcutProvider>
     <WorkingModeProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar
@@ -36,7 +41,10 @@ export default async function DashboardLayout({
           <FaviconManager />
         </div>
       </div>
+      <ShortcutHelpModal />
     </WorkingModeProvider>
+    </KeyboardShortcutProvider>
+    </AutoRefreshProvider>
     </SoundProvider>
   );
 }

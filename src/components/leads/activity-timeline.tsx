@@ -34,6 +34,7 @@ const eventLabels: Record<string, string> = {
   duplicate_flagged: "Duplicate flagged",
   assigned_user_changed: "Assignment changed",
   quick_log: "Quick log action",
+  research_completed: "Research completed",
 };
 
 function formatEventDetail(event: TimelineEvent): string | null {
@@ -51,6 +52,10 @@ function formatEventDetail(event: TimelineEvent): string | null {
   }
   if (event.eventType === "duplicate_flagged" && Array.isArray(data.matches)) {
     return `${data.matches.length} potential duplicate(s) found`;
+  }
+  if (event.eventType === "research_completed") {
+    const d = data as { recommendation?: string; sources?: string[] };
+    return d.recommendation ? `Recommendation: ${d.recommendation}` : null;
   }
   return null;
 }

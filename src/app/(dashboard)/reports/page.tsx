@@ -12,7 +12,7 @@ import { QualityTrend } from "@/components/reports/quality-trend";
 import { PipelineFunnel } from "@/components/reports/pipeline-funnel";
 import { StatusBreakdown } from "@/components/reports/status-breakdown";
 import { GeoHeatmap } from "@/components/reports/geo-heatmap";
-import { RuleEffectiveness } from "@/components/reports/rule-effectiveness";
+import { ScoringInsights } from "@/components/reports/scoring-insights";
 import { AvgScoreChart } from "@/components/reports/avg-score-chart";
 import { RecentLeadsTable } from "@/components/reports/recent-leads-table";
 import { TopLeads } from "@/components/reports/top-leads";
@@ -24,6 +24,10 @@ import { ActivityFeed } from "@/components/reports/activity-feed";
 import { CustomChartManager } from "@/components/reports/custom-chart-builder";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { getTierColorMap } from "@/actions/status.actions";
+import { AutoRefreshBar } from "@/components/shared/auto-refresh-bar";
+import { ActivityExportButton } from "@/components/reports/activity-export-button";
+import { WinLossRatio, LossReasons, WinRateTrend, CouldHaveWon } from "@/components/reports/win-loss-widgets";
+import { PartnerLeaderboard } from "@/components/reports/partner-leaderboard";
 
 import {
   getReportKPIs,
@@ -33,7 +37,8 @@ import {
   getLeadsByState,
   getPipelineFunnel,
   getAvgScoreOverTime,
-  getScoringRuleEffectiveness,
+  getEnhancedRuleEffectiveness,
+  generateScoringInsights,
   getRecentLeads,
   getTopLeadsByScore,
   getFollowUpLeads,
@@ -42,6 +47,11 @@ import {
   getRentDistribution,
   getRecentActivity,
   getDailyLeadCounts,
+  getWinLossStats,
+  getOutcomeReasonBreakdown,
+  getWinRateTrend as getWinRateTrendData,
+  getCouldHaveWonBreakdown,
+  getPartnerLeaderboard,
 } from "@/actions/report.actions";
 
 function getRangeDate(range: TimeRange): { from: Date; to: Date } | null {
@@ -70,6 +80,11 @@ const DEFAULT_LAYOUT = [
   { i: "rent", w: 1 },
   { i: "response", w: 1 },
   { i: "activity", w: 1 },
+  { i: "win-loss", w: 1 },
+  { i: "loss-reasons", w: 1 },
+  { i: "win-rate-trend", w: 1 },
+  { i: "could-have-won", w: 1 },
+  { i: "partner-leaderboard", w: 2 },
 ];
 
 const WIDGET_KEYS = DEFAULT_LAYOUT.map((l) => l.i);
@@ -96,7 +111,8 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     kpis, volumeByDay, tierDist, statusBreakdown, byState,
     funnel, avgScoreTime, ruleStats, recentLeads, topLeads, followUps,
     responseTime, unitDist, rentDist, activity, sparkline, stateClassifications,
-    tierColorMap,
+    tierColorMap, winLossStats, lossReasons, winRateTrend, couldHaveWon,
+    partnerLeaderboard,
   ] = await Promise.all([
     getReportKPIs(dateRange),
     getLeadVolumeByDay(dateRange),
@@ -105,7 +121,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getLeadsByState(dateRange),
     getPipelineFunnel(dateRange),
     getAvgScoreOverTime(dateRange),
-    getScoringRuleEffectiveness(dateRange),
+    getEnhancedRuleEffectiveness(dateRange),
     getRecentLeads(10),
     getTopLeadsByScore(dateRange, 10),
     getFollowUpLeads(),
@@ -116,7 +132,14 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getDailyLeadCounts(dateRange),
     getStateClassificationMap(),
     getTierColorMap(),
+    getWinLossStats(dateRange),
+    getOutcomeReasonBreakdown(dateRange, "lost"),
+    getWinRateTrendData(dateRange),
+    getCouldHaveWonBreakdown(dateRange),
+    getPartnerLeaderboard(dateRange),
   ]);
+
+  const ruleInsights = await generateScoringInsights(ruleStats);
 
   // Serialize dateRange for client component
   const dateRangeJson = dateRange ? { from: dateRange.from.toISOString(), to: dateRange.to.toISOString() } : null;
@@ -129,9 +152,13 @@ export default async function ReportsPage({ searchParams }: PageProps) {
           <h1 className="text-2xl font-bold">Reports Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">Lead performance analytics</p>
         </div>
-        <Suspense fallback={null}>
-          <TimeRangeSelector />
-        </Suspense>
+        <div className="flex items-center gap-4">
+          <ActivityExportButton userRole={session.user.role} />
+          <AutoRefreshBar variant="reports" />
+          <Suspense fallback={null}>
+            <TimeRangeSelector />
+          </Suspense>
+        </div>
       </div>
 
       {/* Dashboard Grid */}
@@ -165,8 +192,8 @@ export default async function ReportsPage({ searchParams }: PageProps) {
           <GeoHeatmap data={byState} stateClassifications={stateClassifications} />
         </DashboardWidget>
         {/* Scoring */}
-        <DashboardWidget title="Rule Effectiveness" subtitle="Which scoring rules fire">
-          <RuleEffectiveness data={ruleStats} />
+        <DashboardWidget title="Rule Effectiveness" subtitle="Conversion lift & signal analysis">
+          <ScoringInsights data={ruleStats} insights={ruleInsights} />
         </DashboardWidget>
         <DashboardWidget title="Avg Score Over Time" subtitle="Lead quality trend">
           <AvgScoreChart data={avgScoreTime} />
@@ -197,6 +224,25 @@ export default async function ReportsPage({ searchParams }: PageProps) {
         </DashboardWidget>
         <DashboardWidget title="Activity Feed" subtitle="Recent actions">
           <ActivityFeed activities={activity} />
+        </DashboardWidget>
+
+        {/* Win/Loss Analysis */}
+        <DashboardWidget title="Win/Loss Ratio" subtitle="Outcome distribution">
+          <WinLossRatio data={winLossStats} />
+        </DashboardWidget>
+        <DashboardWidget title="Loss Reasons" subtitle="Top reasons for lost deals">
+          <LossReasons data={lossReasons} />
+        </DashboardWidget>
+        <DashboardWidget title="Win Rate Trend" subtitle="Monthly win rate">
+          <WinRateTrend data={winRateTrend} />
+        </DashboardWidget>
+        <DashboardWidget title="Could Have Won?" subtitle="Lost deal analysis">
+          <CouldHaveWon data={couldHaveWon} />
+        </DashboardWidget>
+
+        {/* Partner Leaderboard */}
+        <DashboardWidget title="Referral Partner Leaderboard" subtitle="Partners ranked by referral value">
+          <PartnerLeaderboard data={partnerLeaderboard} />
         </DashboardWidget>
 
       </DashboardGrid>

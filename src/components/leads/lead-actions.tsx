@@ -14,14 +14,23 @@ import {
   MessageSquare,
   Copy,
   Merge,
+  Printer,
 } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
 import { EmailDialog } from "@/components/leads/email-dialog";
 import { MergeSearchDialog } from "@/components/leads/merge-search-dialog";
+import { OutcomeModal } from "@/components/leads/outcome-modal";
 import { toast } from "@/components/ui/use-toast";
 import type { LeadStatus } from "@prisma/client";
+
+const TERMINAL_STATUSES: Record<string, "won" | "lost" | "disqualified" | "referred_out"> = {
+  WON: "won",
+  LOST: "lost",
+  DISQUALIFIED: "disqualified",
+  REFERRED_OUT: "referred_out",
+};
 
 interface EmailTemplate {
   id: string;
@@ -84,6 +93,7 @@ export function LeadActions({
   const [showStatusSelect, setShowStatusSelect] = useState(false);
   const [showMergeSearch, setShowMergeSearch] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [outcomeModal, setOutcomeModal] = useState<{ outcomeType: "won" | "lost" | "disqualified" | "referred_out"; targetStatus: LeadStatus } | null>(null);
 
   function handleEmailAction() {
     if (templates.length > 0 && email) {
@@ -118,10 +128,27 @@ export function LeadActions({
   }
 
   function handleStatusChange(newStatus: LeadStatus) {
+    // Intercept terminal statuses to show outcome modal first
+    const outcomeType = TERMINAL_STATUSES[newStatus];
+    if (outcomeType) {
+      setOutcomeModal({ outcomeType, targetStatus: newStatus });
+      setShowStatusSelect(false);
+      return;
+    }
     startTransition(async () => {
       await updateLeadStatus(leadId, newStatus);
       setShowStatusSelect(false);
       toast({ title: `Status changed to ${newStatus.replace(/_/g, " ")}`, variant: "success" });
+    });
+  }
+
+  function handleOutcomeConfirm() {
+    if (!outcomeModal) return;
+    const targetStatus = outcomeModal.targetStatus;
+    setOutcomeModal(null);
+    startTransition(async () => {
+      await updateLeadStatus(leadId, targetStatus);
+      toast({ title: `Status changed to ${targetStatus.replace(/_/g, " ")}`, variant: "success" });
     });
   }
 
@@ -246,6 +273,13 @@ export function LeadActions({
           Export for CRM
         </button>
         <button
+          onClick={() => window.open(`/leads/${leadId}/print`, "_blank")}
+          className={actionBtn}
+        >
+          <Printer className="h-4 w-4 text-slate-500" />
+          Print / PDF
+        </button>
+        <button
           onClick={() => setShowMergeSearch(true)}
           className={actionBtn}
         >
@@ -355,6 +389,17 @@ export function LeadActions({
         onClose={() => setShowMergeSearch(false)}
         currentLeadId={leadId}
       />
+
+      {outcomeModal && (
+        <OutcomeModal
+          open={true}
+          onClose={() => setOutcomeModal(null)}
+          onConfirm={handleOutcomeConfirm}
+          leadId={leadId}
+          outcomeType={outcomeModal.outcomeType}
+          referralPartners={referralPartners.map((p) => ({ id: p.id, name: p.name }))}
+        />
+      )}
     </div>
   );
 }

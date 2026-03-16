@@ -11,10 +11,12 @@ import { StatusBadge, TierBadge } from "@/components/shared/status-badge";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { getTierColorMap } from "@/actions/status.actions";
 import { getLeadSlaInfo } from "@/actions/sla.actions";
+import { getOutcome } from "@/actions/outcome.actions";
 import { getStateColor } from "@/lib/state-colors";
 import { SlaBadge, SlaProgressBar } from "@/components/leads/sla-badge";
 import { WorkingModeBarWrapper, DispositionPanelWrapper, SessionSummaryWrapper } from "@/components/leads/working-mode-wrapper";
 import { LeadActions } from "@/components/leads/lead-actions";
+import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { ScoreCircle } from "@/components/leads/score-circle";
 import { prisma } from "@/lib/db";
@@ -121,13 +123,14 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo] = await Promise.all([
+  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
     getStateClassificationMap(),
     getTierColorMap(),
     getLeadSlaInfo(id),
+    getOutcome(id),
   ]);
 
   if (!lead) notFound();
@@ -468,6 +471,29 @@ export default async function LeadDetailPage({ params }: PageProps) {
             </CompactCard>
           )}
 
+          {/* Referral Outcome */}
+          {outcome && outcome.outcomeType === "referred_out" && (
+            <CompactCard title="Referral Outcome">
+              <div className="space-y-1">
+                {outcome.referralPartner && (
+                  <InfoRow label="Referred to" value={outcome.referralPartner.name} />
+                )}
+                {outcome.estimatedValue != null && (
+                  <InfoRow label="Estimated Value" value={`$${Number(outcome.estimatedValue).toLocaleString()}`} />
+                )}
+                {outcome.reason && (
+                  <InfoRow label="Reason" value={outcome.reason} />
+                )}
+                {outcome.notes && (
+                  <div className="mt-2 pt-2 border-t">
+                    <p className="text-xs text-muted-foreground mb-1">Notes</p>
+                    <p className="text-xs whitespace-pre-wrap rounded-md bg-muted/50 p-2">{outcome.notes}</p>
+                  </div>
+                )}
+              </div>
+            </CompactCard>
+          )}
+
           {/* Activity Timeline (merged events + notes) */}
           <CompactCard title="Activity Timeline">
             <ActivityTimeline events={events} notes={notes} leadId={lead.id} />
@@ -501,6 +527,26 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 assignedUserName={session?.user.name ?? "ACB Team"}
                 referralPartners={activePartners}
               />
+            </div>
+
+            {/* Research */}
+            <div className="rounded-lg border bg-card p-3">
+              <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">Research</h3>
+              <EnrichmentButtons
+                leadId={lead.id}
+                companyName={lead.companyName}
+                fullName={lead.fullName}
+                firstName={lead.firstName}
+                lastName={lead.lastName}
+                state={lead.state}
+                city={lead.city}
+                companyWebsite={intakeFields?.companyWebsite}
+              />
+              {events.some((e) => e.eventType === "research_completed") ? (
+                <p className="text-xs text-emerald-600 mt-2">Research completed</p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-2">Not yet researched</p>
+              )}
             </div>
 
             {/* Assignment */}

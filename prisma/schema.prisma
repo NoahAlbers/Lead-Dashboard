@@ -60,6 +60,7 @@ model User {
   notificationPreferences NotificationPreference[]
   soundPreference         SoundPreference?
   followUpReminders       FollowUpReminder[]
+  recordedOutcomes        LeadOutcome[] @relation("RecordedOutcomes")
 
   @@map("users")
 }
@@ -162,6 +163,7 @@ model Lead {
   assignmentLogs  AssignmentLog[]
   mergeHistoryPrimary   MergeHistory[] @relation("MergePrimary")
   mergeHistoryDuplicate MergeHistory[] @relation("MergeDuplicate")
+  outcome               LeadOutcome?
 
   @@index([status])
   @@index([qualityTier])
@@ -274,6 +276,7 @@ model ReferralPartner {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   recommendedLeads Lead[] @relation("RecommendedReferral")
+  outcomes         LeadOutcome[] @relation("OutcomeReferral")
 
   @@map("referral_partners")
 }
@@ -321,9 +324,12 @@ model SavedView {
   id   String @id @default(cuid())
   name String
 
-  filtersJson Json? @map("filters_json")
-  sortJson    Json? @map("sort_json")
-  isSystem    Boolean @default(false) @map("is_system")
+  filtersJson   Json?   @map("filters_json")
+  sortJson      Json?   @map("sort_json")
+  columnsJson   Json?   @map("columns_json")
+  isSystem      Boolean @default(false) @map("is_system")
+  isTeamView    Boolean @default(false) @map("is_team_view")
+  hiddenByUsers Json?   @map("hidden_by_users") // string[] of userIds
 
   userId String? @map("user_id")
   user   User?   @relation(fields: [userId], references: [id])
@@ -548,4 +554,56 @@ model MergeHistory {
   @@index([primaryLeadId])
   @@index([duplicateLeadId])
   @@map("merge_history")
+}
+
+// ===== Phase 2: System Configuration =====
+
+model SystemConfig {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Json
+
+  @@map("system_config")
+}
+
+// ===== Phase 2: Win/Loss Analysis =====
+
+model LeadOutcome {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  leadId String @unique @map("lead_id")
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  outcomeType    String  @map("outcome_type") // won, lost, disqualified, referred_out
+  reason         String
+  reasonDetail   String? @map("reason_detail") @db.Text
+  competitor     String?
+  couldHaveWon   String? @map("could_have_won") // yes, maybe, no
+  estimatedValue Decimal? @map("estimated_value") @db.Decimal(12, 2)
+  estimatedAnnualRevenue Decimal? @map("estimated_annual_revenue") @db.Decimal(12, 2)
+  accountVolume  Int?    @map("account_volume")
+
+  referralPartnerId String?          @map("referral_partner_id")
+  referralPartner   ReferralPartner? @relation("OutcomeReferral", fields: [referralPartnerId], references: [id])
+
+  notes          String? @db.Text
+  outcomeDate    DateTime @map("outcome_date")
+
+  recordedByUserId String @map("recorded_by_user_id")
+  recordedByUser   User   @relation("RecordedOutcomes", fields: [recordedByUserId], references: [id])
+
+  @@index([outcomeType])
+  @@index([outcomeDate])
+  @@map("lead_outcomes")
+}
+
+model OutcomeReasonConfig {
+  id          String  @id @default(cuid())
+  outcomeType String  @map("outcome_type") // won, lost, disqualified, referred_out
+  reasonText  String  @map("reason_text")
+  sortOrder   Int     @default(0) @map("sort_order")
+  active      Boolean @default(true)
+
+  @@map("outcome_reason_config")
 }

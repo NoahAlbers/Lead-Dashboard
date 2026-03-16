@@ -3,11 +3,15 @@ import { getArchivedLeads } from "@/actions/lead.actions";
 import { getEmailTypes } from "@/actions/email-type.actions";
 import { getStateClassifications } from "@/actions/state-classification.actions";
 import { getSlaConfigs, getOfficeHours, getHolidays } from "@/actions/sla.actions";
+import { getSystemConfig } from "@/actions/config.actions";
+import { getOutcomeReasonConfigs } from "@/actions/outcome.actions";
 import { SettingsClient } from "./settings-client";
 import { SlaSettings } from "@/components/admin/sla-settings";
+import { AgingThresholdSettings } from "@/components/admin/aging-threshold-settings";
+import { OutcomeReasonSettings } from "@/components/admin/outcome-reason-settings";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
@@ -16,7 +20,11 @@ export default async function SettingsPage() {
     getSlaConfigs(),
     getOfficeHours(),
     getHolidays(),
+    getSystemConfig("aging_thresholds"),
+    getOutcomeReasonConfigs(),
   ]);
+
+  const agingThresholds = (agingThresholdsRaw as { green: number; yellow: number; orange: number; red: number } | null) ?? { green: 2, yellow: 4, orange: 6, red: 7 };
 
   return (
     <div className="space-y-6">
@@ -82,6 +90,24 @@ export default async function SettingsPage() {
             name: h.name,
           }))}
           tierNames={tierRanges.map((t) => t.name)}
+        />
+      </div>
+
+      {/* Lead Aging Thresholds */}
+      <div className="rounded-lg border bg-card p-5">
+        <AgingThresholdSettings initialThresholds={agingThresholds} />
+      </div>
+
+      {/* Outcome Reasons */}
+      <div className="rounded-lg border bg-card p-5">
+        <OutcomeReasonSettings
+          initialConfigs={outcomeReasonConfigs.map((c) => ({
+            id: c.id,
+            outcomeType: c.outcomeType,
+            reasonText: c.reasonText,
+            sortOrder: c.sortOrder,
+            active: c.active,
+          }))}
         />
       </div>
 
