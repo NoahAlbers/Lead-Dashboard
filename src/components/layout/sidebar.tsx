@@ -12,6 +12,7 @@ import {
   Ruler,
   ClipboardList,
   Bell,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { label: "Lead Inbox", href: "/leads", icon: LayoutDashboard, badgeKey: "inbox" },
   { label: "Assignments", href: "/leads/assignments", icon: ClipboardList, roles: ["ADMIN", "MANAGER"] },
   { label: "Reports", href: "/reports", icon: BarChart3, roles: ["ADMIN", "MANAGER"] },
+  { label: "Live Monitor", href: "/admin/monitor", icon: Activity, roles: ["ADMIN", "MANAGER"] },
   { label: "Scoring Rules", href: "/admin/rules", icon: Ruler, roles: ["ADMIN"] },
   { label: "Referral Partners", href: "/admin/partners", icon: Handshake, roles: ["ADMIN"] },
   { label: "Email Templates", href: "/admin/templates", icon: Mail, roles: ["ADMIN"] },

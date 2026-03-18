@@ -496,7 +496,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Activity Timeline (merged events + notes) */}
           <CompactCard title="Activity Timeline">
-            <ActivityTimeline events={events} notes={notes} leadId={lead.id} />
+            <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
           </CompactCard>
 
           {/* Disposition Panel (Working Mode) */}

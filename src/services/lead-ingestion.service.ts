@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { scoreAndUpdateLead } from "./scoring.service";
 import { findDuplicates } from "./duplicate-detection.service";
 import { evaluateReferral } from "./referral.service";
@@ -145,6 +146,18 @@ export async function ingestLead(
   // Log creation event
   await logEvent(lead.id, "lead_created", {
     source: metadata?.source ?? "webflow",
+  });
+
+  // Log submission data for timeline display
+  await prisma.leadEvent.create({
+    data: {
+      leadId: lead.id,
+      eventType: "lead_data_received",
+      eventDataJson: {
+        fields: formData,
+        metadata: metadata ?? {},
+      } as Prisma.InputJsonValue,
+    },
   });
 
   // Run scoring

@@ -13,6 +13,7 @@ export default auth((req) => {
   if (
     pathname.startsWith("/api/leads/ingest") ||
     pathname.startsWith("/api/leads/partial") ||
+    pathname.startsWith("/api/leads/heartbeat") ||
     pathname.startsWith("/api/health")
   ) {
     return NextResponse.next();
@@ -36,10 +37,14 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Admin-only routes
+  // Admin-only routes (allow MANAGER for monitor page)
   if (pathname.startsWith("/admin")) {
     const role = req.auth.user?.role;
-    if (role !== "ADMIN") {
+    if (pathname.startsWith("/admin/monitor")) {
+      if (role !== "ADMIN" && role !== "MANAGER") {
+        return NextResponse.redirect(new URL("/leads", req.url));
+      }
+    } else if (role !== "ADMIN") {
       return NextResponse.redirect(new URL("/leads", req.url));
     }
   }

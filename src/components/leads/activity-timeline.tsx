@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { format, toZonedTime } from "date-fns-tz";
 import { addNote } from "@/actions/note.actions";
 import { toast } from "@/components/ui/use-toast";
+import { SubmissionDataTable } from "./submission-data-table";
 
 interface TimelineEvent {
   id: string;
@@ -35,6 +36,7 @@ const eventLabels: Record<string, string> = {
   assigned_user_changed: "Assignment changed",
   quick_log: "Quick log action",
   research_completed: "Research completed",
+  lead_data_received: "Submission Data Received",
 };
 
 function formatEventDetail(event: TimelineEvent): string | null {
@@ -71,9 +73,10 @@ interface ActivityTimelineProps {
   events: TimelineEvent[];
   notes?: NoteItem[];
   leadId?: string;
+  stateClassMap?: Record<string, string>;
 }
 
-export function ActivityTimeline({ events, notes = [], leadId }: ActivityTimelineProps) {
+export function ActivityTimeline({ events, notes = [], leadId, stateClassMap }: ActivityTimelineProps) {
   const [noteText, setNoteText] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -160,7 +163,14 @@ export function ActivityTimeline({ events, notes = [], leadId }: ActivityTimelin
                     <p className="font-medium mt-0.5">
                       {eventLabels[event.eventType] ?? event.eventType}
                     </p>
-                    {detail && <p className="text-muted-foreground mt-0.5">{detail}</p>}
+                    {event.eventType === "lead_data_received" ? (
+                      <SubmissionDataTable
+                        data={event.eventDataJson as { fields: Record<string, unknown>; metadata: Record<string, unknown> }}
+                        stateClassMap={stateClassMap}
+                      />
+                    ) : (
+                      detail && <p className="text-muted-foreground mt-0.5">{detail}</p>
+                    )}
                   </div>
                 </div>
               );

@@ -32,7 +32,30 @@ interface TierRange {
 }
 
 function getLeadFieldValue(lead: Record<string, unknown>, field: string): unknown {
-  return lead[field] ?? null;
+  const raw = lead[field] ?? null;
+
+  // If field is "state" and lead.states exists as an array, return it
+  if (field === "state" && Array.isArray(lead["states"]) && (lead["states"] as unknown[]).length > 0) {
+    return lead["states"];
+  }
+
+  // If the return value is a JSON string that looks like an array, try to parse it
+  if (typeof raw === "string" && raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Not valid JSON, return as-is
+    }
+  }
+
+  return raw;
+}
+
+function safeStringify(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object" && !Array.isArray(value)) return JSON.stringify(value);
+  return String(value);
 }
 
 function evaluateCondition(
@@ -40,113 +63,123 @@ function evaluateCondition(
   condition: RuleCondition,
   stateClassMap?: Record<string, string>
 ): boolean {
-  // Handle state_classification virtual field
-  if (condition.field === "state_classification" && stateClassMap) {
-    const statesArr = lead["states"];
-    const singleState = lead["state"];
-    const allStates: string[] = [];
+  try {
+    // Handle state_classification virtual field
+    if (condition.field === "state_classification" && stateClassMap) {
+      const statesArr = lead["states"];
+      const singleState = lead["state"];
+      const allStates: string[] = [];
 
-    if (Array.isArray(statesArr) && statesArr.length > 0) {
-      allStates.push(...statesArr.map((s: unknown) => String(s).toUpperCase()));
-    } else if (singleState) {
-      allStates.push(...String(singleState).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
+      if (Array.isArray(statesArr) && statesArr.length > 0) {
+        allStates.push(...statesArr.map((s: unknown) => String(s).toUpperCase()));
+      } else if (singleState) {
+        allStates.push(...String(singleState).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
+      }
+
+      if (allStates.length === 0) return false;
+
+      const condVal = String(condition.value).toLowerCase();
+      switch (condition.operator) {
+        case "equals":
+          return allStates.some((s) => (stateClassMap[s] ?? "unknown") === condVal);
+        case "not_equals":
+          return !allStates.some((s) => (stateClassMap[s] ?? "unknown") === condVal);
+        default:
+          return false;
+      }
     }
 
-    if (allStates.length === 0) return false;
+    let value = getLeadFieldValue(lead, condition.field);
 
-    const condVal = String(condition.value).toLowerCase();
+    // For the "state" field, also check the "states" array so rules can match any selected state
+    if (condition.field === "state") {
+      const statesArr = lead["states"];
+      if (Array.isArray(statesArr) && statesArr.length > 0) {
+        value = statesArr;
+      }
+    }
+
+    const condValue = condition.value;
+
+    // Null/undefined guard: if value is null/undefined and operator is not is_empty/is_not_empty, return false
+    if ((value === null || value === undefined) && condition.operator !== "is_empty" && condition.operator !== "is_not_empty") {
+      return false;
+    }
+
+    // Treat empty/whitespace-only strings as null for all operators except is_empty/is_not_empty
+    if (typeof value === "string" && value.trim() === "" && condition.operator !== "is_empty" && condition.operator !== "is_not_empty") {
+      return false;
+    }
+
+    // If the lead value is an array, check if ANY element satisfies the condition
+    if (Array.isArray(value)) {
+      const items = value.map((v) => safeStringify(v).toLowerCase());
+      switch (condition.operator) {
+        case "equals":
+          return items.includes(safeStringify(condValue).toLowerCase());
+        case "not_equals":
+          return !items.includes(safeStringify(condValue).toLowerCase());
+        case "contains":
+          return items.some((item) => item.includes(safeStringify(condValue).toLowerCase()));
+        case "in":
+          if (Array.isArray(condValue)) {
+            const targets = condValue.map((v) => safeStringify(v).toLowerCase());
+            return items.some((item) => targets.includes(item));
+          }
+          return false;
+        case "not_in":
+          if (Array.isArray(condValue)) {
+            const targets = condValue.map((v) => safeStringify(v).toLowerCase());
+            return !items.some((item) => targets.includes(item));
+          }
+          return true;
+        case "is_empty":
+          return value.length === 0;
+        case "is_not_empty":
+          return value.length > 0;
+        default:
+          return false;
+      }
+    }
+
+    const safeValue = safeStringify(value).toLowerCase();
+    const safeCondValue = safeStringify(condValue).toLowerCase();
+
     switch (condition.operator) {
       case "equals":
-        // True if ANY state has this classification
-        return allStates.some((s) => (stateClassMap[s] ?? "unknown") === condVal);
+        return safeValue === safeCondValue;
       case "not_equals":
-        // True if NO state has this classification
-        return !allStates.some((s) => (stateClassMap[s] ?? "unknown") === condVal);
-      default:
-        return false;
-    }
-  }
-
-  let value = getLeadFieldValue(lead, condition.field);
-
-  // For the "state" field, also check the "states" array so rules can match any selected state
-  if (condition.field === "state") {
-    const statesArr = lead["states"];
-    if (Array.isArray(statesArr) && statesArr.length > 0) {
-      value = statesArr; // Use the array instead of single value
-    }
-  }
-
-  const condValue = condition.value;
-
-  // If the lead value is an array, check if ANY element satisfies the condition
-  if (Array.isArray(value)) {
-    const items = value.map((v) => String(v).toLowerCase());
-    switch (condition.operator) {
-      case "equals":
-        return items.includes(String(condValue).toLowerCase());
-      case "not_equals":
-        return !items.includes(String(condValue).toLowerCase());
+        return safeValue !== safeCondValue;
       case "contains":
-        return items.some((item) => item.includes(String(condValue).toLowerCase()));
+        return safeValue.includes(safeCondValue);
       case "in":
         if (Array.isArray(condValue)) {
-          const targets = condValue.map((v) => String(v).toLowerCase());
-          return items.some((item) => targets.includes(item));
+          return condValue.map((v) => safeStringify(v).toLowerCase()).includes(safeValue);
         }
         return false;
       case "not_in":
         if (Array.isArray(condValue)) {
-          const targets = condValue.map((v) => String(v).toLowerCase());
-          return !items.some((item) => targets.includes(item));
+          return !condValue.map((v) => safeStringify(v).toLowerCase()).includes(safeValue);
         }
         return true;
+      case "greater_than": {
+        const numVal = Number(value);
+        return !isNaN(numVal) && numVal > Number(condValue);
+      }
+      case "less_than": {
+        const numVal = Number(value);
+        return !isNaN(numVal) && numVal < Number(condValue);
+      }
       case "is_empty":
-        return items.length === 0;
+        return value === null || value === undefined || String(value).trim() === "";
       case "is_not_empty":
-        return items.length > 0;
+        return value !== null && value !== undefined && String(value).trim() !== "";
       default:
         return false;
     }
-  }
-
-  switch (condition.operator) {
-    case "equals":
-      return String(value).toLowerCase() === String(condValue).toLowerCase();
-    case "not_equals":
-      return String(value).toLowerCase() !== String(condValue).toLowerCase();
-    case "contains":
-      return String(value ?? "")
-        .toLowerCase()
-        .includes(String(condValue).toLowerCase());
-    case "in":
-      if (Array.isArray(condValue)) {
-        return condValue
-          .map((v) => String(v).toLowerCase())
-          .includes(String(value).toLowerCase());
-      }
-      return false;
-    case "not_in":
-      if (Array.isArray(condValue)) {
-        return !condValue
-          .map((v) => String(v).toLowerCase())
-          .includes(String(value).toLowerCase());
-      }
-      return true;
-    case "greater_than": {
-      const numVal = Number(value);
-      return !isNaN(numVal) && numVal > Number(condValue);
-    }
-    case "less_than": {
-      const numVal = Number(value);
-      return !isNaN(numVal) && numVal < Number(condValue);
-    }
-    case "is_empty":
-      return value === null || value === undefined || String(value).trim() === "";
-    case "is_not_empty":
-      return value !== null && value !== undefined && String(value).trim() !== "";
-    default:
-      return false;
+  } catch (err) {
+    console.error(`[Scoring] evaluateCondition failed for field "${condition.field}" (operator: ${condition.operator}):`, err);
+    return false;
   }
 }
 
@@ -235,18 +268,24 @@ export async function scoreLead(lead: Lead): Promise<{
   const appliedRules: AppliedRule[] = [];
 
   for (const rule of rules) {
-    const conditions = rule.conditionsJson as unknown as RuleCondition[];
-    const outcomes = rule.outcomesJson as unknown as RuleOutcome;
+    try {
+      const conditions = rule.conditionsJson as unknown as RuleCondition[];
+      const outcomes = rule.outcomesJson as unknown as RuleOutcome;
 
-    if (evaluateRule(leadData, conditions, stateClassMap)) {
-      score += outcomes.scoreAdjustment;
-      appliedRules.push({
-        ruleName: rule.name,
-        scoreAdjustment: outcomes.scoreAdjustment,
-        reason: outcomes.reason,
-        hardStop: outcomes.hardStop,
-        action: outcomes.action,
-      });
+      if (evaluateRule(leadData, conditions, stateClassMap)) {
+        score += outcomes.scoreAdjustment;
+        appliedRules.push({
+          ruleName: rule.name,
+          scoreAdjustment: outcomes.scoreAdjustment,
+          reason: outcomes.reason,
+          hardStop: outcomes.hardStop,
+          action: outcomes.action,
+        });
+      }
+    } catch (err) {
+      console.error(`[Scoring] Rule "${rule.name}" failed for lead ${lead.id}:`, err);
+      // Skip this rule, continue scoring with remaining rules
+      continue;
     }
   }
 

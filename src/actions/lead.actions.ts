@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { logEvent } from "@/services/activity-log.service";
 import { scoreAndUpdateLead } from "@/services/scoring.service";
-import type { LeadStatus, Prisma } from "@prisma/client";
+import { Prisma, type LeadStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { estStartOfDay, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
 
@@ -596,6 +596,71 @@ export async function logResearch(
 
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
+}
+
+export async function recalculateAllScores() {
+  const session = await auth();
+  if (!session || !["ADMIN", "MANAGER"].includes(session.user.role)) {
+    throw new Error("Unauthorized");
+  }
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      status: { notIn: ["ARCHIVED", "MERGED"] },
+    },
+    select: { id: true },
+  });
+
+  let scored = 0;
+  let failed = 0;
+  for (const lead of leads) {
+    try {
+      await scoreAndUpdateLead(lead.id);
+      scored++;
+    } catch (err) {
+      console.error(`Failed to score lead ${lead.id}:`, err);
+      failed++;
+    }
+  }
+
+  revalidatePath("/leads");
+  revalidatePath("/reports");
+  return { scored, failed, total: leads.length };
+}
+
+export async function backfillSubmissionDataEvents() {
+  const session = await auth();
+  if (!session || !["ADMIN"].includes(session.user.role)) throw new Error("Unauthorized");
+
+  // Find leads with rawPayloadJson but no lead_data_received event
+  const leads = await prisma.lead.findMany({
+    where: {
+      NOT: { rawPayloadJson: { equals: Prisma.DbNull } },
+      events: { none: { eventType: "lead_data_received" } },
+    },
+    select: { id: true, rawPayloadJson: true, source: true },
+    take: 500,
+  });
+
+  let created = 0;
+  for (const lead of leads) {
+    const raw = lead.rawPayloadJson as Record<string, unknown> | null;
+    if (!raw) continue;
+    await prisma.leadEvent.create({
+      data: {
+        leadId: lead.id,
+        eventType: "lead_data_received",
+        eventDataJson: JSON.parse(JSON.stringify({
+          fields: (raw._rawIntakeForm as Record<string, unknown>) ?? raw,
+          metadata: { source: lead.source ?? "unknown" },
+        })),
+      },
+    });
+    created++;
+  }
+
+  revalidatePath("/leads");
+  return { created };
 }
 
 export async function getArchivedLeads() {

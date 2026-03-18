@@ -626,6 +626,9 @@ model IngestionQueue {
   sourceIp      String?   @map("source_ip")
   errorMessage  String?   @map("error_message") @db.Text
   retryCount    Int       @default(0) @map("retry_count")
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  formOpenedAt    DateTime? @map("form_opened_at")
+  userAgent       String?   @map("user_agent")
   receivedAt    DateTime  @default(now()) @map("received_at")
   processedAt   DateTime? @map("processed_at")
   createdAt     DateTime  @default(now()) @map("created_at")

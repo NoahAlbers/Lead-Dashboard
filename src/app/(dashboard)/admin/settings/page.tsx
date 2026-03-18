@@ -13,6 +13,8 @@ import { AgingThresholdSettings } from "@/components/admin/aging-threshold-setti
 import { OutcomeReasonSettings } from "@/components/admin/outcome-reason-settings";
 import { IngestionHealthDashboard } from "@/components/admin/ingestion-health";
 import { FieldMappingSettings } from "@/components/admin/field-mapping-settings";
+import { RecalculateScoresButton } from "@/components/admin/recalculate-scores-button";
+import { BackfillSubmissionDataButton } from "@/components/admin/backfill-submission-data-button";
 
 export default async function SettingsPage() {
   const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session] = await Promise.all([
@@ -132,6 +134,16 @@ export default async function SettingsPage() {
           />
         </div>
       )}
+
+      {/* Recalculate Scores */}
+      <div className="rounded-lg border bg-card p-5">
+        <RecalculateScoresButton />
+      </div>
+
+      {/* Backfill Submission Data */}
+      <div className="rounded-lg border bg-card p-5">
+        <BackfillSubmissionDataButton />
+      </div>
 
       <div className="rounded-lg border bg-card p-5 space-y-6">
         {/* CRM Field Mapping */}
