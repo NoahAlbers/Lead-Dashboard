@@ -5,13 +5,17 @@ import { getStateClassifications } from "@/actions/state-classification.actions"
 import { getSlaConfigs, getOfficeHours, getHolidays } from "@/actions/sla.actions";
 import { getSystemConfig } from "@/actions/config.actions";
 import { getOutcomeReasonConfigs } from "@/actions/outcome.actions";
+import { getIngestionStats } from "@/actions/ingestion.actions";
+import { auth } from "@/lib/auth";
 import { SettingsClient } from "./settings-client";
 import { SlaSettings } from "@/components/admin/sla-settings";
 import { AgingThresholdSettings } from "@/components/admin/aging-threshold-settings";
 import { OutcomeReasonSettings } from "@/components/admin/outcome-reason-settings";
+import { IngestionHealthDashboard } from "@/components/admin/ingestion-health";
+import { FieldMappingSettings } from "@/components/admin/field-mapping-settings";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
@@ -22,6 +26,9 @@ export default async function SettingsPage() {
     getHolidays(),
     getSystemConfig("aging_thresholds"),
     getOutcomeReasonConfigs(),
+    getIngestionStats().catch(() => null),
+    getSystemConfig("field_mapping"),
+    auth(),
   ]);
 
   const agingThresholds = (agingThresholdsRaw as { green: number; yellow: number; orange: number; red: number } | null) ?? { green: 2, yellow: 4, orange: 6, red: 7 };
@@ -110,6 +117,21 @@ export default async function SettingsPage() {
           }))}
         />
       </div>
+
+      {/* Ingestion Field Mapping */}
+      <div className="rounded-lg border bg-card p-5">
+        <FieldMappingSettings initialMapping={fieldMapping as Record<string, string> ?? {}} />
+      </div>
+
+      {/* Ingestion Health Monitoring */}
+      {ingestionStats && (
+        <div className="rounded-lg border bg-card p-5">
+          <IngestionHealthDashboard
+            initialStats={ingestionStats}
+            isAdmin={session?.user.role === "ADMIN"}
+          />
+        </div>
+      )}
 
       <div className="rounded-lg border bg-card p-5 space-y-6">
         {/* CRM Field Mapping */}

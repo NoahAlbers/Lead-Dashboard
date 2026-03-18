@@ -9,6 +9,15 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
+  // Allow public API endpoints (lead ingestion + health)
+  if (
+    pathname.startsWith("/api/leads/ingest") ||
+    pathname.startsWith("/api/leads/partial") ||
+    pathname.startsWith("/api/health")
+  ) {
+    return NextResponse.next();
+  }
+
   // Allow auth API routes
   if (pathname.startsWith("/api/auth")) {
     return NextResponse.next();

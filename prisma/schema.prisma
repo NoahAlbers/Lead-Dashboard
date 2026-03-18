@@ -164,6 +164,7 @@ model Lead {
   mergeHistoryPrimary   MergeHistory[] @relation("MergePrimary")
   mergeHistoryDuplicate MergeHistory[] @relation("MergeDuplicate")
   outcome               LeadOutcome?
+  ingestionQueue        IngestionQueue[]
 
   @@index([status])
   @@index([qualityTier])
@@ -606,4 +607,56 @@ model OutcomeReasonConfig {
   active      Boolean @default(true)
 
   @@map("outcome_reason_config")
+}
+
+// ===== Zero-Loss Ingestion Pipeline =====
+
+model IngestionQueue {
+  id            String    @id @default(cuid())
+  submissionId  String    @unique @map("submission_id")
+  sessionId     String?   @map("session_id")
+  status        String    @default("received") // received, partial, processing, completed, failed, duplicate
+  isPartial     Boolean   @default(false) @map("is_partial")
+  partialStep   String?   @map("partial_step")
+  rawPayload    Json      @map("raw_payload")
+  leadId        String?   @map("lead_id")
+  lead          Lead?     @relation(fields: [leadId], references: [id])
+  receiptId     String?   @map("receipt_id")
+  formVersion   String?   @map("form_version")
+  sourceIp      String?   @map("source_ip")
+  errorMessage  String?   @map("error_message") @db.Text
+  retryCount    Int       @default(0) @map("retry_count")
+  receivedAt    DateTime  @default(now()) @map("received_at")
+  processedAt   DateTime? @map("processed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("ingestion_queue")
+}
+
+model ReceiptSequence {
+  id      String @id @default(cuid())
+  year    Int    @unique
+  lastNum Int    @default(0) @map("last_num")
+
+  @@map("receipt_sequence")
+}
+
+model ReconciliationLog {
+  id                  String   @id @default(cuid())
+  createdAt           DateTime @default(now()) @map("created_at")
+  periodStart         DateTime @map("period_start")
+  periodEnd           DateTime @map("period_end")
+  submissionsReceived Int      @map("submissions_received")
+  leadsCreated        Int      @map("leads_created")
+  duplicates          Int
+  failures            Int
+  partials            Int
+  discrepancy         Boolean
+  details             Json?
+
+  @@map("reconciliation_logs")
 }
