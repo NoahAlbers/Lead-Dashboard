@@ -129,17 +129,55 @@ export async function POST(req: NextRequest) {
       status: authValid ? "received" : "auth_suspect",
     });
 
-    // Only auto-process if auth is valid
+    // Process synchronously so the lead exists in the DB before we respond.
+    // This adds ~300ms but prevents 404s when the user clicks the new lead.
     if (authValid) {
-      processIngestionItem(queueItem.id).catch((err) => {
-        logger.error("INGEST", "Async processing failed", {
-          queueId: queueItem.id,
-          error: err instanceof Error ? err.message : String(err),
+      try {
+        await processIngestionItem(queueItem.id);
+
+        // Re-fetch to get the lead_id after processing
+        const processed = await prisma.ingestionQueue.findUnique({
+          where: { id: queueItem.id },
         });
-      });
+
+        return NextResponse.json(
+          {
+            success: true,
+            receipt_id: receiptId,
+            lead_id: processed?.leadId ?? null,
+            submission_id: submissionId,
+            received_at: new Date().toISOString(),
+            status:
+              processed?.status === "completed" ? "completed" : "received",
+          },
+          { status: 200, headers }
+        );
+      } catch (processingError) {
+        logger.error("INGEST", "Processing failed (data is queued)", {
+          queueId: queueItem.id,
+          error:
+            processingError instanceof Error
+              ? processingError.message
+              : String(processingError),
+        });
+        // Data IS saved in the queue — respond with success
+        return NextResponse.json(
+          {
+            success: true,
+            receipt_id: receiptId,
+            lead_id: null,
+            submission_id: submissionId,
+            received_at: new Date().toISOString(),
+            status: "received",
+            message:
+              "Submission received. Processing will complete shortly.",
+          },
+          { status: 200, headers }
+        );
+      }
     }
 
-    // Always return 200 to the form — never lose a lead
+    // Auth-suspect: saved but not processed — return 200
     return NextResponse.json(
       {
         success: true,

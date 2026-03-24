@@ -5,8 +5,6 @@ import { findDuplicates } from "./duplicate-detection.service";
 import { evaluateReferral } from "./referral.service";
 import { logEvent } from "./activity-log.service";
 import { createNotificationsForRole } from "./notification.service";
-import { sendNewLeadEmail } from "./email-notification.service";
-
 interface WebflowFormData {
   [key: string]: unknown;
 }
@@ -204,11 +202,6 @@ export async function ingestLead(
     lead.id,
     isHighPriority ? "HIGH" : "NORMAL"
   ).catch(() => {}); // Don't fail ingestion if notification fails
-
-  // Redundant email notification
-  sendNewLeadEmail(lead).catch((err) => {
-    console.error("[EMAIL] Failed to send new lead email:", err);
-  });
 
   return lead;
 }

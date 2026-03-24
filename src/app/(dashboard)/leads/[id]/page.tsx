@@ -133,7 +133,28 @@ export default async function LeadDetailPage({ params }: PageProps) {
     getOutcome(id),
   ]);
 
-  if (!lead) notFound();
+  if (!lead) {
+    // Defense in depth: check if this lead is still being processed
+    const pendingItem = await prisma.ingestionQueue.findFirst({
+      where: {
+        OR: [{ leadId: id }, { submissionId: id }],
+        status: { in: ["received", "processing"] },
+      },
+    });
+
+    if (pendingItem) {
+      // Wait briefly and retry — lead should exist momentarily
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const retryLead = await getLead(id);
+      if (!retryLead) notFound();
+      // If retry succeeded, fall through — but we need to re-fetch everything
+      // Simplest: just redirect to the same page which will re-run the whole fetch
+      const { redirect } = await import("next/navigation");
+      redirect(`/leads/${id}`);
+    }
+
+    notFound();
+  }
 
   if (!lead.isRead) {
     await markLeadAsRead(id);

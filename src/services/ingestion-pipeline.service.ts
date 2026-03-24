@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/db";
 import { ingestLead } from "@/services/lead-ingestion.service";
 import { normalizeState } from "@/lib/us-states";
-import { sendFailureAlertEmail } from "@/services/email-notification.service";
+import {
+  sendFailureAlertEmail,
+  sendNewLeadEmail,
+} from "@/services/email-notification.service";
 import { logger } from "@/lib/logger";
 
 // --- Helpers (mirrored from intake-form route for consistency) ---
@@ -32,7 +35,7 @@ function splitComma(val: unknown): string[] {
   return val.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-interface NormalizedPayload {
+export interface NormalizedPayload {
   fullName?: string;
   companyName?: string;
   noCompany?: boolean;
@@ -303,6 +306,20 @@ export async function processIngestionItem(queueId: string): Promise<void> {
       queueId,
       leadId: lead.id,
       submissionId: item.submissionId,
+    });
+
+    // Send email notification with full normalized data
+    sendNewLeadEmail({
+      receiptId: item.receiptId || "N/A",
+      normalized,
+      score: lead.score ?? undefined,
+      qualityTier: lead.qualityTier ?? undefined,
+      recommendedAction: lead.recommendedAction ?? undefined,
+      leadId: lead.id,
+    }).catch((err) => {
+      logger.error("PIPELINE", "Email notification failed (non-blocking)", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
 
     // Update queue with success
