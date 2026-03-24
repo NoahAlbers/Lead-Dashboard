@@ -32,11 +32,20 @@ interface TierRange {
 }
 
 function getLeadFieldValue(lead: Record<string, unknown>, field: string): unknown {
-  const raw = lead[field] ?? null;
+  let raw = lead[field] ?? null;
 
   // If field is "state" and lead.states exists as an array, return it
   if (field === "state" && Array.isArray(lead["states"]) && (lead["states"] as unknown[]).length > 0) {
     return lead["states"];
+  }
+
+  // Check rawPayloadJson._rawIntakeForm for residential/intake fields
+  if (raw === null || raw === undefined) {
+    const rawPayload = lead.rawPayloadJson as Record<string, unknown> | null;
+    if (rawPayload?._rawIntakeForm) {
+      const intakeForm = rawPayload._rawIntakeForm as Record<string, unknown>;
+      raw = intakeForm[field] ?? null;
+    }
   }
 
   // If the return value is a JSON string that looks like an array, try to parse it

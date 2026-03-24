@@ -15,6 +15,7 @@ import { getOutcome } from "@/actions/outcome.actions";
 import { getStateColor } from "@/lib/state-colors";
 import { SlaBadge, SlaProgressBar } from "@/components/leads/sla-badge";
 import { WorkingModeBarWrapper, DispositionPanelWrapper, SessionSummaryWrapper } from "@/components/leads/working-mode-wrapper";
+import { MarkReadOnView } from "@/components/leads/mark-read-on-view";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
@@ -156,9 +157,8 @@ export default async function LeadDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  if (!lead.isRead) {
-    await markLeadAsRead(id);
-  }
+  // markLeadAsRead moved to client-side MarkReadOnView component
+  // (calling revalidatePath during server render crashes the page)
 
   const activePartners = await getActivePartners();
 
@@ -194,6 +194,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-3">
+      <MarkReadOnView leadId={lead.id} isRead={lead.isRead ?? false} />
       {/* Working Mode Bar */}
       <WorkingModeBarWrapper />
       <SessionSummaryWrapper />

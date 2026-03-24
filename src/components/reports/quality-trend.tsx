@@ -12,12 +12,23 @@ interface VolumeData {
 export function QualityTrend({ data, tierColorMap }: { data: VolumeData[]; tierColorMap?: Record<string, string> }) {
   if (data.length === 0) return <EmptyState />;
 
-  const tierKeys = new Set<string>();
+  const tierKeysSet = new Set<string>();
   for (const d of data) {
     for (const k of Object.keys(d)) {
-      if (k !== "date" && k !== "total") tierKeys.add(k);
+      if (k !== "date" && k !== "total" && k !== "label") tierKeysSet.add(k);
     }
   }
+
+  // Sort tiers in a consistent order: A → B → C → Poor → Unknown → anything else
+  const TIER_ORDER = ["A Lead", "B Lead", "C Lead", "Poor Fit", "Unknown"];
+  const tierKeys = [...tierKeysSet].sort((a, b) => {
+    const ai = TIER_ORDER.indexOf(a);
+    const bi = TIER_ORDER.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
   const formatted = data.map((d) => ({
     ...d,
@@ -31,7 +42,7 @@ export function QualityTrend({ data, tierColorMap }: { data: VolumeData[]; tierC
         <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
         <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
         <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-        {[...tierKeys].map((tier) => (
+        {tierKeys.map((tier) => (
           <Area
             key={tier}
             type="monotone"

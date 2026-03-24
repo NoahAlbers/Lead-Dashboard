@@ -249,7 +249,7 @@ export function LeadActions({
       {/* Other Actions */}
       <div className="space-y-1.5">
         <button
-          onClick={() => handleQuickLog("referral_sent", "Marked as Referred")}
+          onClick={() => handleStatusChange("REFERRED_OUT" as LeadStatus)}
           disabled={isPending}
           className={actionBtn}
         >

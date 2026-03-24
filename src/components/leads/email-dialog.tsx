@@ -156,10 +156,74 @@ function renderTemplate(
   return result;
 }
 
+function htmlToPlainText(html: string): string {
+  let text = html;
+
+  // Decode HTML entities first
+  text = text.replace(/&nbsp;/g, " ");
+  text = text.replace(/&amp;/g, "&");
+  text = text.replace(/&lt;/g, "<");
+  text = text.replace(/&gt;/g, ">");
+  text = text.replace(/&quot;/g, '"');
+  text = text.replace(/&#39;/g, "'");
+
+  // Convert links: <a href="URL">text</a> → text (URL)
+  text = text.replace(/<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, (_, url, linkText) => {
+    const cleanText = linkText.replace(/<[^>]+>/g, "").trim();
+    if (cleanText === url || cleanText === url.replace(/^https?:\/\//, "")) return url;
+    return `${cleanText} (${url})`;
+  });
+
+  // Handle ordered lists: number each <li> sequentially
+  text = text.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, content) => {
+    let counter = 0;
+    return content.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m: string, liContent: string) => {
+      counter++;
+      return `\n${counter}. ${liContent.replace(/<[^>]+>/g, "").trim()}`;
+    });
+  });
+
+  // Handle unordered lists: bullet each <li>
+  text = text.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, content) => {
+    return content.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m: string, liContent: string) => {
+      return `\n• ${liContent.replace(/<[^>]+>/g, "").trim()}`;
+    });
+  });
+
+  // Convert block elements to double newlines (paragraph breaks)
+  text = text.replace(/<\/p>/gi, "\n\n");
+  text = text.replace(/<\/div>/gi, "\n\n");
+  text = text.replace(/<\/h[1-6]>/gi, "\n\n");
+  text = text.replace(/<\/blockquote>/gi, "\n\n");
+
+  // Convert <br> to single newline
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+
+  // Convert <hr> to separator
+  text = text.replace(/<hr\s*\/?>/gi, "\n---\n");
+
+  // Strip all remaining HTML tags
+  text = text.replace(/<[^>]+>/g, "");
+
+  // Clean up whitespace
+  text = text.replace(/[ \t]+/g, " ");
+  text = text.replace(/\n /g, "\n");
+  text = text.replace(/ \n/g, "\n");
+  text = text.replace(/\n{3,}/g, "\n\n");
+  text = text.trim();
+
+  return text;
+}
+
 function buildMailto(to: string, subject: string, body: string): string {
-  // Strip HTML tags for mailto body
-  const plainBody = body.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ");
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+  const plainBody = htmlToPlainText(body);
+  const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+
+  if (mailto.length > 30000) {
+    console.warn("[Email] mailto link is very long (" + mailto.length + " chars), may be truncated by email client");
+  }
+
+  return mailto;
 }
 
 const TYPE_COLORS: Record<string, string> = {

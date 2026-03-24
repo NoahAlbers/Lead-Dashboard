@@ -44,11 +44,15 @@ const OPERATORS = [
   { value: "is_not_empty", label: "Is Not Empty" },
 ];
 
-const LEAD_FIELDS = [
-  "state", "state_classification", "email", "phone", "companyName", "fullName", "industry",
-  "debtType", "serviceRequested", "urgency", "businessType",
-  "accountVolume", "city", "zip",
+const LEAD_FIELD_GROUPS: Array<{ label: string; fields: string[] }> = [
+  { label: "Contact", fields: ["fullName", "companyName", "email", "phone", "alternatePhone"] },
+  { label: "Location", fields: ["state", "state_classification", "city", "zip", "country"] },
+  { label: "Business / Case", fields: ["industry", "debtType", "balanceAmount", "estimatedClaimValue", "accountVolume", "serviceRequested", "notesFromForm", "urgency", "businessType"] },
+  { label: "Portfolio (Residential)", fields: ["ownershipType", "rentalTypes", "propertyTypes", "avgRent", "listingSites", "pmSoftware", "debtsNow", "priorAgency"] },
+  { label: "Metadata", fields: ["source", "leadSource", "referrer"] },
 ];
+
+const LEAD_FIELDS = LEAD_FIELD_GROUPS.flatMap((g) => g.fields);
 
 export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
   const router = useRouter();
@@ -285,10 +289,14 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
                     }}
                     className="h-9 rounded-md border border-input bg-card px-2 text-sm"
                   >
-                    {LEAD_FIELDS.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
+                    {LEAD_FIELD_GROUPS.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.fields.map((f) => (
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                   <select

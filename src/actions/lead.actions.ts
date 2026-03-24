@@ -437,10 +437,30 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     referred: () => prisma.lead.count({ where: { status: "REFERRED_OUT" } }),
     disqualified: () => prisma.lead.count({ where: { status: "DISQUALIFIED" } }),
     duplicates: () => prisma.lead.count({ where: { status: "DUPLICATE" } }),
-    a_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "A", mode: "insensitive" }, ...notArchived } }),
-    b_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "B", mode: "insensitive" }, ...notArchived } }),
-    c_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "C", mode: "insensitive" }, ...notArchived } }),
-    poor_leads: () => prisma.lead.count({ where: { qualityTier: { contains: "Poor", mode: "insensitive" }, ...notArchived } }),
+    a_leads: async () => {
+      const { getTierRanges } = await import("@/actions/status.actions");
+      const tiers = await getTierRanges();
+      const tierName = tiers[0]?.name ?? "A Lead";
+      return prisma.lead.count({ where: { qualityTier: tierName, ...notArchived } });
+    },
+    b_leads: async () => {
+      const { getTierRanges } = await import("@/actions/status.actions");
+      const tiers = await getTierRanges();
+      const tierName = tiers[1]?.name ?? "B Lead";
+      return prisma.lead.count({ where: { qualityTier: tierName, ...notArchived } });
+    },
+    c_leads: async () => {
+      const { getTierRanges } = await import("@/actions/status.actions");
+      const tiers = await getTierRanges();
+      const tierName = tiers[2]?.name ?? "C Lead";
+      return prisma.lead.count({ where: { qualityTier: tierName, ...notArchived } });
+    },
+    poor_leads: async () => {
+      const { getTierRanges } = await import("@/actions/status.actions");
+      const tiers = await getTierRanges();
+      const tierName = tiers[3]?.name ?? "Poor Fit";
+      return prisma.lead.count({ where: { qualityTier: tierName, ...notArchived } });
+    },
     avg_score: async () => {
       const result = await prisma.lead.aggregate({ where: { score: { not: null }, ...notArchived }, _avg: { score: true } });
       return result._avg.score != null ? Math.round(result._avg.score) : 0;

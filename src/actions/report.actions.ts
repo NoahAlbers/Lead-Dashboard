@@ -59,15 +59,37 @@ export async function getLeadVolumeByDay(range: DateRange | null) {
   });
 
   const buckets: Record<string, { date: string; total: number; [tier: string]: number | string }> = {};
+  const allTiers = new Set<string>();
   for (const lead of leads) {
     const day = toEstDateString(lead.createdAt);
     if (!buckets[day]) buckets[day] = { date: day, total: 0 };
     buckets[day].total++;
     const tier = lead.qualityTier ?? "Unknown";
+    allTiers.add(tier);
     buckets[day][tier] = ((buckets[day][tier] as number) || 0) + 1;
   }
 
-  return Object.values(buckets);
+  // Fill gaps: ensure every date between first and last has an entry
+  const days = Object.keys(buckets).sort();
+  if (days.length >= 2) {
+    const start = new Date(days[0] + "T12:00:00");
+    const end = new Date(days[days.length - 1] + "T12:00:00");
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().slice(0, 10);
+      if (!buckets[key]) {
+        const entry: Record<string, number | string> = { date: key, total: 0 };
+        for (const tier of allTiers) entry[tier] = 0;
+        buckets[key] = entry as { date: string; total: number; [tier: string]: number | string };
+      } else {
+        // Ensure all tiers present on every day (0 if missing)
+        for (const tier of allTiers) {
+          if (!(tier in buckets[key])) buckets[key][tier] = 0;
+        }
+      }
+    }
+  }
+
+  return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function getTierDistribution(range: DateRange | null) {
