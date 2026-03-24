@@ -144,13 +144,98 @@ export async function getConnectionHealth() {
     },
   });
 
+  const [clientFailureCount, authSuspectCount] = await Promise.all([
+    prisma.ingestionQueue.count({
+      where: { status: "client_failure", receivedAt: { gte: h24 } },
+    }),
+    prisma.ingestionQueue.count({
+      where: { status: "auth_suspect", receivedAt: { gte: h24 } },
+    }),
+  ]);
+
   return {
     queueDepth,
     lastSubmission: lastSubmission?.receivedAt?.toISOString() ?? null,
     failedCount,
     processingRate: completedRecent,
     totalRecent: allRecent,
+    clientFailureCount,
+    authSuspectCount,
   };
+}
+
+export async function getClientReportedFailures() {
+  const session = await auth();
+  if (!session || !["ADMIN", "MANAGER"].includes(session.user.role))
+    throw new Error("Unauthorized");
+
+  const h24 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const items = await prisma.ingestionQueue.findMany({
+    where: { status: "client_failure", receivedAt: { gte: h24 } },
+    orderBy: { receivedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      submissionId: true,
+      sessionId: true,
+      errorMessage: true,
+      rawPayload: true,
+      receivedAt: true,
+      sourceIp: true,
+    },
+  });
+
+  return items.map((item) => {
+    const raw = item.rawPayload as Record<string, unknown>;
+    const summary = (raw?.form_data_summary ?? {}) as Record<string, unknown>;
+    return {
+      id: item.id,
+      submissionId: item.submissionId,
+      sessionId: item.sessionId?.slice(0, 8) ?? "unknown",
+      errorMessage: item.errorMessage ?? "Unknown error",
+      name: String(summary.name ?? "—"),
+      email: String(summary.email ?? "—"),
+      phone: String(summary.phone ?? "—"),
+      receivedAt: item.receivedAt.toISOString(),
+      sourceIp: item.sourceIp,
+    };
+  });
+}
+
+export async function getAuthSuspectSubmissions() {
+  const session = await auth();
+  if (!session || !["ADMIN", "MANAGER"].includes(session.user.role))
+    throw new Error("Unauthorized");
+
+  const h24 = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  return prisma.ingestionQueue.findMany({
+    where: { status: "auth_suspect", receivedAt: { gte: h24 } },
+    orderBy: { receivedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      submissionId: true,
+      sourceIp: true,
+      receivedAt: true,
+      receiptId: true,
+    },
+  });
+}
+
+export async function processAuthSuspectItem(queueId: string) {
+  const session = await auth();
+  if (!session || !["ADMIN", "MANAGER"].includes(session.user.role))
+    throw new Error("Unauthorized");
+
+  await prisma.ingestionQueue.update({
+    where: { id: queueId },
+    data: { status: "received" },
+  });
+
+  await processIngestionItem(queueId);
+  revalidatePath("/admin/monitor");
 }
 
 export async function promotePartialToLead(queueId: string) {

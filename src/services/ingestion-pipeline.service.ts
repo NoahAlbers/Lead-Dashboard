@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { ingestLead } from "@/services/lead-ingestion.service";
 import { normalizeState } from "@/lib/us-states";
+import { sendFailureAlertEmail } from "@/services/email-notification.service";
+import { logger } from "@/lib/logger";
 
 // --- Helpers (mirrored from intake-form route for consistency) ---
 
@@ -220,6 +222,12 @@ export async function processIngestionItem(queueId: string): Promise<void> {
   const item = await prisma.ingestionQueue.findUnique({ where: { id: queueId } });
   if (!item || item.status === "completed" || item.status === "duplicate") return;
 
+  logger.info("PIPELINE", "Processing started", {
+    queueId,
+    submissionId: item.submissionId,
+    sessionId: item.sessionId,
+  });
+
   try {
     // Mark as processing
     await prisma.ingestionQueue.update({
@@ -291,6 +299,12 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     // Call existing ingestLead — it handles mapping, scoring, duplicates, referrals, notifications
     const lead = await ingestLead(formData, metadata);
 
+    logger.info("PIPELINE", "Lead ingested successfully", {
+      queueId,
+      leadId: lead.id,
+      submissionId: item.submissionId,
+    });
+
     // Update queue with success
     await prisma.ingestionQueue.update({
       where: { id: queueId },
@@ -302,7 +316,9 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`Ingestion pipeline error for queue ${queueId}:`, error);
+    logger.error("PIPELINE", `Ingestion failed for queue ${queueId}`, {
+      error: message,
+    });
     await prisma.ingestionQueue
       .update({
         where: { id: queueId },
@@ -312,7 +328,14 @@ export async function processIngestionItem(queueId: string): Promise<void> {
           retryCount: { increment: 1 },
         },
       })
-      .catch(() => {}); // Don't fail if status update itself fails
+      .catch(() => {});
+
+    sendFailureAlertEmail({
+      type: "pipeline_failure",
+      message,
+      submissionId: item?.submissionId,
+      timestamp: new Date().toISOString(),
+    }).catch(() => {});
   }
 }
 

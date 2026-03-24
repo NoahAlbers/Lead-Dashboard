@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { generateReceiptId } from "@/services/receipt.service";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { processIngestionItem } from "@/services/ingestion-pipeline.service";
+import { logger } from "@/lib/logger";
 
 const ALLOWED_ORIGINS = [
   "https://noahalbers.github.io",
@@ -55,24 +56,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Auth — validate form key
-    const formKey = req.headers.get("x-acb-form-key");
-    const configRow = await prisma.systemConfig.findUnique({
-      where: { key: "ingestion_form_key" },
-    });
-    const expectedKey = configRow?.value ?? null;
-    if (!formKey || formKey !== expectedKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "unauthorized",
-          message: "Invalid or missing form key",
-        },
-        { status: 401, headers }
-      );
-    }
-
-    // Parse body
+    // Parse body FIRST (before auth) so we never lose data
     const body = await req.json();
     const submissionId = body.submission_id;
     if (!submissionId) {
@@ -84,6 +68,23 @@ export async function POST(req: NextRequest) {
         },
         { status: 400, headers }
       );
+    }
+
+    // Auth — validate form key (but NEVER reject — save regardless)
+    const formKey = req.headers.get("x-acb-form-key");
+    const configRow = await prisma.systemConfig.findUnique({
+      where: { key: "ingestion_form_key" },
+    });
+    const expectedKey = configRow?.value ?? null;
+    const authValid = !!(formKey && formKey === expectedKey);
+
+    if (!authValid) {
+      logger.warn("INGEST", "Auth check failed — saving submission anyway", {
+        submissionId,
+        formKeyPresent: !!formKey,
+        configKeyPresent: !!expectedKey,
+        ip,
+      });
     }
 
     // Check for duplicate
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
       data: {
         submissionId,
         sessionId: body.session_id ?? body.metadata?.session_id ?? null,
-        status: "received",
+        status: authValid ? "received" : "auth_suspect",
         isPartial: false,
         rawPayload: body,
         receiptId,
@@ -121,11 +122,24 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Kick off async processing (fire and forget — respond immediately)
-    processIngestionItem(queueItem.id).catch((err) => {
-      console.error("Async ingestion processing failed:", err);
+    logger.info("INGEST", "Submission saved to queue", {
+      submissionId,
+      receiptId,
+      authValid,
+      status: authValid ? "received" : "auth_suspect",
     });
 
+    // Only auto-process if auth is valid
+    if (authValid) {
+      processIngestionItem(queueItem.id).catch((err) => {
+        logger.error("INGEST", "Async processing failed", {
+          queueId: queueItem.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+
+    // Always return 200 to the form — never lose a lead
     return NextResponse.json(
       {
         success: true,
@@ -138,13 +152,14 @@ export async function POST(req: NextRequest) {
       { status: 200, headers }
     );
   } catch (error: unknown) {
-    console.error("Ingestion error:", error);
+    logger.error("INGEST", "Ingestion error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       {
         success: false,
         error: "server_error",
-        message:
-          "Internal error — submission may not have been saved",
+        message: "Internal error — submission may not have been saved",
       },
       { status: 500, headers }
     );

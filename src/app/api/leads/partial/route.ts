@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 import crypto from "crypto";
 
 const ALLOWED_ORIGINS = [
@@ -54,24 +55,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Auth — validate form key
-    const formKey = req.headers.get("x-acb-form-key");
-    const configRow = await prisma.systemConfig.findUnique({
-      where: { key: "ingestion_form_key" },
-    });
-    const expectedKey = configRow?.value ?? null;
-    if (!formKey || formKey !== expectedKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "unauthorized",
-          message: "Invalid or missing form key",
-        },
-        { status: 401, headers }
-      );
-    }
-
-    // Parse body
+    // Parse body FIRST (before auth) so we never lose partial data
     const body = await req.json();
     const sessionId = body.session_id;
     if (!sessionId) {
@@ -83,6 +67,22 @@ export async function POST(req: NextRequest) {
         },
         { status: 400, headers }
       );
+    }
+
+    // Auth — validate form key (but never reject — save regardless)
+    const formKey = req.headers.get("x-acb-form-key");
+    const configRow = await prisma.systemConfig.findUnique({
+      where: { key: "ingestion_form_key" },
+    });
+    const expectedKey = configRow?.value ?? null;
+    const authValid = !!(formKey && formKey === expectedKey);
+
+    if (!authValid) {
+      logger.warn("PARTIAL", "Auth check failed — saving partial anyway", {
+        sessionId,
+        formKeyPresent: !!formKey,
+        ip,
+      });
     }
 
     const submissionId =
@@ -133,7 +133,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true }, { status: 200, headers });
   } catch (error: unknown) {
-    console.error("Partial ingestion error:", error);
+    logger.error("PARTIAL", "Partial ingestion error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       {
         success: false,

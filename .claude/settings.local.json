@@ -6,7 +6,10 @@
       "Bash(file:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(node -e \":*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\alber\\Desktop\\acb-form"

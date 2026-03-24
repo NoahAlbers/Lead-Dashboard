@@ -7,6 +7,9 @@ import {
   getRecentCompletions,
   getAbandonedSessions,
   getConnectionHealth,
+  getClientReportedFailures,
+  getAuthSuspectSubmissions,
+  processAuthSuspectItem,
   promotePartialToLead,
 } from "@/actions/monitor.actions";
 import { TierBadge, ScoreBadge } from "@/components/shared/status-badge";
@@ -18,6 +21,8 @@ type AbandonedSession = Awaited<
   ReturnType<typeof getAbandonedSessions>
 >[number];
 type HealthData = Awaited<ReturnType<typeof getConnectionHealth>>;
+type ClientFailure = Awaited<ReturnType<typeof getClientReportedFailures>>[number];
+type AuthSuspect = Awaited<ReturnType<typeof getAuthSuspectSubmissions>>[number];
 
 function timeAgo(isoString: string | null): string {
   if (!isoString) return "Never";
@@ -76,23 +81,30 @@ export function LiveMonitor() {
   const [completions, setCompletions] = useState<RecentCompletion[]>([]);
   const [abandoned, setAbandoned] = useState<AbandonedSession[]>([]);
   const [health, setHealth] = useState<HealthData | null>(null);
+  const [clientFailures, setClientFailures] = useState<ClientFailure[]>([]);
+  const [authSuspects, setAuthSuspects] = useState<AuthSuspect[]>([]);
   const [isPending, startTransition] = useTransition();
   const [promotingId, setPromotingId] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const fetchAll = useCallback(() => {
     startTransition(async () => {
       try {
-        const [sessions, comps, aband, hlth] = await Promise.all([
+        const [sessions, comps, aband, hlth, failures, suspects] = await Promise.all([
           getActiveSessions(),
           getRecentCompletions(),
           getAbandonedSessions(),
           getConnectionHealth(),
+          getClientReportedFailures(),
+          getAuthSuspectSubmissions(),
         ]);
         setActiveSessions(sessions);
         setCompletions(comps);
         setAbandoned(aband);
         setHealth(hlth);
+        setClientFailures(failures);
+        setAuthSuspects(suspects);
         setLastRefresh(new Date());
       } catch (err) {
         console.error("Monitor refresh failed:", err);
@@ -127,8 +139,66 @@ export function LiveMonitor() {
     }
   };
 
+  const handleProcessSuspect = async (queueId: string) => {
+    setProcessingId(queueId);
+    try {
+      await processAuthSuspectItem(queueId);
+      toast({
+        title: "Processing Started",
+        description: "Auth-suspect submission is now being processed.",
+      });
+      fetchAll();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description:
+          err instanceof Error ? err.message : "Failed to process",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const hasAlerts =
+    health &&
+    (health.failedCount > 0 ||
+      health.clientFailureCount > 0 ||
+      health.authSuspectCount > 0);
+
   return (
     <div className="space-y-6">
+      {/* Failure Alert Banner */}
+      {hasAlerts && (
+        <div className="rounded-lg border border-red-500/60 bg-red-50 dark:bg-red-950/30 p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-red-600 text-xl mt-0.5">!</span>
+            <div>
+              <p className="font-semibold text-red-800 dark:text-red-300">
+                Ingestion Alerts (Last 24h)
+              </p>
+              <div className="mt-1 text-sm text-red-700 dark:text-red-400 space-y-0.5">
+                {health!.failedCount > 0 && (
+                  <p>{health!.failedCount} failed pipeline processing(s)</p>
+                )}
+                {health!.clientFailureCount > 0 && (
+                  <p>
+                    {health!.clientFailureCount} client-reported total failure(s)
+                    — leads may have been LOST
+                  </p>
+                )}
+                {health!.authSuspectCount > 0 && (
+                  <p>
+                    {health!.authSuspectCount} submission(s) with invalid auth
+                    key — awaiting manual review
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Connection Health Panel */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -138,7 +208,7 @@ export function LiveMonitor() {
           </span>
         </div>
         {health ? (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             <HealthCard
               label="Queue Depth"
               value={health.queueDepth}
@@ -170,10 +240,20 @@ export function LiveMonitor() {
               value={health.totalRecent}
               color="default"
             />
+            <HealthCard
+              label="Auth Suspect (24h)"
+              value={health.authSuspectCount}
+              color={health.authSuspectCount === 0 ? "green" : "yellow"}
+            />
+            <HealthCard
+              label="Client Failures (24h)"
+              value={health.clientFailureCount}
+              color={health.clientFailureCount === 0 ? "green" : "red"}
+            />
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {Array.from({ length: 5 }).map((_, i) => (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            {Array.from({ length: 7 }).map((_, i) => (
               <div
                 key={i}
                 className="rounded-lg border border-border bg-card p-4 animate-pulse h-20"
@@ -182,6 +262,88 @@ export function LiveMonitor() {
           </div>
         )}
       </div>
+
+      {/* Client-Reported Failures */}
+      {clientFailures.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3 text-red-700 dark:text-red-400">
+            Client-Reported Failures (24h)
+          </h2>
+          <div className="rounded-lg border border-red-300 dark:border-red-800 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-red-50 dark:bg-red-950/30">
+                  <th className="text-left p-3 font-medium">Submission ID</th>
+                  <th className="text-left p-3 font-medium">Name</th>
+                  <th className="text-left p-3 font-medium">Email</th>
+                  <th className="text-left p-3 font-medium">Phone</th>
+                  <th className="text-left p-3 font-medium">Error</th>
+                  <th className="text-left p-3 font-medium">When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientFailures.map((f) => (
+                  <tr key={f.id} className="border-b last:border-0">
+                    <td className="p-3 font-mono text-xs">{f.submissionId.slice(0, 12)}...</td>
+                    <td className="p-3">{f.name}</td>
+                    <td className="p-3">{f.email}</td>
+                    <td className="p-3">{f.phone}</td>
+                    <td className="p-3 text-xs text-red-600 max-w-[200px] truncate">
+                      {f.errorMessage}
+                    </td>
+                    <td className="p-3 text-xs text-muted-foreground">
+                      {timeAgo(f.receivedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Auth-Suspect Submissions */}
+      {authSuspects.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3 text-yellow-700 dark:text-yellow-400">
+            Auth-Suspect Submissions (24h)
+          </h2>
+          <div className="rounded-lg border border-yellow-300 dark:border-yellow-800 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-yellow-50 dark:bg-yellow-950/30">
+                  <th className="text-left p-3 font-medium">Submission ID</th>
+                  <th className="text-left p-3 font-medium">Receipt ID</th>
+                  <th className="text-left p-3 font-medium">IP</th>
+                  <th className="text-left p-3 font-medium">When</th>
+                  <th className="text-left p-3 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {authSuspects.map((s) => (
+                  <tr key={s.id} className="border-b last:border-0">
+                    <td className="p-3 font-mono text-xs">{s.submissionId.slice(0, 12)}...</td>
+                    <td className="p-3 font-mono text-xs">{s.receiptId ?? "—"}</td>
+                    <td className="p-3 text-xs">{s.sourceIp}</td>
+                    <td className="p-3 text-xs text-muted-foreground">
+                      {timeAgo(s.receivedAt.toISOString())}
+                    </td>
+                    <td className="p-3">
+                      <button
+                        onClick={() => handleProcessSuspect(s.id)}
+                        disabled={processingId === s.id}
+                        className="inline-flex items-center rounded-md bg-yellow-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
+                      >
+                        {processingId === s.id ? "Processing..." : "Process Anyway"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Active Form Sessions */}
       <div>
