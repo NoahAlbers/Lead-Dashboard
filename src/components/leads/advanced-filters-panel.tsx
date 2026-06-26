@@ -7,6 +7,25 @@ import { useFilterParams } from "./use-filter-params";
 import { MultiSelectFilter, type Option } from "./multi-select-filter";
 import { NumericFilterRow } from "./numeric-filter-row";
 import { StateFilterControl } from "./state-filter-control";
+import { ComboFilterInput } from "./combo-filter-input";
+
+// Common presets (property-management collections). Users can type any custom value.
+const INDUSTRY_OPTIONS = [
+  "Multi-Family", "Single Family", "Communities / HOA", "Commercial",
+  "Mixed-Use", "Student Housing", "Senior Living", "Affordable Housing", "Vacation / Short-Term",
+];
+const DEBT_TYPE_OPTIONS = [
+  "Residential Rental Debt", "Commercial Rent", "B2B / Commercial", "Consumer / B2C",
+  "HOA Dues", "Tenant Damages", "Medical", "Judgments",
+];
+const BUSINESS_TYPE_OPTIONS = [
+  "Conventional", "Student", "Senior / 55+", "Affordable / LIHTC",
+  "Short-Term / Vacation", "Military", "Single-Family Rentals",
+];
+const SOFTWARE_OPTIONS = [
+  "AppFolio", "Yardi", "Buildium", "RealPage", "Entrata", "Propertyware",
+  "Rent Manager", "ResMan", "DoorLoop", "TenantCloud", "Rentvine",
+];
 
 const STATUS_OPTIONS: Option[] = [
   { value: "NEW", label: "New" },
@@ -32,7 +51,7 @@ const SLA_OPTIONS: Option[] = [
 // Logical filter groups used to badge how many advanced filters are active.
 const ACTIVE_GROUPS: string[][] = [
   ["states"], ["stateClass"], ["unitsMin", "unitsMax"], ["scoreMin", "scoreMax"],
-  ["rentMin", "rentMax"], ["industry"], ["debtType"], ["businessType"],
+  ["rentMin", "rentMax"], ["industry"], ["debtType"], ["businessType"], ["software"],
   ["status"], ["qualityTier"], ["slaStatus"], ["assignedUserId"],
   ["dateFrom", "dateTo"], ["ageMin"],
 ];
@@ -101,37 +120,11 @@ export function AdvancedFiltersPanel({
               <MultiSelectFilter label="Tier" paramKey="qualityTier" options={tierOptions} />
               <MultiSelectFilter label="SLA" paramKey="slaStatus" options={SLA_OPTIONS} />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <input
-                type="text"
-                defaultValue={searchParams.get("industry") ?? ""}
-                onBlur={(e) => setMany({ industry: e.target.value || null })}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && setMany({ industry: (e.target as HTMLInputElement).value || null })
-                }
-                placeholder="Industry contains…"
-                className="h-8 rounded-md border border-input bg-card px-2 text-sm"
-              />
-              <input
-                type="text"
-                defaultValue={searchParams.get("debtType") ?? ""}
-                onBlur={(e) => setMany({ debtType: e.target.value || null })}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && setMany({ debtType: (e.target as HTMLInputElement).value || null })
-                }
-                placeholder="Debt type contains…"
-                className="h-8 rounded-md border border-input bg-card px-2 text-sm"
-              />
-              <input
-                type="text"
-                defaultValue={searchParams.get("businessType") ?? ""}
-                onBlur={(e) => setMany({ businessType: e.target.value || null })}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && setMany({ businessType: (e.target as HTMLInputElement).value || null })
-                }
-                placeholder="Business type contains…"
-                className="h-8 rounded-md border border-input bg-card px-2 text-sm"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <ComboFilterInput label="Industry / Property Type" paramKey="industry" options={INDUSTRY_OPTIONS} />
+              <ComboFilterInput label="Debt Type" paramKey="debtType" options={DEBT_TYPE_OPTIONS} />
+              <ComboFilterInput label="Business / Rental Type" paramKey="businessType" options={BUSINESS_TYPE_OPTIONS} />
+              <ComboFilterInput label="PM Software" paramKey="software" options={SOFTWARE_OPTIONS} />
             </div>
           </div>
 

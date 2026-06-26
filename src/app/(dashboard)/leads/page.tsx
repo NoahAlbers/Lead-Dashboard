@@ -51,6 +51,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     industry: params.industry as string | undefined,
     debtType: params.debtType as string | undefined,
     businessType: params.businessType as string | undefined,
+    software: params.software as string | undefined,
     dateFrom: params.dateFrom as string | undefined,
     dateTo: params.dateTo as string | undefined,
     isRead: params.isRead as string | undefined,

@@ -234,33 +234,51 @@ export function EmailDialog({
     }
   }
 
-  async function openInOutlook() {
+  async function copyRich(): Promise<boolean> {
+    if (!referral) return false;
+    const plain = htmlToPlainText(referral.html);
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([referral.html], { type: "text/html" }),
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    } catch {
+      try {
+        await navigator.clipboard.writeText(plain);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  // Primary path: copy the formatted email, then open a blank Outlook compose
+  // (recipients + subject prefilled) so the user pastes the rich body in.
+  async function copyAndOpenOutlook() {
     if (!referral) return;
-    const eml = buildEml({ to: referral.to.join(", "), subject: referral.subject, html: referral.html });
-    downloadEml(referralEmailFilename(lead, referral.partner), eml);
+    const ok = await copyRich();
+    setCopied(ok);
+    const mailto = `mailto:${encodeURIComponent(referral.to.join(", "))}?subject=${encodeURIComponent(referral.subject)}`;
+    window.open(mailto, "_self");
     setComposed(true);
     setIsPending(true);
     await logQuickAction(lead.id, "contacted_email");
     setIsPending(false);
   }
 
-  async function copyReferralHtml() {
+  async function copyOnly() {
+    const ok = await copyRich();
+    setCopied(ok);
+    setTimeout(() => setCopied(false), 2500);
+  }
+
+  function downloadReferralEml() {
     if (!referral) return;
-    try {
-      const item = new ClipboardItem({
-        "text/html": new Blob([referral.html], { type: "text/html" }),
-        "text/plain": new Blob([referral.html], { type: "text/plain" }),
-      });
-      await navigator.clipboard.write([item]);
-    } catch {
-      try {
-        await navigator.clipboard.writeText(referral.html);
-      } catch {
-        return;
-      }
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const eml = buildEml({ to: referral.to.join(", "), subject: referral.subject, html: referral.html });
+    downloadEml(referralEmailFilename(lead, referral.partner), eml);
   }
 
   async function sendWithTemplate(template: EmailTemplate, partner: ReferralPartner | null) {
@@ -516,30 +534,41 @@ export function EmailDialog({
               <div className="rounded-lg border max-h-72 overflow-y-auto p-3 bg-white text-black">
                 <div dangerouslySetInnerHTML={{ __html: referral.html }} />
               </div>
-              <div className="flex items-center gap-2">
+              <div className="space-y-2">
                 <button
-                  onClick={openInOutlook}
+                  onClick={copyAndOpenOutlook}
                   disabled={isPending}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
-                  <FileDown className="h-4 w-4" />
-                  Open in Outlook (.eml)
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  Copy email &amp; open Outlook
                 </button>
-                <button
-                  onClick={copyReferralHtml}
-                  className="flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
-                  title="Copy the formatted email to paste into a new Outlook message"
-                >
-                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                  {copied ? "Copied" : "Copy"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={copyOnly}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                  >
+                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                    {copied ? "Copied" : "Copy only"}
+                  </button>
+                  <button
+                    onClick={downloadReferralEml}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                    title="Opens a ready-made draft in classic Outlook desktop"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    Download .eml
+                  </button>
+                </div>
               </div>
-              {composed && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Draft downloaded — open the .eml file to launch a ready-to-send Outlook draft.
+              <p className="text-xs text-muted-foreground">
+                {composed
+                  ? "Email copied. In the Outlook message that opened, click in the body and paste (Ctrl+V) — the formatting and table come through."
+                  : "'Copy email & open Outlook' copies the formatted email and opens a new message — paste (Ctrl+V) into the body. 'Download .eml' opens a ready-made draft in classic Outlook desktop."}
+                {composed && (
                   <button onClick={resetAndClose} className="ml-1 text-primary hover:underline">Done</button>
-                </p>
-              )}
+                )}
+              </p>
             </div>
           )}
         </div>

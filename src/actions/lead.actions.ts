@@ -29,6 +29,7 @@ export async function getLeads(params: {
   industry?: string;
   debtType?: string;
   businessType?: string;
+  software?: string;
   dateFrom?: string;
   dateTo?: string;
   isRead?: string;
@@ -142,6 +143,8 @@ export async function getLeads(params: {
   if (params.industry) where.industry = { contains: params.industry, mode: "insensitive" };
   if (params.debtType) where.debtType = { contains: params.debtType, mode: "insensitive" };
   if (params.businessType) where.businessType = { contains: params.businessType, mode: "insensitive" };
+  // PM software lives in the intake notes ("PM software: ...") — search there.
+  if (params.software) and.push({ notesFromForm: { contains: params.software, mode: "insensitive" } });
 
   if (dateFrom || dateTo) {
     where.createdAt = {};

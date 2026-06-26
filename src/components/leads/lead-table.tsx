@@ -513,9 +513,9 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
         const columnsButton = (
           <button
             onClick={() => setShowPicker(true)}
-            className="flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+            className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
           >
-            <Settings2 className="h-4 w-4" />
+            <Settings2 className="h-3.5 w-3.5" />
             Columns
           </button>
         );
