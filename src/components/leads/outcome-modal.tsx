@@ -15,7 +15,7 @@ import { toast } from "@/components/ui/use-toast";
 interface OutcomeModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (result?: { referralPartnerId?: string }) => void;
   leadId: string;
   outcomeType: "won" | "lost" | "disqualified" | "referred_out";
   referralPartners?: Array<{ id: string; name: string }>;
@@ -91,7 +91,7 @@ export function OutcomeModal({
           referralPartnerId: referralPartnerId || undefined,
         });
         toast({ title: "Outcome recorded", variant: "success" });
-        onConfirm();
+        onConfirm({ referralPartnerId: referralPartnerId || undefined });
       } catch {
         toast({ title: "Failed to save outcome", variant: "destructive" });
       }

@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
-import { useTransition, useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useTransition, useState, useEffect, useRef, useCallback, useMemo, cloneElement, isValidElement } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -65,10 +65,14 @@ interface LeadRow {
   createdAt: string;
   companyName: string | null;
   fullName: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  title?: string | null;
   email: string | null;
   phone: string | null;
   state: string | null;
   states: string[] | null;
+  rawPayloadJson?: Record<string, unknown> | null;
   industry: string | null;
   debtType: string | null;
   accountVolume: string | null;
@@ -504,17 +508,29 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       {/* Bulk Action Bar */}
       <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} userRole={userRole} />
 
-      {/* Filter bar + Column picker */}
-      <div className="flex flex-wrap items-center gap-3">
-        {filterBar}
-        <button
-          onClick={() => setShowPicker(true)}
-          className="flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-        >
-          <Settings2 className="h-4 w-4" />
-          Columns
-        </button>
-      </div>
+      {/* Filter bar (Columns button injected into its control row) */}
+      {(() => {
+        const columnsButton = (
+          <button
+            onClick={() => setShowPicker(true)}
+            className="flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          >
+            <Settings2 className="h-4 w-4" />
+            Columns
+          </button>
+        );
+        return isValidElement(filterBar)
+          ? cloneElement(
+              filterBar as React.ReactElement<{ trailing?: React.ReactNode }>,
+              { trailing: columnsButton }
+            )
+          : (
+            <div className="flex flex-wrap items-center gap-3">
+              {filterBar}
+              {columnsButton}
+            </div>
+          );
+      })()}
 
       {/* Column Picker Modal */}
       {showPicker && (
@@ -730,9 +746,29 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
         <EmailDialog
           open={!!emailDialogLead}
           onClose={() => setEmailDialogLead(null)}
-          lead={{ id: emailDialogLead.id, email: emailDialogLead.email, fullName: emailDialogLead.fullName, companyName: emailDialogLead.companyName, phone: emailDialogLead.phone, state: emailDialogLead.state, industry: emailDialogLead.industry }}
+          lead={{
+            id: emailDialogLead.id,
+            email: emailDialogLead.email,
+            fullName: emailDialogLead.fullName,
+            firstName: emailDialogLead.firstName,
+            lastName: emailDialogLead.lastName,
+            companyName: emailDialogLead.companyName,
+            phone: emailDialogLead.phone,
+            state: emailDialogLead.state,
+            states: emailDialogLead.states,
+            industry: emailDialogLead.industry,
+            debtType: emailDialogLead.debtType,
+            businessType: emailDialogLead.businessType,
+            accountVolume: emailDialogLead.accountVolume,
+            title: emailDialogLead.title,
+          }}
           templates={emailTemplates}
           referralPartners={referralPartners}
+          rawIntakeForm={
+            (emailDialogLead.rawPayloadJson?._rawIntakeForm as Record<string, unknown>) ??
+            emailDialogLead.rawPayloadJson ??
+            null
+          }
         />
       )}
     </div>

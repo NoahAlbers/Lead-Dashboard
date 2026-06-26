@@ -26,6 +26,8 @@ interface LeadFiltersProps {
   userRole?: string;
   stateClassifications?: Record<string, string>;
   tierOptions?: Option[];
+  /** Extra controls (e.g. the Columns button) rendered at the end of the row. */
+  trailing?: React.ReactNode;
 }
 
 export function LeadFilters({
@@ -34,6 +36,7 @@ export function LeadFilters({
   userRole,
   stateClassifications = {},
   tierOptions = [],
+  trailing,
 }: LeadFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -56,6 +59,21 @@ export function LeadFilters({
     window.addEventListener("focus-search", handleFocusSearch);
     return () => window.removeEventListener("focus-search", handleFocusSearch);
   }, []);
+
+  // Live search: debounce URL updates as the user types (Enter still applies instantly).
+  useEffect(() => {
+    const current = searchParams.get("search") ?? "";
+    if (searchInput === current) return;
+    const t = setTimeout(() => updateParam("search", searchInput.trim() || null), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  // Keep the input in sync when the URL search changes elsewhere (Clear, saved view).
+  useEffect(() => {
+    setSearchInput(searchParams.get("search") ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   function updateParam(key: string, value: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -87,7 +105,7 @@ export function LeadFilters({
   return (
     <div className="w-full space-y-2">
       <div className="flex flex-wrap gap-3">
-        <form onSubmit={handleSearch} className="relative flex-1 min-w-[200px]">
+        <form onSubmit={handleSearch} className="relative w-72 max-w-full">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             ref={searchInputRef}
@@ -124,6 +142,8 @@ export function LeadFilters({
             userRole={userRole}
           />
         )}
+
+        {trailing}
 
         {hasFilters && (
           <button

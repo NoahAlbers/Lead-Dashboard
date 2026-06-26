@@ -66,11 +66,19 @@ interface LeadActionsProps {
   referralPartners?: ReferralPartnerInfo[];
   leadData?: {
     fullName?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     companyName?: string | null;
     phone?: string | null;
     state?: string | null;
+    states?: string[] | null;
     industry?: string | null;
+    debtType?: string | null;
+    businessType?: string | null;
+    accountVolume?: string | null;
+    title?: string | null;
     notesFromForm?: string | null;
+    rawIntakeForm?: Record<string, unknown> | null;
   };
   assignedUserName?: string;
 }
@@ -93,6 +101,7 @@ export function LeadActions({
   const [showStatusSelect, setShowStatusSelect] = useState(false);
   const [showMergeSearch, setShowMergeSearch] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [referralEmailPartnerId, setReferralEmailPartnerId] = useState<string | null>(null);
   const [outcomeModal, setOutcomeModal] = useState<{ outcomeType: "won" | "lost" | "disqualified" | "referred_out"; targetStatus: LeadStatus } | null>(null);
 
   function handleEmailAction() {
@@ -142,14 +151,20 @@ export function LeadActions({
     });
   }
 
-  function handleOutcomeConfirm() {
+  function handleOutcomeConfirm(result?: { referralPartnerId?: string }) {
     if (!outcomeModal) return;
     const targetStatus = outcomeModal.targetStatus;
+    const wasReferral = outcomeModal.outcomeType === "referred_out";
     setOutcomeModal(null);
     startTransition(async () => {
       await updateLeadStatus(leadId, targetStatus);
       toast({ title: `Status changed to ${targetStatus.replace(/_/g, " ")}`, variant: "success" });
     });
+    // After a refer-out with a chosen partner, offer the formatted referral email.
+    if (wasReferral && result?.referralPartnerId && email) {
+      setReferralEmailPartnerId(result.referralPartnerId);
+      setShowEmailDialog(true);
+    }
   }
 
   function handleAddNote() {
@@ -367,20 +382,29 @@ export function LeadActions({
       {email && (
         <EmailDialog
           open={showEmailDialog}
-          onClose={() => setShowEmailDialog(false)}
+          onClose={() => { setShowEmailDialog(false); setReferralEmailPartnerId(null); }}
           lead={{
             id: leadId,
             email,
             fullName: leadData?.fullName,
+            firstName: leadData?.firstName,
+            lastName: leadData?.lastName,
             companyName: leadData?.companyName,
             phone: leadData?.phone ?? phone,
             state: leadData?.state,
+            states: leadData?.states,
             industry: leadData?.industry,
+            debtType: leadData?.debtType,
+            businessType: leadData?.businessType,
+            accountVolume: leadData?.accountVolume,
+            title: leadData?.title,
             notesFromForm: leadData?.notesFromForm,
           }}
           templates={templates}
           assignedUserName={assignedUserName}
           referralPartners={referralPartners}
+          rawIntakeForm={leadData?.rawIntakeForm ?? null}
+          autoReferralPartnerId={referralEmailPartnerId}
         />
       )}
 

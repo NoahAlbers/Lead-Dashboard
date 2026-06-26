@@ -91,6 +91,9 @@ const MERGE_FIELDS = [
     { label: "Min Accounts", value: "{{referral_partner_minimum_accounts}}" },
     { label: "Min Total Balance", value: "{{referral_partner_minimum_total_balance}}" },
   ]},
+  { group: "Referral Email", fields: [
+    { label: "Lead Data Table", value: "{{lead_data_table}}" },
+  ]},
 ];
 
 const SUMMARY_TABLE_FIELDS = [

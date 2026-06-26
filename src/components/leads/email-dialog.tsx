@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { X, ExternalLink, ChevronRight, ArrowLeft, Info } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, ExternalLink, ChevronRight, ArrowLeft, Info, FileDown, Copy, Check } from "lucide-react";
 import { logQuickAction } from "@/actions/note.actions";
+import { renderTemplate, type EmailLeadData } from "@/lib/email-template-render";
+import {
+  renderReferralEmail,
+  buildEml,
+  downloadEml,
+  referralEmailFilename,
+  BUILTIN_REFERRAL_TEMPLATE,
+} from "@/lib/referral-email";
 
 interface EmailTemplate {
   id: string;
@@ -13,42 +21,7 @@ interface EmailTemplate {
   emailType?: { color: string; isReferral: boolean } | null;
 }
 
-interface LeadData {
-  id: string;
-  email: string;
-  fullName?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  companyName?: string | null;
-  title?: string | null;
-  phone?: string | null;
-  alternatePhone?: string | null;
-  address1?: string | null;
-  address2?: string | null;
-  city?: string | null;
-  state?: string | null;
-  zip?: string | null;
-  country?: string | null;
-  industry?: string | null;
-  debtType?: string | null;
-  balanceAmount?: number | null;
-  estimatedClaimValue?: number | null;
-  accountVolume?: string | null;
-  serviceRequested?: string | null;
-  notesFromForm?: string | null;
-  urgency?: string | null;
-  businessType?: string | null;
-  geographicScope?: string | null;
-  leadSource?: string | null;
-  sourcePage?: string | null;
-  utmSource?: string | null;
-  utmMedium?: string | null;
-  utmCampaign?: string | null;
-  score?: number | null;
-  qualityTier?: string | null;
-  status?: string | null;
-  createdAt?: string | null;
-}
+type LeadData = EmailLeadData;
 
 interface ReferralPartner {
   id: string;
@@ -89,71 +62,14 @@ interface EmailDialogProps {
   templates: EmailTemplate[];
   assignedUserName?: string;
   referralPartners?: ReferralPartner[];
+  /** Raw intake form payload (rawPayloadJson._rawIntakeForm) for the data table. */
+  rawIntakeForm?: Record<string, unknown> | null;
+  /** When set on open, jump straight to composing a referral email for this partner. */
+  autoReferralPartnerId?: string | null;
 }
 
-function renderTemplate(
-  template: string,
-  lead: LeadData,
-  assignedUserName: string,
-  partner?: ReferralPartner | null
-): string {
-  const replacements: Record<string, string> = {
-    // Contact
-    "{{first_name}}": lead.firstName ?? "",
-    "{{last_name}}": lead.lastName ?? "",
-    "{{full_name}}": lead.fullName ?? "",
-    "{{company_name}}": lead.companyName ?? "",
-    "{{title}}": lead.title ?? "",
-    "{{email}}": lead.email ?? "",
-    "{{phone}}": lead.phone ?? "",
-    "{{alternate_phone}}": lead.alternatePhone ?? "",
-    // Location
-    "{{address_1}}": lead.address1 ?? "",
-    "{{address_2}}": lead.address2 ?? "",
-    "{{city}}": lead.city ?? "",
-    "{{state}}": lead.state ?? "",
-    "{{zip}}": lead.zip ?? "",
-    "{{country}}": lead.country ?? "",
-    // Business
-    "{{industry}}": lead.industry ?? "",
-    "{{debt_type}}": lead.debtType ?? "",
-    "{{balance_amount}}": lead.balanceAmount != null ? `$${lead.balanceAmount.toLocaleString()}` : "",
-    "{{estimated_claim_value}}": lead.estimatedClaimValue != null ? `$${lead.estimatedClaimValue.toLocaleString()}` : "",
-    "{{units}}": lead.accountVolume ?? "",
-    "{{service_requested}}": lead.serviceRequested ?? "",
-    "{{notes_from_form}}": lead.notesFromForm ?? "",
-    "{{urgency}}": lead.urgency ?? "",
-    "{{business_type}}": lead.businessType ?? "",
-    "{{geographic_scope}}": lead.geographicScope ?? "",
-    // Metadata
-    "{{lead_source}}": lead.leadSource ?? "",
-    "{{source_page}}": lead.sourcePage ?? "",
-    "{{utm_source}}": lead.utmSource ?? "",
-    "{{utm_medium}}": lead.utmMedium ?? "",
-    "{{utm_campaign}}": lead.utmCampaign ?? "",
-    // System
-    "{{score}}": lead.score != null ? String(lead.score) : "",
-    "{{quality_tier}}": lead.qualityTier ?? "",
-    "{{status}}": lead.status ?? "",
-    "{{assigned_user_name}}": assignedUserName,
-    "{{created_at}}": lead.createdAt ?? "",
-    // Referral Partner
-    "{{referral_partner_name}}": partner?.name ?? "",
-    "{{referral_partner_contact_name}}": partner?.contactName ?? "",
-    "{{referral_partner_email}}": partner?.email ?? "",
-    "{{referral_partner_phone}}": partner?.phone ?? "",
-    "{{referral_partner_website}}": partner?.website ?? "",
-    "{{referral_partner_contingency_rate}}": partner?.contingencyRate ?? "",
-    "{{referral_partner_upfront_costs}}": partner?.upfrontCosts ?? "",
-    "{{referral_partner_minimum_accounts}}": partner?.minimumAccounts != null ? String(partner.minimumAccounts) : "",
-    "{{referral_partner_minimum_total_balance}}": partner?.minimumTotalBalance != null ? `$${partner.minimumTotalBalance.toLocaleString()}` : "",
-  };
-
-  let result = template;
-  for (const [key, val] of Object.entries(replacements)) {
-    result = result.replaceAll(key, val);
-  }
-  return result;
+function isReferralTemplate(t: EmailTemplate): boolean {
+  return Boolean(t.emailType?.isReferral) || t.type === "referral";
 }
 
 function htmlToPlainText(html: string): string {
@@ -240,18 +156,68 @@ export function EmailDialog({
   templates,
   assignedUserName = "ACB Team",
   referralPartners = [],
+  rawIntakeForm = null,
+  autoReferralPartnerId = null,
 }: EmailDialogProps) {
   const [isPending, setIsPending] = useState(false);
-  const [step, setStep] = useState<"templates" | "partners" | "partner-detail">("templates");
+  const [step, setStep] = useState<"templates" | "partners" | "partner-detail" | "compose">("templates");
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<ReferralPartner | null>(null);
   const [detailPartner, setDetailPartner] = useState<ReferralPartner | null>(null);
+  const [referral, setReferral] = useState<{ partner: ReferralPartner; subject: string; html: string; to: string[] } | null>(null);
+  const [composed, setComposed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const autoHandledRef = useRef<string | null>(null);
+
+  // Effective template list — inject the built-in referral template if the user
+  // hasn't created one, so the referral flow always works.
+  const builtinReferral: EmailTemplate = {
+    id: "builtin-referral",
+    name: BUILTIN_REFERRAL_TEMPLATE.name,
+    type: "referral",
+    subjectTemplate: BUILTIN_REFERRAL_TEMPLATE.subjectTemplate,
+    bodyTemplate: BUILTIN_REFERRAL_TEMPLATE.bodyTemplate,
+    emailType: { color: "#F59E0B", isReferral: true },
+  };
+  const allTemplates = templates.some(isReferralTemplate) ? templates : [...templates, builtinReferral];
+
+  // Refer Out flow: open straight into composing a referral email for a partner.
+  useEffect(() => {
+    if (!open || !autoReferralPartnerId) return;
+    if (autoHandledRef.current === autoReferralPartnerId) return;
+    const partner = referralPartners.find((p) => p.id === autoReferralPartnerId);
+    const tmpl = allTemplates.find(isReferralTemplate);
+    if (!partner || !tmpl) return;
+    autoHandledRef.current = autoReferralPartnerId;
+    setSelectedTemplate(tmpl);
+    composeReferral(tmpl, partner);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoReferralPartnerId]);
+
+  useEffect(() => {
+    if (!open) autoHandledRef.current = null;
+  }, [open]);
 
   if (!open) return null;
 
+  function composeReferral(template: EmailTemplate, partner: ReferralPartner) {
+    const rendered = renderReferralEmail({
+      lead,
+      partner,
+      assignedUserName,
+      rawIntakeForm,
+      subjectTemplate: template.subjectTemplate,
+      bodyTemplate: template.bodyTemplate,
+    });
+    setSelectedPartner(partner);
+    setReferral({ partner, subject: rendered.subject, html: rendered.html, to: rendered.to });
+    setComposed(false);
+    setCopied(false);
+    setStep("compose");
+  }
+
   function handleSelectTemplate(template: EmailTemplate) {
-    const isReferral = template.emailType?.isReferral || template.type === "referral";
-    if (isReferral && referralPartners.length > 0) {
+    if (isReferralTemplate(template) && referralPartners.length > 0) {
       setSelectedTemplate(template);
       setStep("partners");
     } else {
@@ -261,7 +227,40 @@ export function EmailDialog({
 
   function handleSelectPartner(partner: ReferralPartner) {
     setSelectedPartner(partner);
-    sendWithTemplate(selectedTemplate!, partner);
+    if (selectedTemplate && isReferralTemplate(selectedTemplate)) {
+      composeReferral(selectedTemplate, partner);
+    } else {
+      sendWithTemplate(selectedTemplate!, partner);
+    }
+  }
+
+  async function openInOutlook() {
+    if (!referral) return;
+    const eml = buildEml({ to: referral.to.join(", "), subject: referral.subject, html: referral.html });
+    downloadEml(referralEmailFilename(lead, referral.partner), eml);
+    setComposed(true);
+    setIsPending(true);
+    await logQuickAction(lead.id, "contacted_email");
+    setIsPending(false);
+  }
+
+  async function copyReferralHtml() {
+    if (!referral) return;
+    try {
+      const item = new ClipboardItem({
+        "text/html": new Blob([referral.html], { type: "text/html" }),
+        "text/plain": new Blob([referral.html], { type: "text/plain" }),
+      });
+      await navigator.clipboard.write([item]);
+    } catch {
+      try {
+        await navigator.clipboard.writeText(referral.html);
+      } catch {
+        return;
+      }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   async function sendWithTemplate(template: EmailTemplate, partner: ReferralPartner | null) {
@@ -290,6 +289,9 @@ export function EmailDialog({
     setSelectedTemplate(null);
     setSelectedPartner(null);
     setDetailPartner(null);
+    setReferral(null);
+    setComposed(false);
+    setCopied(false);
     onClose();
   }
 
@@ -310,6 +312,7 @@ export function EmailDialog({
             {step === "templates" && `Email ${lead.fullName || lead.companyName || "Lead"}`}
             {step === "partners" && "Select Referral Partner"}
             {step === "partner-detail" && detailPartner?.name}
+            {step === "compose" && "Referral Email"}
           </h3>
           <button onClick={resetAndClose} className="rounded-md p-1 hover:bg-muted">
             <X className="h-4 w-4" />
@@ -320,10 +323,10 @@ export function EmailDialog({
           {/* Step 1: Template Selection */}
           {step === "templates" && (
             <>
-              {templates.length > 0 && (
+              {allTemplates.length > 0 && (
                 <>
                   <p className="text-sm text-muted-foreground">Choose a template:</p>
-                  {templates.map((tmpl) => {
+                  {allTemplates.map((tmpl) => {
                     const typeColor = tmpl.emailType?.color;
                     const isReferral = tmpl.emailType?.isReferral || tmpl.type === "referral";
                     const badgeStyle = typeColor
@@ -493,6 +496,50 @@ export function EmailDialog({
               >
                 Select {detailPartner.name}
               </button>
+            </div>
+          )}
+
+          {/* Step 4: Compose referral email (formatted Outlook draft) */}
+          {step === "compose" && referral && (
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-1">
+                <div>
+                  <span className="text-muted-foreground">To: </span>
+                  {referral.to.join(", ") || lead.email}
+                </div>
+                <div className="truncate">
+                  <span className="text-muted-foreground">Subject: </span>
+                  {referral.subject}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Preview:</p>
+              <div className="rounded-lg border max-h-72 overflow-y-auto p-3 bg-white text-black">
+                <div dangerouslySetInnerHTML={{ __html: referral.html }} />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={openInOutlook}
+                  disabled={isPending}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  <FileDown className="h-4 w-4" />
+                  Open in Outlook (.eml)
+                </button>
+                <button
+                  onClick={copyReferralHtml}
+                  className="flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                  title="Copy the formatted email to paste into a new Outlook message"
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              {composed && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Draft downloaded — open the .eml file to launch a ready-to-send Outlook draft.
+                  <button onClick={resetAndClose} className="ml-1 text-primary hover:underline">Done</button>
+                </p>
+              )}
             </div>
           )}
         </div>

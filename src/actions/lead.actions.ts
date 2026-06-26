@@ -68,15 +68,30 @@ export async function getLeads(params: {
     where.status = { notIn: ["ARCHIVED", "MERGED"] };
   }
 
-  if (search) {
-    where.OR = [
-      { fullName: { contains: search, mode: "insensitive" } },
-      { companyName: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-      { phone: { contains: search } },
-      { firstName: { contains: search, mode: "insensitive" } },
-      { lastName: { contains: search, mode: "insensitive" } },
+  if (search?.trim()) {
+    // Robust search: split into terms (every term must match — AND), each term
+    // matching ANY of a broad field set (OR). So "acme florida" needs both.
+    const terms = search.trim().split(/\s+/).filter(Boolean);
+    const fieldsFor = (term: string): Prisma.LeadWhereInput[] => [
+      { fullName: { contains: term, mode: "insensitive" } },
+      { firstName: { contains: term, mode: "insensitive" } },
+      { lastName: { contains: term, mode: "insensitive" } },
+      { companyName: { contains: term, mode: "insensitive" } },
+      { email: { contains: term, mode: "insensitive" } },
+      { phone: { contains: term } },
+      { alternatePhone: { contains: term } },
+      { city: { contains: term, mode: "insensitive" } },
+      { state: { contains: term, mode: "insensitive" } },
+      { zip: { contains: term, mode: "insensitive" } },
+      { debtType: { contains: term, mode: "insensitive" } },
+      { industry: { contains: term, mode: "insensitive" } },
+      { businessType: { contains: term, mode: "insensitive" } },
+      { title: { contains: term, mode: "insensitive" } },
+      { notesFromForm: { contains: term, mode: "insensitive" } },
     ];
+    for (const term of terms) {
+      and.push({ OR: fieldsFor(term) });
+    }
   }
 
   if (qualityTier?.length) {

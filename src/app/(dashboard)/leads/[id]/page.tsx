@@ -540,11 +540,22 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 templates={serializedTemplates}
                 leadData={{
                   fullName: lead.fullName,
+                  firstName: lead.firstName,
+                  lastName: lead.lastName,
                   companyName: lead.companyName,
                   phone: lead.phone,
                   state: lead.state,
+                  states: (lead.states as string[] | null) ?? null,
                   industry: lead.industry,
+                  debtType: lead.debtType,
+                  businessType: lead.businessType,
+                  accountVolume: lead.accountVolume,
+                  title: lead.title,
                   notesFromForm: lead.notesFromForm,
+                  rawIntakeForm:
+                    ((lead.rawPayloadJson as Record<string, unknown> | null)?._rawIntakeForm as Record<string, unknown>) ??
+                    (lead.rawPayloadJson as Record<string, unknown> | null) ??
+                    null,
                 }}
                 assignedUserName={session?.user.name ?? "ACB Team"}
                 referralPartners={activePartners}
