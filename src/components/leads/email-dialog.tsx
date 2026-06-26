@@ -5,10 +5,12 @@ import { X, ExternalLink, ChevronRight, ArrowLeft, Info, FileDown, Copy, Check }
 import { logQuickAction } from "@/actions/note.actions";
 import { renderTemplate, type EmailLeadData } from "@/lib/email-template-render";
 import {
-  renderReferralEmail,
+  renderTemplateEmail,
   buildEml,
   downloadEml,
-  referralEmailFilename,
+  emailFilename,
+  wrapEmailDocument,
+  copyHtmlToClipboard,
   BUILTIN_REFERRAL_TEMPLATE,
 } from "@/lib/referral-email";
 
@@ -164,7 +166,7 @@ export function EmailDialog({
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<ReferralPartner | null>(null);
   const [detailPartner, setDetailPartner] = useState<ReferralPartner | null>(null);
-  const [referral, setReferral] = useState<{ partner: ReferralPartner; subject: string; html: string; to: string[] } | null>(null);
+  const [compose, setCompose] = useState<{ partner: ReferralPartner | null; subject: string; bodyHtml: string; to: string[] } | null>(null);
   const [composed, setComposed] = useState(false);
   const [copied, setCopied] = useState(false);
   const autoHandledRef = useRef<string | null>(null);
@@ -190,7 +192,7 @@ export function EmailDialog({
     if (!partner || !tmpl) return;
     autoHandledRef.current = autoReferralPartnerId;
     setSelectedTemplate(tmpl);
-    composeReferral(tmpl, partner);
+    composeEmail(tmpl, partner);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, autoReferralPartnerId]);
 
@@ -200,8 +202,9 @@ export function EmailDialog({
 
   if (!open) return null;
 
-  function composeReferral(template: EmailTemplate, partner: ReferralPartner) {
-    const rendered = renderReferralEmail({
+  // Render any template (referral or not) to a formatted, paste-ready email.
+  function composeEmail(template: EmailTemplate, partner: ReferralPartner | null) {
+    const rendered = renderTemplateEmail({
       lead,
       partner,
       assignedUserName,
@@ -210,58 +213,38 @@ export function EmailDialog({
       bodyTemplate: template.bodyTemplate,
     });
     setSelectedPartner(partner);
-    setReferral({ partner, subject: rendered.subject, html: rendered.html, to: rendered.to });
+    setCompose({ partner, subject: rendered.subject, bodyHtml: rendered.bodyHtml, to: rendered.to });
     setComposed(false);
     setCopied(false);
     setStep("compose");
   }
 
   function handleSelectTemplate(template: EmailTemplate) {
+    setSelectedTemplate(template);
     if (isReferralTemplate(template) && referralPartners.length > 0) {
-      setSelectedTemplate(template);
       setStep("partners");
     } else {
-      sendWithTemplate(template, null);
+      composeEmail(template, null);
     }
   }
 
   function handleSelectPartner(partner: ReferralPartner) {
     setSelectedPartner(partner);
-    if (selectedTemplate && isReferralTemplate(selectedTemplate)) {
-      composeReferral(selectedTemplate, partner);
-    } else {
-      sendWithTemplate(selectedTemplate!, partner);
-    }
+    if (selectedTemplate) composeEmail(selectedTemplate, partner);
   }
 
-  async function copyRich(): Promise<boolean> {
-    if (!referral) return false;
-    const plain = htmlToPlainText(referral.html);
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([referral.html], { type: "text/html" }),
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        }),
-      ]);
-      return true;
-    } catch {
-      try {
-        await navigator.clipboard.writeText(plain);
-        return true;
-      } catch {
-        return false;
-      }
-    }
+  function doCopy(): boolean {
+    if (!compose) return false;
+    return copyHtmlToClipboard(compose.bodyHtml);
   }
 
   // Primary path: copy the formatted email, then open a blank Outlook compose
   // (recipients + subject prefilled) so the user pastes the rich body in.
   async function copyAndOpenOutlook() {
-    if (!referral) return;
-    const ok = await copyRich();
+    if (!compose) return;
+    const ok = doCopy();
     setCopied(ok);
-    const mailto = `mailto:${encodeURIComponent(referral.to.join(", "))}?subject=${encodeURIComponent(referral.subject)}`;
+    const mailto = `mailto:${encodeURIComponent(compose.to.join(", "))}?subject=${encodeURIComponent(compose.subject)}`;
     window.open(mailto, "_self");
     setComposed(true);
     setIsPending(true);
@@ -269,16 +252,20 @@ export function EmailDialog({
     setIsPending(false);
   }
 
-  async function copyOnly() {
-    const ok = await copyRich();
+  function copyOnly() {
+    const ok = doCopy();
     setCopied(ok);
     setTimeout(() => setCopied(false), 2500);
   }
 
-  function downloadReferralEml() {
-    if (!referral) return;
-    const eml = buildEml({ to: referral.to.join(", "), subject: referral.subject, html: referral.html });
-    downloadEml(referralEmailFilename(lead, referral.partner), eml);
+  function downloadComposedEml() {
+    if (!compose) return;
+    const eml = buildEml({
+      to: compose.to.join(", "),
+      subject: compose.subject,
+      html: wrapEmailDocument(compose.bodyHtml),
+    });
+    downloadEml(emailFilename(lead, compose.partner), eml);
   }
 
   async function sendWithTemplate(template: EmailTemplate, partner: ReferralPartner | null) {
@@ -307,7 +294,7 @@ export function EmailDialog({
     setSelectedTemplate(null);
     setSelectedPartner(null);
     setDetailPartner(null);
-    setReferral(null);
+    setCompose(null);
     setComposed(false);
     setCopied(false);
     onClose();
@@ -330,7 +317,7 @@ export function EmailDialog({
             {step === "templates" && `Email ${lead.fullName || lead.companyName || "Lead"}`}
             {step === "partners" && "Select Referral Partner"}
             {step === "partner-detail" && detailPartner?.name}
-            {step === "compose" && "Referral Email"}
+            {step === "compose" && (selectedTemplate?.name ?? "Compose Email")}
           </h3>
           <button onClick={resetAndClose} className="rounded-md p-1 hover:bg-muted">
             <X className="h-4 w-4" />
@@ -517,22 +504,22 @@ export function EmailDialog({
             </div>
           )}
 
-          {/* Step 4: Compose referral email (formatted Outlook draft) */}
-          {step === "compose" && referral && (
+          {/* Step 4: Compose formatted email (copy into Outlook) */}
+          {step === "compose" && compose && (
             <div className="space-y-3">
               <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-1">
                 <div>
                   <span className="text-muted-foreground">To: </span>
-                  {referral.to.join(", ") || lead.email}
+                  {compose.to.join(", ") || lead.email}
                 </div>
                 <div className="truncate">
                   <span className="text-muted-foreground">Subject: </span>
-                  {referral.subject}
+                  {compose.subject}
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Preview:</p>
               <div className="rounded-lg border max-h-72 overflow-y-auto p-3 bg-white text-black">
-                <div dangerouslySetInnerHTML={{ __html: referral.html }} />
+                <div dangerouslySetInnerHTML={{ __html: compose.bodyHtml }} />
               </div>
               <div className="space-y-2">
                 <button
@@ -552,7 +539,7 @@ export function EmailDialog({
                     {copied ? "Copied" : "Copy only"}
                   </button>
                   <button
-                    onClick={downloadReferralEml}
+                    onClick={downloadComposedEml}
                     className="flex-1 flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
                     title="Opens a ready-made draft in classic Outlook desktop"
                   >
