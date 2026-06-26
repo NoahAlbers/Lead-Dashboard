@@ -179,17 +179,30 @@ export function renderReferralEmail(args: {
   return { subject, html: wrapHtmlDocument(inner), to };
 }
 
-/** RFC822 message with X-Unsent:1 so Outlook opens it as an editable draft. */
+function toBase64Utf8(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  // btoa exists in the browser (this is only called client-side).
+  return btoa(bin);
+}
+
+/**
+ * RFC822 message with X-Unsent:1 so classic Outlook opens it as an editable
+ * draft. The HTML body is base64-encoded (wrapped at 76 cols) to avoid the
+ * long-line / encoding issues that make some clients show it as plain text.
+ */
 export function buildEml(args: { to: string; cc?: string; subject: string; html: string }): string {
+  const body = (toBase64Utf8(args.html).match(/.{1,76}/g) ?? []).join("\r\n");
   const lines = [`To: ${args.to}`];
   if (args.cc) lines.push(`Cc: ${args.cc}`);
   lines.push(`Subject: ${args.subject}`);
   lines.push("X-Unsent: 1");
   lines.push("MIME-Version: 1.0");
   lines.push('Content-Type: text/html; charset="utf-8"');
-  lines.push("Content-Transfer-Encoding: 8bit");
+  lines.push("Content-Transfer-Encoding: base64");
   lines.push("");
-  lines.push(args.html);
+  lines.push(body);
   return lines.join("\r\n");
 }
 

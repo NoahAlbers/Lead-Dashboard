@@ -98,11 +98,16 @@ export function ActiveFilterChips({
   if (rentLabel)
     chips.push({ key: "rent", label: rentLabel, clear: { rentMin: null, rentMax: null } });
 
-  for (const f of ["industry", "debtType", "businessType"] as const) {
+  const fieldLabels: Record<string, string> = {
+    industry: "Industry",
+    debtType: "Debt type",
+    businessType: "Business type",
+    software: "Software",
+  };
+  for (const f of ["industry", "debtType", "businessType", "software"] as const) {
     const v = searchParams.get(f);
     if (v) {
-      const niceField = f === "debtType" ? "Debt type" : f === "businessType" ? "Business type" : "Industry";
-      chips.push({ key: f, label: `${niceField}: ${v}`, clear: { [f]: null } });
+      chips.push({ key: f, label: `${fieldLabels[f]}: ${v}`, clear: { [f]: null } });
     }
   }
 
