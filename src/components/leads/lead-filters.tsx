@@ -5,34 +5,9 @@ import { Search, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { getActiveUsers } from "@/actions/assignment.actions";
 import { SavedViewsPanel } from "./saved-views-panel";
-
-const STATUS_OPTIONS = [
-  { value: "NEW", label: "New" },
-  { value: "REVIEWED", label: "Reviewed" },
-  { value: "QUALIFIED", label: "Qualified" },
-  { value: "CONTACTED", label: "Contacted" },
-  { value: "FOLLOW_UP_NEEDED", label: "Follow-Up" },
-  { value: "REFERRED_OUT", label: "Referred" },
-  { value: "IMPORTED_TO_CRM", label: "In CRM" },
-  { value: "WON", label: "Won" },
-  { value: "LOST", label: "Lost" },
-  { value: "DISQUALIFIED", label: "Disqualified" },
-  { value: "DUPLICATE", label: "Duplicate" },
-];
-
-const TIER_OPTIONS = [
-  { value: "A", label: "A Lead" },
-  { value: "B", label: "B Lead" },
-  { value: "C", label: "C Lead" },
-  { value: "POOR", label: "Poor Fit" },
-];
-
-const SLA_OPTIONS = [
-  { value: "on_track", label: "On Track" },
-  { value: "warning", label: "At Risk" },
-  { value: "breached", label: "Breached" },
-  { value: "escalated", label: "Escalated" },
-];
+import { AdvancedFiltersPanel } from "./advanced-filters-panel";
+import { ActiveFilterChips } from "./active-filter-chips";
+import type { Option } from "./multi-select-filter";
 
 interface SavedView {
   id: string;
@@ -41,6 +16,7 @@ interface SavedView {
   sortJson: Record<string, string> | null;
   isTeamView: boolean;
   isSystem: boolean;
+  isPinned: boolean;
   userId: string | null;
 }
 
@@ -48,9 +24,17 @@ interface LeadFiltersProps {
   savedViews?: SavedView[];
   currentUserId?: string;
   userRole?: string;
+  stateClassifications?: Record<string, string>;
+  tierOptions?: Option[];
 }
 
-export function LeadFilters({ savedViews, currentUserId, userRole }: LeadFiltersProps) {
+export function LeadFilters({
+  savedViews,
+  currentUserId,
+  userRole,
+  stateClassifications = {},
+  tierOptions = [],
+}: LeadFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -96,126 +80,63 @@ export function LeadFilters({ savedViews, currentUserId, userRole }: LeadFilters
 
   const isUnreadFilter = searchParams.get("isRead") === "false";
 
-  const hasFilters =
-    searchParams.has("search") ||
-    searchParams.has("status") ||
-    searchParams.has("qualityTier") ||
-    searchParams.has("state") ||
-    searchParams.has("dateFrom") ||
-    searchParams.has("isRead") ||
-    searchParams.has("assignedUserId") ||
-    searchParams.has("slaStatus") ||
-    searchParams.has("ageMin");
+  const hasFilters = Array.from(searchParams.keys()).some(
+    (k) => !["page", "pageSize", "sortField", "sortDirection"].includes(k)
+  );
 
   return (
-    <div className="flex flex-wrap gap-3">
-      <form onSubmit={handleSearch} className="relative flex-1 min-w-[200px]">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          ref={searchInputRef}
-          type="text"
-          placeholder="Search leads..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="flex h-9 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-      </form>
+    <div className="w-full space-y-2">
+      <div className="flex flex-wrap gap-3">
+        <form onSubmit={handleSearch} className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search leads..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </form>
 
-      <select
-        value={searchParams.get("status") ?? ""}
-        onChange={(e) => updateParam("status", e.target.value || null)}
-        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
-      >
-        <option value="">All Statuses</option>
-        {STATUS_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={searchParams.get("qualityTier") ?? ""}
-        onChange={(e) => updateParam("qualityTier", e.target.value || null)}
-        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
-      >
-        <option value="">All Tiers</option>
-        {TIER_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={searchParams.get("assignedUserId") ?? ""}
-        onChange={(e) => updateParam("assignedUserId", e.target.value || null)}
-        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
-      >
-        <option value="">All Assignees</option>
-        <option value="__unassigned__">Unassigned</option>
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>{u.name}</option>
-        ))}
-      </select>
-
-      <input
-        type="date"
-        value={searchParams.get("dateFrom") ?? ""}
-        onChange={(e) => updateParam("dateFrom", e.target.value || null)}
-        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
-        placeholder="From"
-      />
-
-      <input
-        type="date"
-        value={searchParams.get("dateTo") ?? ""}
-        onChange={(e) => updateParam("dateTo", e.target.value || null)}
-        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
-        placeholder="To"
-      />
-
-      <select
-        value={searchParams.get("ageMin") ?? ""}
-        onChange={(e) => updateParam("ageMin", e.target.value || null)}
-        className="h-9 rounded-md border border-input bg-card px-3 text-sm"
-      >
-        <option value="">Any Age</option>
-        <option value="3">3+ days</option>
-        <option value="7">7+ days</option>
-        <option value="14">14+ days</option>
-        <option value="30">30+ days</option>
-      </select>
-
-      <button
-        onClick={() => updateParam("isRead", isUnreadFilter ? null : "false")}
-        className={`h-9 rounded-md border px-3 text-sm font-medium transition-colors ${
-          isUnreadFilter
-            ? "border-primary bg-primary/10 text-primary"
-            : "border-input bg-card text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        Unread
-      </button>
-
-      {/* Saved Views */}
-      {savedViews && currentUserId && userRole && (
-        <SavedViewsPanel
-          views={savedViews}
-          currentUserId={currentUserId}
-          userRole={userRole}
-        />
-      )}
-
-      {hasFilters && (
         <button
-          onClick={clearFilters}
-          className="flex items-center gap-1 rounded-md px-3 py-1 text-sm text-muted-foreground hover:bg-muted transition-colors"
+          onClick={() => updateParam("isRead", isUnreadFilter ? null : "false")}
+          className={`h-9 rounded-md border px-3 text-sm font-medium transition-colors ${
+            isUnreadFilter
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-input bg-card text-muted-foreground hover:text-foreground"
+          }`}
         >
-          <X className="h-3 w-3" />
-          Clear
+          Unread
         </button>
-      )}
+
+        <AdvancedFiltersPanel
+          users={users}
+          tierOptions={tierOptions}
+          stateClassifications={stateClassifications}
+        />
+
+        {/* Saved Views */}
+        {savedViews && currentUserId && userRole && (
+          <SavedViewsPanel
+            views={savedViews}
+            currentUserId={currentUserId}
+            userRole={userRole}
+          />
+        )}
+
+        {hasFilters && (
+          <button
+            onClick={clearFilters}
+            className="flex items-center gap-1 rounded-md px-3 py-1 text-sm text-muted-foreground hover:bg-muted transition-colors"
+          >
+            <X className="h-3 w-3" />
+            Clear
+          </button>
+        )}
+      </div>
+
+      <ActiveFilterChips users={users} tierOptions={tierOptions} />
     </div>
   );
 }

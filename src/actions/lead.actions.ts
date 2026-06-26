@@ -7,14 +7,28 @@ import { scoreAndUpdateLead } from "@/services/scoring.service";
 import { Prisma, type LeadStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { estStartOfDay, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
+import { hasAnyStates, buildStateClassWhere, numericRange } from "@/lib/lead-state-filter";
+import { getStateClassifications } from "@/actions/state-classification.actions";
 
 export async function getLeads(params: {
   search?: string;
   status?: string[];
   qualityTier?: string[];
   state?: string;
-  assignedUserId?: string;
+  states?: string[];
+  statesOp?: string;
+  stateClass?: string;
+  assignedUserId?: string[];
   slaStatus?: string[];
+  unitsMin?: number;
+  unitsMax?: number;
+  scoreMin?: number;
+  scoreMax?: number;
+  rentMin?: number;
+  rentMax?: number;
+  industry?: string;
+  debtType?: string;
+  businessType?: string;
   dateFrom?: string;
   dateTo?: string;
   isRead?: string;
@@ -29,6 +43,9 @@ export async function getLeads(params: {
     status,
     qualityTier,
     state,
+    states,
+    statesOp,
+    stateClass,
     assignedUserId,
     dateFrom,
     dateTo,
@@ -40,6 +57,9 @@ export async function getLeads(params: {
   } = params;
 
   const where: Prisma.LeadWhereInput = {};
+  // Composite conditions that each build their own OR (state filters) are
+  // accumulated here so they AND-combine without clobbering `where.OR` (search).
+  const and: Prisma.LeadWhereInput[] = [];
 
   // Exclude ARCHIVED leads by default unless explicitly filtering for them
   if (status?.length) {
@@ -63,15 +83,50 @@ export async function getLeads(params: {
     where.qualityTier = { in: qualityTier };
   }
 
+  // Legacy single-state param — route through the array-aware helper so it also
+  // matches leads where the state lives in the `states` JSON array.
   if (state) {
-    where.state = { equals: state, mode: "insensitive" };
+    and.push(hasAnyStates([state]));
   }
 
-  if (assignedUserId === "__unassigned__") {
-    where.assignedUserId = null;
-  } else if (assignedUserId) {
-    where.assignedUserId = assignedUserId;
+  // Explicit multi-state selection (abbrev or name), with any/none operator.
+  if (states?.length) {
+    const sw = hasAnyStates(states);
+    and.push(statesOp === "none" ? { NOT: sw } : sw);
   }
+
+  // Classification mode (good/bad/mixed/unknown) over the combined state set.
+  if (stateClass) {
+    const classifications = await getStateClassifications();
+    const cw = buildStateClassWhere(stateClass, classifications);
+    if (cw) and.push(cw);
+  }
+
+  // Assignee — multi-select, supports the "__unassigned__" sentinel and mixes.
+  if (assignedUserId?.length) {
+    const wantsUnassigned = assignedUserId.includes("__unassigned__");
+    const ids = assignedUserId.filter((v) => v !== "__unassigned__");
+    if (wantsUnassigned && ids.length === 0) {
+      where.assignedUserId = null;
+    } else if (!wantsUnassigned && ids.length > 0) {
+      where.assignedUserId = ids.length === 1 ? ids[0] : { in: ids };
+    } else if (wantsUnassigned && ids.length > 0) {
+      and.push({ OR: [{ assignedUserId: { in: ids } }, { assignedUserId: null }] });
+    }
+  }
+
+  // Numeric range filters (>, <, =, between via min/max pairs).
+  const unitsR = numericRange(params.unitsMin, params.unitsMax);
+  if (unitsR) where.accountVolumeNum = unitsR;
+  const scoreR = numericRange(params.scoreMin, params.scoreMax);
+  if (scoreR) where.score = scoreR;
+  const rentR = numericRange(params.rentMin, params.rentMax);
+  if (rentR) where.avgRentNum = rentR;
+
+  // Free-text categorical filters.
+  if (params.industry) where.industry = { contains: params.industry, mode: "insensitive" };
+  if (params.debtType) where.debtType = { contains: params.debtType, mode: "insensitive" };
+  if (params.businessType) where.businessType = { contains: params.businessType, mode: "insensitive" };
 
   if (dateFrom || dateTo) {
     where.createdAt = {};
@@ -113,6 +168,8 @@ export async function getLeads(params: {
     "industry",
     "debtType",
     "accountVolume",
+    "accountVolumeNum",
+    "avgRentNum",
     "urgency",
     "serviceRequested",
     "businessType",
@@ -122,6 +179,8 @@ export async function getLeads(params: {
   const orderField = allowedSortFields.includes(sortField)
     ? sortField
     : "createdAt";
+
+  if (and.length) where.AND = and;
 
   const [leads, total] = await Promise.all([
     prisma.lead.findMany({

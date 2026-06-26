@@ -10,6 +10,7 @@ import {
   Plus,
   RotateCcw,
   X,
+  Star,
 } from "lucide-react";
 import { useState, useTransition, useRef, useEffect } from "react";
 import {
@@ -18,8 +19,10 @@ import {
   hideSavedView,
   restoreSavedView,
   getHiddenViews,
+  togglePinView,
 } from "@/actions/saved-view.actions";
 import { toast } from "@/components/ui/use-toast";
+import { buildViewParams } from "@/lib/apply-saved-view";
 
 interface SavedView {
   id: string;
@@ -28,6 +31,7 @@ interface SavedView {
   sortJson: Record<string, string> | null;
   isTeamView: boolean;
   isSystem: boolean;
+  isPinned: boolean;
   userId: string | null;
 }
 
@@ -77,39 +81,25 @@ export function SavedViewsPanel({
     }
   }, [showPanel]);
 
-  function resolveFilterValue(key: string, value: string): string {
-    if (key === "assignedUserId" && value === "__me__") {
-      return currentUserId;
-    }
-    if (key === "dateFrom") {
-      if (value === "__today__") {
-        return new Date().toISOString().slice(0, 10);
-      }
-      if (value === "__week_start__") {
-        const now = new Date();
-        const day = now.getDay();
-        const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-        return new Date(now.setDate(diff)).toISOString().slice(0, 10);
-      }
-    }
-    return value;
-  }
-
   function applyView(view: SavedView) {
-    const params = new URLSearchParams();
-    if (view.filtersJson) {
-      for (const [k, v] of Object.entries(view.filtersJson)) {
-        params.set(k, resolveFilterValue(k, v));
-      }
-    }
-    if (view.sortJson) {
-      for (const [k, v] of Object.entries(view.sortJson)) {
-        params.set(k, v);
-      }
-    }
-    params.set("page", "1");
+    const params = buildViewParams(view, currentUserId);
     router.push(`${pathname}?${params.toString()}`);
     setShowPanel(false);
+  }
+
+  function canPin(view: SavedView) {
+    return view.isTeamView ? canCreateTeamView : true;
+  }
+
+  function handlePin(id: string) {
+    startTransition(async () => {
+      try {
+        await togglePinView(id);
+        toast({ title: "Pin updated" });
+      } catch (e: unknown) {
+        toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+      }
+    });
   }
 
   function handleHide(id: string) {
@@ -182,6 +172,7 @@ export function SavedViewsPanel({
           sortJson: v.sortJson as Record<string, string> | null,
           isTeamView: v.isTeamView,
           isSystem: v.isSystem,
+          isPinned: v.isPinned,
           userId: v.userId,
         }))
       );
@@ -238,6 +229,19 @@ export function SavedViewsPanel({
                     {view.name}
                   </button>
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {canPin(view) && (
+                      <button
+                        onClick={() => handlePin(view.id)}
+                        className="p-1 rounded hover:bg-muted-foreground/10"
+                        title={view.isPinned ? "Unpin from inbox" : "Pin to inbox"}
+                      >
+                        <Star
+                          className={`h-3.5 w-3.5 ${
+                            view.isPinned ? "fill-current text-amber-500" : "text-muted-foreground"
+                          }`}
+                        />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleHide(view.id)}
                       className="p-1 rounded hover:bg-muted-foreground/10 text-muted-foreground"
@@ -287,6 +291,17 @@ export function SavedViewsPanel({
                     {view.name}
                   </button>
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handlePin(view.id)}
+                      className="p-1 rounded hover:bg-muted-foreground/10"
+                      title={view.isPinned ? "Unpin from inbox" : "Pin to inbox"}
+                    >
+                      <Star
+                        className={`h-3.5 w-3.5 ${
+                          view.isPinned ? "fill-current text-amber-500" : "text-muted-foreground"
+                        }`}
+                      />
+                    </button>
                     <button
                       onClick={() => handleDelete(view.id)}
                       className={`p-1 rounded hover:bg-muted-foreground/10 ${

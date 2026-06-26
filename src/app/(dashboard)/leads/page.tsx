@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { LeadTable } from "@/components/leads/lead-table";
 import { LeadFilters } from "@/components/leads/lead-filters";
+import { PinnedViewsBar } from "@/components/leads/pinned-views-bar";
 import { InboxWidgets } from "@/components/leads/inbox-widget-config";
 import { StartWorkingButton } from "@/components/leads/start-working-button";
 import { AutoRefreshBar } from "@/components/shared/auto-refresh-bar";
@@ -20,6 +21,9 @@ interface PageProps {
 export default async function LeadsPage({ searchParams }: PageProps) {
   const params = await searchParams;
 
+  const numParam = (v: string | string[] | undefined) =>
+    v != null && v !== "" ? Number(v) : undefined;
+
   const filters = {
     search: params.search as string | undefined,
     status: params.status
@@ -29,10 +33,24 @@ export default async function LeadsPage({ searchParams }: PageProps) {
       ? (params.qualityTier as string).split(",")
       : undefined,
     state: params.state as string | undefined,
-    assignedUserId: params.assignedUserId as string | undefined,
+    states: params.states ? (params.states as string).split(",") : undefined,
+    statesOp: params.statesOp as string | undefined,
+    stateClass: params.stateClass as string | undefined,
+    assignedUserId: params.assignedUserId
+      ? (params.assignedUserId as string).split(",")
+      : undefined,
     slaStatus: params.slaStatus
       ? (params.slaStatus as string).split(",")
       : undefined,
+    unitsMin: numParam(params.unitsMin),
+    unitsMax: numParam(params.unitsMax),
+    scoreMin: numParam(params.scoreMin),
+    scoreMax: numParam(params.scoreMax),
+    rentMin: numParam(params.rentMin),
+    rentMax: numParam(params.rentMax),
+    industry: params.industry as string | undefined,
+    debtType: params.debtType as string | undefined,
+    businessType: params.businessType as string | undefined,
     dateFrom: params.dateFrom as string | undefined,
     dateTo: params.dateTo as string | undefined,
     isRead: params.isRead as string | undefined,
@@ -86,6 +104,24 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     emailType: t.emailType ? { color: t.emailType.color, isReferral: t.emailType.isReferral } : null,
   }));
 
+  const mappedViews = savedViews.map((v) => ({
+    id: v.id,
+    name: v.name,
+    filtersJson: v.filtersJson as Record<string, string> | null,
+    sortJson: v.sortJson as Record<string, string> | null,
+    isTeamView: v.isTeamView,
+    isSystem: v.isSystem,
+    isPinned: v.isPinned,
+    userId: v.userId,
+  }));
+
+  // Real tier names (e.g. "A Lead") for the multi-select — the lead's
+  // qualityTier stores the tier NAME, so the filter must use it too.
+  const tierOptions = Object.keys(tierColorMap).map((name) => ({
+    value: name,
+    label: name,
+  }));
+
   return (
     <div className="space-y-6">
       <AutoRefreshBar variant="inbox" />
@@ -106,22 +142,25 @@ export default async function LeadsPage({ searchParams }: PageProps) {
         }
       />
 
+      {/* Pinned saved views */}
+      {session?.user?.id && (
+        <PinnedViewsBar
+          views={mappedViews}
+          currentUserId={session.user.id}
+          userRole={session.user.role}
+        />
+      )}
+
       {/* Lead Table with integrated filters */}
       <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Loading leads...</div>}>
         <LeadTable
           filterBar={
             <LeadFilters
-              savedViews={savedViews.map((v) => ({
-                id: v.id,
-                name: v.name,
-                filtersJson: v.filtersJson as Record<string, string> | null,
-                sortJson: v.sortJson as Record<string, string> | null,
-                isTeamView: v.isTeamView,
-                isSystem: v.isSystem,
-                userId: v.userId,
-              }))}
+              savedViews={mappedViews}
               currentUserId={session?.user?.id}
               userRole={session?.user?.role}
+              stateClassifications={stateClassifications}
+              tierOptions={tierOptions}
             />
           }
           leads={serializedLeads as never}

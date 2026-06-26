@@ -20,7 +20,7 @@ export default async function AssignmentsPage() {
     getWorkloadStats(),
     getUnassignedLeadCount(),
     getLeads({
-      assignedUserId: "__unassigned__",
+      assignedUserId: ["__unassigned__"],
       sortField: "slaStatus",
       sortDirection: "desc",
       pageSize: 50,

@@ -104,6 +104,8 @@ model Lead {
   balanceAmount       Decimal? @map("balance_amount") @db.Decimal(12, 2)
   estimatedClaimValue Decimal? @map("estimated_claim_value") @db.Decimal(12, 2)
   accountVolume       String?  @map("account_volume")
+  accountVolumeNum    Int?     @map("account_volume_num") // derived numeric copy for filtering/sorting
+  avgRentNum          Int?     @map("avg_rent_num")       // avg rent/unit, derived from raw intake payload
   serviceRequested    String?  @map("service_requested")
   notesFromForm       String?  @map("notes_from_form") @db.Text
   urgency             String?
@@ -174,6 +176,9 @@ model Lead {
   @@index([companyName])
   @@index([slaStatus])
   @@index([nextFollowUpAt])
+  @@index([score])
+  @@index([accountVolumeNum])
+  @@index([avgRentNum])
   @@map("leads")
 }
 
@@ -331,6 +336,8 @@ model SavedView {
   isSystem      Boolean @default(false) @map("is_system")
   isTeamView    Boolean @default(false) @map("is_team_view")
   hiddenByUsers Json?   @map("hidden_by_users") // string[] of userIds
+  isPinned      Boolean @default(false) @map("is_pinned")
+  sortOrder     Int     @default(0) @map("sort_order")
 
   userId String? @map("user_id")
   user   User?   @relation(fields: [userId], references: [id])

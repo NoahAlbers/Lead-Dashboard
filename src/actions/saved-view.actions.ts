@@ -10,7 +10,12 @@ export async function getSavedViews() {
   if (!session) return [];
 
   const allViews = await prisma.savedView.findMany({
-    orderBy: [{ isTeamView: "desc" }, { name: "asc" }],
+    orderBy: [
+      { isPinned: "desc" },
+      { sortOrder: "asc" },
+      { isTeamView: "desc" },
+      { name: "asc" },
+    ],
   });
 
   return allViews.filter((view) => {
@@ -97,6 +102,51 @@ export async function restoreSavedView(id: string) {
     where: { id },
     data: { hiddenByUsers: hidden.filter((uid) => uid !== session.user.id) },
   });
+  revalidatePath("/leads");
+}
+
+// Pin / unpin a view (shows it as a chip in the inbox pinned-views bar).
+// Personal views: only the owner. Team views: ADMIN/MANAGER only (same gate as
+// creating a team view).
+export async function togglePinView(id: string) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  const view = await prisma.savedView.findUnique({ where: { id } });
+  if (!view) throw new Error("View not found");
+
+  if (view.isTeamView) {
+    if (!["ADMIN", "MANAGER"].includes(session.user.role)) {
+      throw new Error("Only managers can pin team views");
+    }
+  } else if (view.userId !== session.user.id) {
+    throw new Error("Unauthorized");
+  }
+
+  let sortOrder = view.sortOrder;
+  if (!view.isPinned) {
+    // Newly pinned views go to the end of the pinned row.
+    const max = await prisma.savedView.aggregate({ _max: { sortOrder: true } });
+    sortOrder = (max._max.sortOrder ?? 0) + 1;
+  }
+
+  await prisma.savedView.update({
+    where: { id },
+    data: { isPinned: !view.isPinned, sortOrder },
+  });
+  revalidatePath("/leads");
+}
+
+// Persist a new order for the pinned-views bar (drag-to-reorder).
+export async function reorderPinnedViews(ids: string[]) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  await Promise.all(
+    ids.map((id, i) =>
+      prisma.savedView.update({ where: { id }, data: { sortOrder: i } })
+    )
+  );
   revalidatePath("/leads");
 }
 

@@ -150,7 +150,7 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { id: "recommendedAction", label: "Action", sortField: "recommendedAction" },
   { id: "industry", label: "Industry", sortField: "industry" },
   { id: "debtType", label: "Debt Type", sortField: "debtType" },
-  { id: "accountVolume", label: "Units", sortField: "accountVolume" },
+  { id: "accountVolume", label: "Units", sortField: "accountVolumeNum" },
   { id: "urgency", label: "Urgency", sortField: "urgency" },
   { id: "businessType", label: "Business Type", sortField: "businessType" },
   { id: "lastActivityAt", label: "Last Activity", sortField: "lastActivityAt" },

@@ -86,6 +86,13 @@ function mapFields(data: WebflowFormData): Record<string, unknown> {
     mapped.estimatedClaimValue = isNaN(num) ? null : num;
   }
 
+  // Derive a numeric copy of accountVolume (units) for range filtering/sorting.
+  // The original string is preserved on the lead for display.
+  if (mapped.accountVolume != null) {
+    const n = parseInt(String(mapped.accountVolume).replace(/[^0-9-]/g, ""), 10);
+    mapped.accountVolumeNum = Number.isNaN(n) ? null : n;
+  }
+
   return mapped;
 }
 
@@ -101,6 +108,15 @@ export async function ingestLead(
   }
 ) {
   const mapped = mapFields(formData);
+
+  // Avg rent / unit lives only in the raw intake payload — derive a numeric
+  // copy for range filtering (the raw value stays in rawPayloadJson for display).
+  const rawIntake = formData._rawIntakeForm as Record<string, unknown> | undefined;
+  const avgRentRaw = rawIntake?.avgRent;
+  const avgRentNum =
+    typeof avgRentRaw === "number" && !Number.isNaN(avgRentRaw)
+      ? Math.round(avgRentRaw)
+      : null;
 
   // Create lead record
   const lead = await prisma.lead.create({
@@ -125,6 +141,8 @@ export async function ingestLead(
       balanceAmount: mapped.balanceAmount as number | undefined,
       estimatedClaimValue: mapped.estimatedClaimValue as number | undefined,
       accountVolume: mapped.accountVolume as string | undefined,
+      accountVolumeNum: mapped.accountVolumeNum as number | null | undefined,
+      avgRentNum,
       serviceRequested: mapped.serviceRequested as string | undefined,
       notesFromForm: mapped.notesFromForm as string | undefined,
       urgency: mapped.urgency as string | undefined,
