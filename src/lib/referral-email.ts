@@ -125,8 +125,48 @@ export const BUILTIN_REFERRAL_TEMPLATE = {
 <p>{{assigned_user_name}}<br>Director of Business Development<br>Advanced Collection Bureau, Inc</p>`,
 };
 
-function wrapHtmlDocument(inner: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.5;">${inner}</body></html>`;
+/** Inline-styled fragment — what gets copied to the clipboard / pasted into Outlook. */
+function bodyFragment(inner: string): string {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;line-height:1.5;">${inner}</div>`;
+}
+
+/** Wrap a body fragment as a full HTML document (used for the .eml download). */
+export function wrapEmailDocument(bodyHtml: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;">${bodyHtml}</body></html>`;
+}
+
+/**
+ * Copy rich HTML to the clipboard via a hidden contentEditable + execCommand.
+ * This is far more reliable for pasting *formatted* content into Outlook/Word
+ * than navigator.clipboard.write (which various browsers mishandle). Returns
+ * whether the copy succeeded. Client-only.
+ */
+export function copyHtmlToClipboard(html: string): boolean {
+  const container = document.createElement("div");
+  container.setAttribute("contenteditable", "true");
+  container.style.position = "fixed";
+  container.style.left = "-99999px";
+  container.style.top = "0";
+  container.style.opacity = "0";
+  container.innerHTML = html;
+  document.body.appendChild(container);
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+
+  selection?.removeAllRanges();
+  container.remove();
+  return ok;
 }
 
 function dedupeEmails(values: (string | null | undefined)[]): string[] {
@@ -142,24 +182,27 @@ function dedupeEmails(values: (string | null | undefined)[]): string[] {
   return out;
 }
 
-export interface RenderedReferralEmail {
+export interface RenderedEmail {
   subject: string;
-  html: string;
+  /** Inline-styled HTML fragment, ready to copy to the clipboard. */
+  bodyHtml: string;
   to: string[];
 }
 
 /**
- * Render the referral email. Pass a custom subject/body (e.g. from a DB
- * template) or omit them to use the built-in. `to` is the lead + partner emails.
+ * Render an email template to a paste-ready HTML fragment. Works for any
+ * template (referral or not). When a partner is given, the recipients are the
+ * lead + partner; otherwise just the lead. Supports the {{lead_data_table}}
+ * merge field. Falls back to the built-in referral template if none is passed.
  */
-export function renderReferralEmail(args: {
+export function renderTemplateEmail(args: {
   lead: EmailLeadData;
   partner: EmailReferralPartner | null;
   assignedUserName: string;
   rawIntakeForm?: Record<string, unknown> | null;
   subjectTemplate?: string;
   bodyTemplate?: string;
-}): RenderedReferralEmail {
+}): RenderedEmail {
   const { lead, partner, assignedUserName, rawIntakeForm } = args;
   const tableHtml = buildLeadDataTableHtml(lead, rawIntakeForm);
   const subject = renderTemplate(
@@ -175,8 +218,10 @@ export function renderReferralEmail(args: {
     partner,
     { "{{lead_data_table}}": tableHtml }
   );
-  const to = dedupeEmails([lead.email, partner?.email, ...(partner?.emails ?? [])]);
-  return { subject, html: wrapHtmlDocument(inner), to };
+  const to = partner
+    ? dedupeEmails([lead.email, partner.email, ...(partner.emails ?? [])])
+    : dedupeEmails([lead.email]);
+  return { subject, bodyHtml: bodyFragment(inner), to };
 }
 
 function toBase64Utf8(s: string): string {
@@ -219,9 +264,9 @@ export function downloadEml(filename: string, eml: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Build a safe .eml filename from the lead + partner. */
-export function referralEmailFilename(lead: EmailLeadData, partner: EmailReferralPartner | null): string {
+/** Build a safe .eml filename from the lead (+ optional partner). */
+export function emailFilename(lead: EmailLeadData, partner: EmailReferralPartner | null): string {
   const who = (firstNameOf(lead) || lead.companyName || "lead").replace(/[^a-z0-9]+/gi, "-");
-  const to = (partner?.name || "partner").replace(/[^a-z0-9]+/gi, "-");
-  return `Referral-${who}-${to}.eml`;
+  const suffix = partner ? `-${partner.name.replace(/[^a-z0-9]+/gi, "-")}` : "";
+  return `Email-${who}${suffix}.eml`;
 }
