@@ -125,9 +125,31 @@ export const BUILTIN_REFERRAL_TEMPLATE = {
 <p>{{assigned_user_name}}<br>Director of Business Development<br>Advanced Collection Bureau, Inc</p>`,
 };
 
+// Inject an inline margin into a block tag so paragraph/heading/list spacing
+// survives into Outlook and Word (which strip stylesheet margins on paste).
+function withMargin(tag: string, attrs: string | undefined, margin: string): string {
+  const a = attrs ?? "";
+  if (/style\s*=\s*["']/i.test(a)) {
+    return `<${tag}${a.replace(/style\s*=\s*(["'])/i, `style=$1margin:${margin};`)}>`;
+  }
+  return `<${tag}${a} style="margin:${margin};">`;
+}
+
+/**
+ * Tiptap emits bare <p>/<h*>/<ul>/<ol> tags; browsers' resets and Outlook drop
+ * their default margins, so paragraphs collapse together. Bake explicit inline
+ * spacing in so line breaks between blocks are respected everywhere.
+ */
+function normalizeEmailHtml(html: string): string {
+  return html
+    .replace(/<p(\s[^>]*)?>/gi, (_m, attrs) => withMargin("p", attrs, "0 0 12px 0"))
+    .replace(/<(h[1-3])(\s[^>]*)?>/gi, (_m, tag, attrs) => withMargin(tag, attrs, "0 0 8px 0"))
+    .replace(/<(ul|ol)(\s[^>]*)?>/gi, (_m, tag, attrs) => withMargin(tag, attrs, "0 0 12px 22px"));
+}
+
 /** Inline-styled fragment — what gets copied to the clipboard / pasted into Outlook. */
 function bodyFragment(inner: string): string {
-  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;line-height:1.5;">${inner}</div>`;
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111111;line-height:1.5;">${normalizeEmailHtml(inner)}</div>`;
 }
 
 /** Wrap a body fragment as a full HTML document (used for the .eml download). */
