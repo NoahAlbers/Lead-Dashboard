@@ -108,6 +108,36 @@ export function buildLeadDataTableHtml(
   return `<table style="border-collapse:collapse;margin:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;">${body}</table>`;
 }
 
+/**
+ * Merge-field values sourced from the raw intake form (with lead-record
+ * fallbacks), so templates can reference every captured piece of info
+ * individually: {{comments}}, {{website}}, {{states}}, {{total_units}}, etc.
+ */
+export function buildIntakeExtras(
+  lead: EmailLeadData,
+  rawIntakeForm?: Record<string, unknown> | null
+): Record<string, string> {
+  const intake = rawIntakeForm ?? {};
+  const leadObj = lead as unknown as Record<string, unknown>;
+  const val = (keys: string[]) => asList(pick(intake, leadObj, keys));
+
+  return {
+    "{{website}}": val(["companyWebsite", "company_website", "website"]),
+    "{{debt_types}}": val(["debtTypes", "debt_type", "debtType", "serviceRequested", "service_requested"]),
+    "{{debts_ready_now}}": val(["debtsNow", "debts_ready"]),
+    "{{prior_agency}}": val(["priorAgency", "prior_agency"]),
+    "{{states}}": val(["states", "statesArray", "state"]),
+    "{{ownership}}": val(["ownershipType", "ownership", "businessType", "business_type"]),
+    "{{total_units}}": val(["totalUnits", "total_units", "accountVolume", "account_volume"]),
+    "{{rental_types}}": val(["rentalTypes", "rental_types"]),
+    "{{property_types}}": val(["propertyTypes", "property_types"]),
+    "{{avg_rent}}": formatRent(pick(intake, leadObj, ["avgRent", "avg_rent"])) ?? "",
+    "{{listing_sites}}": val(["listingSites", "listing_locations"]),
+    "{{pm_software}}": val(["pmSoftware", "pm_software"]),
+    "{{comments}}": val(["comments", "notes_from_form", "notesFromForm"]),
+  };
+}
+
 export const BUILTIN_REFERRAL_TEMPLATE = {
   name: "Referral Recommendation (built-in)",
   subjectTemplate: "Collection Recommendation for {{first_name}} - {{referral_partner_name}}",
@@ -137,14 +167,23 @@ function withMargin(tag: string, attrs: string | undefined, margin: string): str
 
 /**
  * Tiptap emits bare <p>/<h*>/<ul>/<ol> tags; browsers' resets and Outlook drop
- * their default margins, so paragraphs collapse together. Bake explicit inline
- * spacing in so line breaks between blocks are respected everywhere.
+ * their default margins, so paragraphs collapse together. Outlook's paste
+ * engine also strips inline <p> margins, so margins alone aren't enough —
+ * convert paragraphs to explicit <br><br> breaks, which survive every paste
+ * target (Outlook classic/new/web, Word, Gmail).
  */
 function normalizeEmailHtml(html: string): string {
-  return html
-    .replace(/<p(\s[^>]*)?>/gi, (_m, attrs) => withMargin("p", attrs, "0 0 12px 0"))
+  let out = html
+    // Empty paragraphs (blank lines typed in the editor) → a single break
+    .replace(/<p(\s[^>]*)?>\s*(?:<br\s*\/?>)?\s*<\/p>/gi, "<br>")
+    // Paragraph blocks → content followed by a blank line
+    .replace(/<p(\s[^>]*)?>/gi, "")
+    .replace(/<\/p>/gi, "<br><br>");
+  out = out
     .replace(/<(h[1-3])(\s[^>]*)?>/gi, (_m, tag, attrs) => withMargin(tag, attrs, "0 0 8px 0"))
     .replace(/<(ul|ol)(\s[^>]*)?>/gi, (_m, tag, attrs) => withMargin(tag, attrs, "0 0 12px 22px"));
+  // Trim trailing breaks so the email doesn't end with empty lines
+  return out.replace(/(?:\s*<br\s*\/?>)+\s*$/i, "");
 }
 
 /** Inline-styled fragment — what gets copied to the clipboard / pasted into Outlook. */
@@ -231,14 +270,15 @@ export function renderTemplateEmail(args: {
     args.subjectTemplate || BUILTIN_REFERRAL_TEMPLATE.subjectTemplate,
     lead,
     assignedUserName,
-    partner
+    partner,
+    buildIntakeExtras(lead, rawIntakeForm)
   );
   const inner = renderTemplate(
     args.bodyTemplate || BUILTIN_REFERRAL_TEMPLATE.bodyTemplate,
     lead,
     assignedUserName,
     partner,
-    { "{{lead_data_table}}": tableHtml }
+    { "{{lead_data_table}}": tableHtml, ...buildIntakeExtras(lead, rawIntakeForm) }
   );
   const to = partner
     ? dedupeEmails([lead.email, partner.email, ...(partner.emails ?? [])])

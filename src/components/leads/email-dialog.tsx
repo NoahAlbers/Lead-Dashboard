@@ -244,7 +244,9 @@ export function EmailDialog({
     if (!compose) return;
     const ok = doCopy();
     setCopied(ok);
-    const mailto = `mailto:${encodeURIComponent(compose.to.join(", "))}?subject=${encodeURIComponent(compose.subject)}`;
+    // Outlook expects ';' between recipients — keep the separator unencoded so
+    // it splits them into separate addresses instead of one mangled address.
+    const mailto = `mailto:${compose.to.map(encodeURIComponent).join(";")}?subject=${encodeURIComponent(compose.subject)}`;
     window.open(mailto, "_self");
     setComposed(true);
     setIsPending(true);
@@ -510,7 +512,7 @@ export function EmailDialog({
               <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-1">
                 <div>
                   <span className="text-muted-foreground">To: </span>
-                  {compose.to.join(", ") || lead.email}
+                  {compose.to.join("; ") || lead.email}
                 </div>
                 <div className="truncate">
                   <span className="text-muted-foreground">Subject: </span>
