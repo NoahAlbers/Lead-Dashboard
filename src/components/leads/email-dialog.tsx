@@ -181,14 +181,23 @@ export function EmailDialog({
     bodyTemplate: BUILTIN_REFERRAL_TEMPLATE.bodyTemplate,
     emailType: { color: "#F59E0B", isReferral: true },
   };
-  const allTemplates = templates.some(isReferralTemplate) ? templates : [...templates, builtinReferral];
+  // Offer the built-in table template until one of the user's own referral
+  // templates adopts {{lead_data_table}} — then theirs takes over and the
+  // built-in disappears from the list.
+  const hasTableReferral = templates.some(
+    (t) => isReferralTemplate(t) && t.bodyTemplate.includes("{{lead_data_table}}")
+  );
+  const allTemplates = hasTableReferral ? templates : [...templates, builtinReferral];
 
   // Refer Out flow: open straight into composing a referral email for a partner.
   useEffect(() => {
     if (!open || !autoReferralPartnerId) return;
     if (autoHandledRef.current === autoReferralPartnerId) return;
     const partner = referralPartners.find((p) => p.id === autoReferralPartnerId);
-    const tmpl = allTemplates.find(isReferralTemplate);
+    // Prefer a referral template with the formatted data table.
+    const tmpl =
+      allTemplates.find((t) => isReferralTemplate(t) && t.bodyTemplate.includes("{{lead_data_table}}")) ??
+      allTemplates.find(isReferralTemplate);
     if (!partner || !tmpl) return;
     autoHandledRef.current = autoReferralPartnerId;
     setSelectedTemplate(tmpl);

@@ -95,7 +95,10 @@ export function buildLeadDataTableHtml(
   add("PM Software", asList(pick(intake, leadObj, ["pmSoftware", "pm_software"])));
   add("Comments", asList(pick(intake, leadObj, ["comments", "notes_from_form", "notesFromForm"])));
 
-  const cell = "border:1px solid #b0b0b0;padding:4px 9px;vertical-align:top;";
+  // Outlook/Word's paste engine is happiest with legacy table attributes
+  // (border/cellspacing/cellpadding) PLUS inline styles on every cell — CSS-only
+  // borders get dropped on paste.
+  const cell = "border:1px solid #b0b0b0;padding:4px 9px;vertical-align:top;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111111;";
   const body = rows
     .map(
       (r) =>
@@ -105,7 +108,7 @@ export function buildLeadDataTableHtml(
     )
     .join("");
 
-  return `<table style="border-collapse:collapse;margin:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;">${body}</table>`;
+  return `<table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse;border:1px solid #b0b0b0;margin:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111111;">${body}</table>`;
 }
 
 /**
@@ -139,18 +142,18 @@ export function buildIntakeExtras(
 }
 
 export const BUILTIN_REFERRAL_TEMPLATE = {
-  name: "Referral Recommendation (built-in)",
-  subjectTemplate: "Collection Recommendation for {{first_name}} - {{referral_partner_name}}",
+  name: "Referral (formatted table)",
+  subjectTemplate: "Collection Recommendation for {{first_name}} | {{referral_partner_name}}",
   bodyTemplate: `<p>Hey {{first_name}},</p>
-<p>Advanced Collection Bureau only works with larger property management companies, so we unfortunately won't be able to help you out. But I have taken some time to find agencies that are good for other business to consumer debts.</p>
+<p>Advanced Collection Bureau only works with larger property management companies, so we unfortunately won't be able to help you out. But I have taken some time to find agencies that are good for smaller landlords or property investors.</p>
 <p>I think {{referral_partner_name}} would be the best go-to for your collection needs.</p>
-<p>If {{referral_partner_name}} can't help you out just let me know and I can find another recommendation for you, but these guys should be the best.</p>
+<p>{{first_name}}, if {{referral_partner_name}} can't help you out just let me know and I can find another recommendation for you, but these guys should be the best.</p>
 <p>Here's the contact info for {{referral_partner_name}}:<br>
 {{referral_partner_website}}<br>
-{{referral_partner_phone}}<br>
+{{referral_partner_phone}} (Goes to {{referral_partner_contact_name}})<br>
 {{referral_partner_email}}</p>
 <p>{{referral_partner_contact_name}} is the best person to go to here, and I've got them on this email too.</p>
-<p>{{referral_partner_contact_name}} – here's some of the info for their collections:</p>
+<p>{{referral_partner_contact_name}} – here's some of the info for {{first_name}}'s collections:</p>
 {{lead_data_table}}
 <p>{{assigned_user_name}}<br>Director of Business Development<br>Advanced Collection Bureau, Inc</p>`,
 };
