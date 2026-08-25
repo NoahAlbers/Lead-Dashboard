@@ -517,6 +517,13 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
     router.push(`${pathname}?${params.toString()}`);
   }
 
+  function changePageSize(newSize: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("pageSize", String(newSize));
+    params.set("page", "1");
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
   function resetColumns() {
     setVisibleCols(new Set(DEFAULT_VISIBLE));
     setColOrder([...DEFAULT_ORDER]);
@@ -760,9 +767,21 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
 
       {/* Pagination */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Showing {Math.min((page - 1) * pageSize + 1, total)}–{Math.min(page * pageSize, total)} of {total} leads
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            Showing {Math.min((page - 1) * pageSize + 1, total)}–{Math.min(page * pageSize, total)} of {total} leads
+          </p>
+          <select
+            value={pageSize}
+            onChange={(e) => changePageSize(Number(e.target.value))}
+            className="h-8 rounded-md border border-input bg-card px-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
+            aria-label="Leads per page"
+          >
+            {[10, 25, 50, 100, 200].map((n) => (
+              <option key={n} value={n}>{n} per page</option>
+            ))}
+          </select>
+        </div>
         <div className="flex items-center gap-1">
           <button onClick={() => goToPage(1)} disabled={page <= 1} className="rounded p-1 hover:bg-muted disabled:opacity-50"><ChevronsLeft className="h-4 w-4" /></button>
           <button onClick={() => goToPage(page - 1)} disabled={page <= 1} className="rounded p-1 hover:bg-muted disabled:opacity-50"><ChevronLeft className="h-4 w-4" /></button>
