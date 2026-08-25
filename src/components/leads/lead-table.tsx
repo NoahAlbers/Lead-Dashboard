@@ -32,7 +32,9 @@ import {
   GripVertical,
   EyeOff,
   RotateCcw,
+  Share2,
 } from "lucide-react";
+import { OutcomeModal } from "@/components/leads/outcome-modal";
 import { updateLeadStatus, archiveLead, toggleReadStatus, bulkMarkAsRead } from "@/actions/lead.actions";
 import { logQuickAction } from "@/actions/note.actions";
 import { toast } from "@/components/ui/use-toast";
@@ -214,7 +216,7 @@ function SortableColumnRow({ id, label, checked, onToggle }: { id: string; label
 }
 
 // --- Quick Actions ---
-function RowQuickActions({ lead, onEmailClick }: { lead: LeadRow; onEmailClick: (lead: LeadRow) => void }) {
+function RowQuickActions({ lead, onEmailClick, onReferClick }: { lead: LeadRow; onEmailClick: (lead: LeadRow) => void; onReferClick: (lead: LeadRow) => void }) {
   const [isPending, startTransition] = useTransition();
 
   function handleStatusChange(e: React.MouseEvent, newStatus: LeadStatus, label: string) {
@@ -252,6 +254,7 @@ function RowQuickActions({ lead, onEmailClick }: { lead: LeadRow; onEmailClick: 
       <button onClick={(e) => handleStatusChange(e, "CONTACTED", "Contacted")} disabled={isPending} className={`${b} hover:bg-green-50 text-green-600`} data-tooltip="Mark Contacted"><CheckCircle className="h-4 w-4" /></button>
       <button onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED", "Follow-Up")} disabled={isPending} className={`${b} hover:bg-amber-50 text-amber-600`} data-tooltip="Follow-Up Needed"><Clock className="h-4 w-4" /></button>
       <button onClick={(e) => handleStatusChange(e, "QUALIFIED", "Qualified")} disabled={isPending} className={`${b} hover:bg-yellow-50 text-yellow-600`} data-tooltip="Mark Qualified"><Star className="h-4 w-4" /></button>
+      <button onClick={(e) => { e.stopPropagation(); onReferClick(lead); }} disabled={isPending} className={`${b} hover:bg-purple-50 text-purple-600`} data-tooltip="Refer Out"><Share2 className="h-4 w-4" /></button>
       <button onClick={(e) => handleStatusChange(e, "DISQUALIFIED", "Disqualified")} disabled={isPending} className={`${b} hover:bg-red-50 text-red-500`} data-tooltip="Disqualify"><XCircle className="h-4 w-4" /></button>
       <button onClick={handleArchive} disabled={isPending} className={`${b} hover:bg-muted text-muted-foreground`} data-tooltip="Archive"><Archive className="h-4 w-4" /></button>
       <span onClick={(e) => e.stopPropagation()}>
@@ -267,6 +270,8 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [emailDialogLead, setEmailDialogLead] = useState<LeadRow | null>(null);
+  const [referLead, setReferLead] = useState<LeadRow | null>(null);
+  const [autoPartnerId, setAutoPartnerId] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; colId: string } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -278,6 +283,29 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   useEffect(() => {
     setFocusedIndex(-1);
   }, [leads]);
+
+  // Remember the inbox's current query (page, filters, sort) so the lead
+  // page's "Back to Inbox" link can restore it.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("leadsInboxQuery", searchParams.toString());
+    } catch {}
+  }, [searchParams]);
+
+  // Refer Out from the row quick actions: record the outcome, set the status,
+  // then hand off to the email dialog pre-targeted at the chosen partner.
+  async function handleReferConfirm(result?: { referralPartnerId?: string }) {
+    if (!referLead) return;
+    const lead = referLead;
+    setReferLead(null);
+    await updateLeadStatus(lead.id, "REFERRED_OUT");
+    toast({ title: `${lead.companyName || lead.fullName || "Lead"} marked as Referred Out`, variant: "success" });
+    if (result?.referralPartnerId && lead.email) {
+      setAutoPartnerId(result.referralPartnerId);
+      setEmailDialogLead(lead);
+    }
+    router.refresh();
+  }
 
   // Register inbox keyboard shortcut handler
   useEffect(() => {
@@ -472,7 +500,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       case "age":
         return <AgingBadge createdAt={row.createdAt} thresholds={agingThresholds} />;
       case "actions":
-        return <RowQuickActions lead={row} onEmailClick={(l) => setEmailDialogLead(l)} />;
+        return <RowQuickActions lead={row} onEmailClick={(l) => setEmailDialogLead(l)} onReferClick={(l) => setReferLead(l)} />;
       default:
         return "—";
     }
@@ -745,7 +773,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       {emailDialogLead && emailDialogLead.email && (
         <EmailDialog
           open={!!emailDialogLead}
-          onClose={() => setEmailDialogLead(null)}
+          onClose={() => { setEmailDialogLead(null); setAutoPartnerId(null); }}
           lead={{
             id: emailDialogLead.id,
             email: emailDialogLead.email,
@@ -769,6 +797,18 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
             emailDialogLead.rawPayloadJson ??
             null
           }
+          autoReferralPartnerId={autoPartnerId}
+        />
+      )}
+
+      {referLead && (
+        <OutcomeModal
+          open={true}
+          onClose={() => setReferLead(null)}
+          onConfirm={handleReferConfirm}
+          leadId={referLead.id}
+          outcomeType="referred_out"
+          referralPartners={referralPartners.map((p) => ({ id: p.id, name: p.name }))}
         />
       )}
     </div>
