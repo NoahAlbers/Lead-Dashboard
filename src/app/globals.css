@@ -62,28 +62,5 @@ select, option {
 .ProseMirror img { max-width: 100%; height: auto; }
 .ProseMirror s { text-decoration: line-through; }
 
-/* CSS-only tooltips for action buttons */
-.action-btn {
-  position: relative;
-}
-.action-btn::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1A1A2E;
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-  z-index: 50;
-}
-.action-btn:hover::after {
-  opacity: 1;
-}
+/* Action-button tooltips are portal-rendered (see components/leads/action-tooltip.tsx) —
+   CSS-only tooltips get clipped by the table's overflow-hidden cells. */

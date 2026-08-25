@@ -5,6 +5,7 @@ import { UserPlus, Check } from "lucide-react";
 import { assignLead } from "@/actions/lead.actions";
 import { getActiveUsers } from "@/actions/assignment.actions";
 import { toast } from "@/components/ui/use-toast";
+import { useActionTip } from "@/components/leads/action-tooltip";
 
 interface AssignDropdownProps {
   leadId: string;
@@ -25,6 +26,7 @@ export function AssignDropdown({ leadId, currentAssigneeId, leadLabel, compact, 
   const [users, setUsers] = useState<UserOption[]>([]);
   const [isPending, startTransition] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
+  const { bind, tipEl } = useActionTip();
 
   useEffect(() => {
     if (isOpen && users.length === 0) {
@@ -56,14 +58,15 @@ export function AssignDropdown({ leadId, currentAssigneeId, leadLabel, compact, 
         onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
         disabled={isPending}
         className={compact
-          ? "action-btn relative rounded p-1 transition-all disabled:opacity-30 hover:bg-indigo-50 text-indigo-500"
+          ? "relative rounded p-1 transition-all disabled:opacity-30 hover:bg-indigo-50 text-indigo-500"
           : "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         }
-        data-tooltip="Assign"
+        {...(compact ? bind("Assign") : {})}
       >
         <UserPlus className={compact ? "h-4 w-4" : "h-3.5 w-3.5"} />
         {!compact && "Assign"}
       </button>
+      {tipEl}
 
       {isOpen && (
         <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border bg-card shadow-lg z-50 py-1 max-h-[250px] overflow-y-auto">

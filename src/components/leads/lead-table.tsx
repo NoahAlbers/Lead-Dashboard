@@ -35,6 +35,7 @@ import {
   Share2,
 } from "lucide-react";
 import { OutcomeModal } from "@/components/leads/outcome-modal";
+import { useActionTip } from "@/components/leads/action-tooltip";
 import { updateLeadStatus, archiveLead, toggleReadStatus, bulkMarkAsRead } from "@/actions/lead.actions";
 import { logQuickAction } from "@/actions/note.actions";
 import { toast } from "@/components/ui/use-toast";
@@ -218,6 +219,7 @@ function SortableColumnRow({ id, label, checked, onToggle }: { id: string; label
 // --- Quick Actions ---
 function RowQuickActions({ lead, onEmailClick, onReferClick }: { lead: LeadRow; onEmailClick: (lead: LeadRow) => void; onReferClick: (lead: LeadRow) => void }) {
   const [isPending, startTransition] = useTransition();
+  const { bind, tipEl } = useActionTip();
 
   function handleStatusChange(e: React.MouseEvent, newStatus: LeadStatus, label: string) {
     e.stopPropagation();
@@ -246,20 +248,21 @@ function RowQuickActions({ lead, onEmailClick, onReferClick }: { lead: LeadRow; 
     });
   }
 
-  const b = "action-btn relative rounded p-1 transition-all disabled:opacity-30";
+  const b = "relative rounded p-1 transition-all disabled:opacity-30";
   return (
     <div className="flex items-center gap-0.5">
-      <button onClick={handleEmail} disabled={!lead.email || isPending} className={`${b} hover:bg-blue-50 text-blue-500`} data-tooltip="Email"><Mail className="h-4 w-4" /></button>
-      <button onClick={handleCall} disabled={!lead.phone || isPending} className={`${b} hover:bg-sky-50 text-sky-500`} data-tooltip="Call"><Phone className="h-4 w-4" /></button>
-      <button onClick={(e) => handleStatusChange(e, "CONTACTED", "Contacted")} disabled={isPending} className={`${b} hover:bg-green-50 text-green-600`} data-tooltip="Mark Contacted"><CheckCircle className="h-4 w-4" /></button>
-      <button onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED", "Follow-Up")} disabled={isPending} className={`${b} hover:bg-amber-50 text-amber-600`} data-tooltip="Follow-Up Needed"><Clock className="h-4 w-4" /></button>
-      <button onClick={(e) => handleStatusChange(e, "QUALIFIED", "Qualified")} disabled={isPending} className={`${b} hover:bg-yellow-50 text-yellow-600`} data-tooltip="Mark Qualified"><Star className="h-4 w-4" /></button>
-      <button onClick={(e) => { e.stopPropagation(); onReferClick(lead); }} disabled={isPending} className={`${b} hover:bg-purple-50 text-purple-600`} data-tooltip="Refer Out"><Share2 className="h-4 w-4" /></button>
-      <button onClick={(e) => handleStatusChange(e, "DISQUALIFIED", "Disqualified")} disabled={isPending} className={`${b} hover:bg-red-50 text-red-500`} data-tooltip="Disqualify"><XCircle className="h-4 w-4" /></button>
-      <button onClick={handleArchive} disabled={isPending} className={`${b} hover:bg-muted text-muted-foreground`} data-tooltip="Archive"><Archive className="h-4 w-4" /></button>
+      <button onClick={handleEmail} disabled={!lead.email || isPending} className={`${b} hover:bg-blue-50 text-blue-500`} {...bind("Email")}><Mail className="h-4 w-4" /></button>
+      <button onClick={handleCall} disabled={!lead.phone || isPending} className={`${b} hover:bg-sky-50 text-sky-500`} {...bind("Call")}><Phone className="h-4 w-4" /></button>
+      <button onClick={(e) => handleStatusChange(e, "CONTACTED", "Contacted")} disabled={isPending} className={`${b} hover:bg-green-50 text-green-600`} {...bind("Mark Contacted")}><CheckCircle className="h-4 w-4" /></button>
+      <button onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED", "Follow-Up")} disabled={isPending} className={`${b} hover:bg-amber-50 text-amber-600`} {...bind("Follow-Up Needed")}><Clock className="h-4 w-4" /></button>
+      <button onClick={(e) => handleStatusChange(e, "QUALIFIED", "Qualified")} disabled={isPending} className={`${b} hover:bg-yellow-50 text-yellow-600`} {...bind("Mark Qualified")}><Star className="h-4 w-4" /></button>
+      <button onClick={(e) => { e.stopPropagation(); onReferClick(lead); }} disabled={isPending} className={`${b} hover:bg-purple-50 text-purple-600`} {...bind("Refer Out")}><Share2 className="h-4 w-4" /></button>
+      <button onClick={(e) => handleStatusChange(e, "DISQUALIFIED", "Disqualified")} disabled={isPending} className={`${b} hover:bg-red-50 text-red-500`} {...bind("Disqualify")}><XCircle className="h-4 w-4" /></button>
+      <button onClick={handleArchive} disabled={isPending} className={`${b} hover:bg-muted text-muted-foreground`} {...bind("Archive")}><Archive className="h-4 w-4" /></button>
       <span onClick={(e) => e.stopPropagation()}>
         <AssignDropdown leadId={lead.id} currentAssigneeId={lead.assignedUser?.id} leadLabel={lead.companyName || lead.fullName || "Lead"} compact />
       </span>
+      {tipEl}
     </div>
   );
 }
