@@ -57,7 +57,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     isRead: params.isRead as string | undefined,
     ageMin: params.ageMin ? Number(params.ageMin) : undefined,
     page: params.page ? Number(params.page) : 1,
-    pageSize: params.pageSize ? Number(params.pageSize) : 25,
+    pageSize: params.pageSize ? Math.min(Math.max(Number(params.pageSize) || 25, 1), 200) : 25,
     sortField: (params.sortField as string) ?? "createdAt",
     sortDirection: (params.sortDirection as "asc" | "desc") ?? "desc",
   };
