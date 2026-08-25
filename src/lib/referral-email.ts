@@ -154,8 +154,7 @@ export const BUILTIN_REFERRAL_TEMPLATE = {
 {{referral_partner_email}}</p>
 <p>{{referral_partner_contact_name}} is the best person to go to here, and I've got them on this email too.</p>
 <p>{{referral_partner_contact_name}} – here's some of the info for {{first_name}}'s collections:</p>
-{{lead_data_table}}
-<p>{{assigned_user_name}}<br>Director of Business Development<br>Advanced Collection Bureau, Inc</p>`,
+{{lead_data_table}}`,
 };
 
 // Inject an inline margin into a block tag so paragraph/heading/list spacing

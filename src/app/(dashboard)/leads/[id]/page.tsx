@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format, toZonedTime } from "date-fns-tz";
-import { ArrowLeft, ChevronDown, ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { getLead, markLeadAsRead } from "@/actions/lead.actions";
 import { getLeadNotes } from "@/actions/note.actions";
 import { getLeadEvents } from "@/services/activity-log.service";
@@ -17,6 +17,7 @@ import { SlaBadge, SlaProgressBar } from "@/components/leads/sla-badge";
 import { WorkingModeBarWrapper, DispositionPanelWrapper, SessionSummaryWrapper } from "@/components/leads/working-mode-wrapper";
 import { MarkReadOnView } from "@/components/leads/mark-read-on-view";
 import { LeadActions } from "@/components/leads/lead-actions";
+import { BackToInboxLink } from "@/components/leads/back-to-inbox-link";
 import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { ScoreCircle } from "@/components/leads/score-circle";
@@ -202,13 +203,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Link
-            href="/leads"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-1.5"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Back to Inbox
-          </Link>
+          <BackToInboxLink />
           <h1 className="text-xl font-bold leading-tight">
             {lead.fullName || "Unknown"}{lead.companyName ? ` | ${lead.companyName}` : ""}
           </h1>

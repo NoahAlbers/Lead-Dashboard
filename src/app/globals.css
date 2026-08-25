@@ -69,7 +69,7 @@ select, option {
 .action-btn::after {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
   background: #1A1A2E;
@@ -82,7 +82,7 @@ select, option {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
-  z-index: 10;
+  z-index: 50;
 }
 .action-btn:hover::after {
   opacity: 1;

@@ -259,7 +259,8 @@ export function EmailDialog({
     window.open(mailto, "_self");
     setComposed(true);
     setIsPending(true);
-    await logQuickAction(lead.id, "contacted_email");
+    // A referral email keeps/sets REFERRED_OUT rather than flipping to CONTACTED.
+    await logQuickAction(lead.id, compose.partner ? "referral_sent" : "contacted_email");
     setIsPending(false);
   }
 

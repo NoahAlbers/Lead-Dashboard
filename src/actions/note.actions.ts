@@ -72,23 +72,37 @@ export async function logQuickAction(
     "duplicate_found": "DUPLICATE",
   };
 
+  // Statuses that represent a final disposition — a mere contact action must
+  // never downgrade these back to CONTACTED/FOLLOW_UP (e.g. emailing the
+  // referral right after marking a lead Referred Out).
+  const OUTCOME_STATUSES = new Set([
+    "REFERRED_OUT", "WON", "LOST", "DISQUALIFIED",
+    "IMPORTED_TO_CRM", "DUPLICATE", "ARCHIVED", "MERGED",
+  ]);
+  const PROGRESS_STATUSES = new Set(["CONTACTED", "FOLLOW_UP_NEEDED"]);
+
   const newStatus = statusMap[actionType];
   if (newStatus) {
     const lead = await prisma.lead.findUniqueOrThrow({
       where: { id: leadId },
     });
 
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: { status: newStatus as never },
-    });
+    const isDowngrade =
+      PROGRESS_STATUSES.has(newStatus) && OUTCOME_STATUSES.has(lead.status);
 
-    await logEvent(
-      leadId,
-      "status_changed",
-      { from: lead.status, to: newStatus, triggeredBy: actionType },
-      session.user.id
-    );
+    if (!isDowngrade && lead.status !== newStatus) {
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: { status: newStatus as never },
+      });
+
+      await logEvent(
+        leadId,
+        "status_changed",
+        { from: lead.status, to: newStatus, triggeredBy: actionType },
+        session.user.id
+      );
+    }
   }
 
   revalidatePath(`/leads/${leadId}`);
