@@ -5,6 +5,7 @@ import {
   sendFailureAlertEmail,
   sendNewLeadEmail,
 } from "@/services/email-notification.service";
+import { sendLeadConfirmationEmail } from "@/services/lead-emails.service";
 import { logger } from "@/lib/logger";
 
 // --- Helpers (mirrored from intake-form route for consistency) ---
@@ -321,6 +322,17 @@ export async function processIngestionItem(queueId: string): Promise<void> {
         error: err instanceof Error ? err.message : String(err),
       });
     });
+
+    // Confirmation email to the lead — completed submissions only. Items that
+    // came from an abandoned partial (partialStep set) get the recapture
+    // sequence instead of a confirmation.
+    if (!item.partialStep) {
+      sendLeadConfirmationEmail(lead.id).catch((err) => {
+        logger.error("PIPELINE", "Lead confirmation email failed (non-blocking)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
 
     // Update queue with success
     await prisma.ingestionQueue.update({

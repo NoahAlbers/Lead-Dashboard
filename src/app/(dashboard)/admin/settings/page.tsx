@@ -14,10 +14,12 @@ import { OutcomeReasonSettings } from "@/components/admin/outcome-reason-setting
 import { IngestionHealthDashboard } from "@/components/admin/ingestion-health";
 import { FieldMappingSettings } from "@/components/admin/field-mapping-settings";
 import { RecalculateScoresButton } from "@/components/admin/recalculate-scores-button";
+import { EmailSettings } from "@/components/admin/email-settings";
+import { parseHotLeadConditions } from "@/lib/hot-lead";
 import { BackfillSubmissionDataButton } from "@/components/admin/backfill-submission-data-button";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session, senderDefault, senderHighValue, confirmationEnabledRaw, hotConditionsRaw] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
@@ -31,9 +33,14 @@ export default async function SettingsPage() {
     getIngestionStats().catch(() => null),
     getSystemConfig("field_mapping"),
     auth(),
+    getSystemConfig("email_sender_default"),
+    getSystemConfig("email_sender_high_value"),
+    getSystemConfig("lead_confirmation_enabled"),
+    getSystemConfig("hot_lead_conditions"),
   ]);
 
   const agingThresholds = (agingThresholdsRaw as { green: number; yellow: number; orange: number; red: number } | null) ?? { green: 2, yellow: 4, orange: 6, red: 7 };
+  const hotConditions = parseHotLeadConditions(hotConditionsRaw);
 
   return (
     <div className="space-y-6">
@@ -105,6 +112,13 @@ export default async function SettingsPage() {
       {/* Lead Aging Thresholds */}
       <div className="rounded-lg border bg-card p-5">
         <AgingThresholdSettings initialThresholds={agingThresholds} />
+
+        <EmailSettings
+          initialDefaultSender={(senderDefault as string) ?? "Advanced Collection Bureau <noreply@advancedcb.com>"}
+          initialHighValueSender={(senderHighValue as string) ?? "Noah Albers <nalbers@advancedcb.com>"}
+          initialConfirmationEnabled={confirmationEnabledRaw !== false}
+          initialHotConditions={hotConditions}
+        />
       </div>
 
       {/* Outcome Reasons */}

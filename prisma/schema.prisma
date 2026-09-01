@@ -574,6 +574,18 @@ model SystemConfig {
   @@map("system_config")
 }
 
+// Addresses we must never email again (unsubscribes, bounces, complaints).
+// Checked before every lead-facing automated send.
+model EmailSuppression {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  reason    String   // unsubscribed, bounced, complained, manual
+  source    String?  // what triggered it (confirmation, recapture, resend_webhook)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("email_suppressions")
+}
+
 // ===== Phase 2: Win/Loss Analysis =====
 
 model LeadOutcome {
