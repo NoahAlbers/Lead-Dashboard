@@ -162,8 +162,10 @@ export function ActivityTimeline({ events, notes = [], leadId, stateClassMap }: 
   const [isPending, startTransition] = useTransition();
 
   // Merge events and notes into a single timeline, newest first
+  // note_added events are bookkeeping; the note itself is rendered below.
+  const visibleEvents = events.filter((e) => e.eventType !== "note_added");
   const allItems = [
-    ...events.map((e) => ({
+    ...visibleEvents.map((e) => ({
       type: "event" as const,
       id: e.id,
       date: new Date(e.createdAt),
