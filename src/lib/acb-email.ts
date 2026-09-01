@@ -67,7 +67,7 @@ export function renderAcbEmail(args: {
 <tr><td align="center">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
   <tr><td style="background:${C.blue};border-radius:14px 14px 0 0;padding:20px 30px;font-family:Arial,Helvetica,sans-serif;">
-    <span style="display:inline-block;background:#ffffff;color:${C.blue};font-weight:bold;font-size:14px;border-radius:8px;padding:6px 9px;vertical-align:middle;">ACB</span>
+    <img src="${appBaseUrl()}/brand/acb-mark-white.png" alt="ACB" width="34" height="34" style="display:inline-block;vertical-align:middle;border:0;" />
     <span style="color:#ffffff;font-size:16px;font-weight:bold;vertical-align:middle;padding-left:10px;">Advanced Collection Bureau</span>
   </td></tr>
   <tr><td style="background:#ffffff;border:1px solid ${C.border};border-top:none;border-radius:0 0 14px 14px;padding:30px;font-family:Arial,Helvetica,sans-serif;color:${C.text};font-size:15px;line-height:1.6;">
