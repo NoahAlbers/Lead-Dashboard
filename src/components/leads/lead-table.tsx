@@ -179,7 +179,7 @@ const DEFAULT_ORDER = [
 ];
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
-  readIndicator: 40, createdAt: 140, age: 60, companyName: 200, fullName: 140,
+  readIndicator: 40, createdAt: 160, age: 80, companyName: 200, fullName: 140,
   email: 200, phone: 120, state: 80, score: 70, qualityTier: 70,
   status: 110, recommendedAction: 120, industry: 120, debtType: 120,
   accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, sla: 110, actions: 220,

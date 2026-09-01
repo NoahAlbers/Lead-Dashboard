@@ -38,6 +38,7 @@ const eventLabels: Record<string, string> = {
   research_completed: "Research completed",
   auto_research: "Auto research ran",
   prospect_comment: "Comment from the prospect",
+  first_contact_recorded: "First contact recorded",
   lead_data_received: "Submission Data Received",
 };
 

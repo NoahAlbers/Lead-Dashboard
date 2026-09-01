@@ -38,12 +38,13 @@ export function StatCard({ label, value, icon: Icon, className, spark, delta, de
   const flat = showDelta && delta === 0;
   return (
     <div className={cn("rounded-lg border bg-card p-4", className)}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground truncate" title={hint ?? label}>{label}</p>
-          <p className="text-2xl font-bold mt-1 truncate">{value}</p>
-        </div>
-        {spark ? <Sparkline values={spark} /> : <Icon className="h-8 w-8 text-muted-foreground/50 shrink-0" />}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground truncate" title={hint ?? label}>{label}</p>
+        <Icon className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+      </div>
+      <div className="flex items-end justify-between gap-2 mt-1">
+        <p className="text-2xl font-bold truncate">{value}</p>
+        {spark && <Sparkline values={spark} />}
       </div>
       {showDelta && (
         <p className={cn("mt-1.5 text-xs font-medium", flat ? "text-muted-foreground" : up ? "text-emerald-600" : "text-red-600")}>
