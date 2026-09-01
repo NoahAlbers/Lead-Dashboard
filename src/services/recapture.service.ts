@@ -30,17 +30,43 @@ async function resumeUrl(token: string): Promise<string> {
   return `${base}${base.includes("?") ? "&" : "?"}resume=${token}`;
 }
 
+async function recaptureEnabled(): Promise<boolean> {
+  const row = await prisma.systemConfig.findUnique({ where: { key: "recapture_enabled" } });
+  return row?.value !== false;
+}
+
+/** Only chase abandons this fresh. Guards against emailing a stale backlog
+ * (e.g. months of unconverted partials) when the cron first comes online. */
+async function maxAbandonAgeDays(): Promise<number> {
+  const row = await prisma.systemConfig.findUnique({
+    where: { key: "recapture_max_abandon_age_days" },
+  });
+  const n = Number(row?.value);
+  return Number.isFinite(n) && n > 0 ? n : 7;
+}
+
 /**
  * Enroll a lead created from an abandoned partial. Safe to call blindly; it
- * quietly skips when the lead has no email, the address is suppressed or
- * already belongs to a completed inquiry, or an enrollment already exists.
- * Sends Email 1 immediately.
+ * quietly skips when recapture is disabled, the abandon is too old, the lead
+ * has no email, the address is suppressed or already belongs to a completed
+ * inquiry, or an enrollment already exists. Sends Email 1 immediately.
  */
 export async function enrollAbandonedLead(
   leadId: string,
   sessionId: string | null,
-  abandonedStep: string | null
+  abandonedStep: string | null,
+  abandonedAt?: Date | null
 ): Promise<void> {
+  if (!(await recaptureEnabled())) return;
+
+  if (abandonedAt) {
+    const ageDays = (Date.now() - abandonedAt.getTime()) / 86400000;
+    if (ageDays > (await maxAbandonAgeDays())) {
+      logger.info("RECAPTURE", "Skipping enrollment, abandon too old", { leadId, ageDays: Math.round(ageDays) });
+      return;
+    }
+  }
+
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead?.email) return;
   const email = lead.email.trim().toLowerCase();
@@ -207,6 +233,8 @@ async function sendNextRecaptureEmail(enrollmentId: string): Promise<boolean> {
 
 /** The cron entry point: advance every due enrollment. */
 export async function processRecaptureQueue(): Promise<{ due: number; sent: number; stopped: number }> {
+  if (!(await recaptureEnabled())) return { due: 0, sent: 0, stopped: 0 };
+
   const due = await prisma.recaptureEnrollment.findMany({
     where: { status: "active", nextSendAt: { lte: new Date() } },
     include: { lead: true },

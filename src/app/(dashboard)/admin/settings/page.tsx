@@ -19,7 +19,7 @@ import { parseHotLeadConditions } from "@/lib/hot-lead";
 import { BackfillSubmissionDataButton } from "@/components/admin/backfill-submission-data-button";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session, senderDefault, senderHighValue, confirmationEnabledRaw, hotConditionsRaw, intakeFormUrlRaw] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session, senderDefault, senderHighValue, confirmationEnabledRaw, hotConditionsRaw, intakeFormUrlRaw, recaptureEnabledRaw] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
@@ -38,6 +38,7 @@ export default async function SettingsPage() {
     getSystemConfig("lead_confirmation_enabled"),
     getSystemConfig("hot_lead_conditions"),
     getSystemConfig("intake_form_url"),
+    getSystemConfig("recapture_enabled"),
   ]);
 
   const agingThresholds = (agingThresholdsRaw as { green: number; yellow: number; orange: number; red: number } | null) ?? { green: 2, yellow: 4, orange: 6, red: 7 };
@@ -125,6 +126,7 @@ export default async function SettingsPage() {
           initialConfirmationEnabled={confirmationEnabledRaw !== false}
           initialHotConditions={hotConditions}
           initialIntakeFormUrl={(intakeFormUrlRaw as string) ?? "https://www.advancedcb.com/"}
+          initialRecaptureEnabled={recaptureEnabledRaw !== false}
         />
       </section>
 

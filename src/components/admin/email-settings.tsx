@@ -19,6 +19,7 @@ interface EmailSettingsProps {
   initialConfirmationEnabled: boolean;
   initialHotConditions: HotLeadRules;
   initialIntakeFormUrl: string;
+  initialRecaptureEnabled: boolean;
 }
 
 const inputCls = "h-9 rounded-md border border-input bg-card px-3 text-sm";
@@ -29,11 +30,13 @@ export function EmailSettings({
   initialConfirmationEnabled,
   initialHotConditions,
   initialIntakeFormUrl,
+  initialRecaptureEnabled,
 }: EmailSettingsProps) {
   const [defaultSender, setDefaultSender] = useState(initialDefaultSender);
   const [highValueSender, setHighValueSender] = useState(initialHighValueSender);
   const [intakeFormUrl, setIntakeFormUrl] = useState(initialIntakeFormUrl);
   const [confirmationEnabled, setConfirmationEnabled] = useState(initialConfirmationEnabled);
+  const [recaptureEnabled, setRecaptureEnabled] = useState(initialRecaptureEnabled);
   const [conditions, setConditions] = useState<FieldCondition[]>(initialHotConditions.conditions);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -62,6 +65,7 @@ export function EmailSettings({
         updateSystemConfig("email_sender_default", defaultSender.trim()),
         updateSystemConfig("email_sender_high_value", highValueSender.trim()),
         updateSystemConfig("lead_confirmation_enabled", confirmationEnabled),
+        updateSystemConfig("recapture_enabled", recaptureEnabled),
         updateSystemConfig("hot_lead_conditions", { conditions: cleaned } as unknown as Record<string, unknown>),
         updateSystemConfig("intake_form_url", intakeFormUrl.trim() || "https://www.advancedcb.com/"),
       ]);
@@ -117,6 +121,14 @@ export function EmailSettings({
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={confirmationEnabled} onChange={(e) => setConfirmationEnabled(e.target.checked)} className="h-4 w-4" />
         Send a confirmation email to leads when they complete the intake form
+      </label>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={recaptureEnabled} onChange={(e) => setRecaptureEnabled(e.target.checked)} className="h-4 w-4" />
+        <span>
+          Send recapture emails to people who abandon the intake form
+          <span className="block text-xs text-muted-foreground">Up to 3 emails over 3 days with a link to pick up where they left off. Unchecking stops new enrollments and pauses all pending sends.</span>
+        </span>
       </label>
 
       <label className="text-sm space-y-1 block max-w-xl">

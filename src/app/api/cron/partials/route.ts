@@ -75,7 +75,7 @@ async function processAbandonedPartials() {
           where: { id: updated.leadId },
           data: { fromAbandonedForm: true },
         });
-        await enrollAbandonedLead(updated.leadId, item.sessionId, item.partialStep).catch((err) => {
+        await enrollAbandonedLead(updated.leadId, item.sessionId, item.partialStep, item.receivedAt).catch((err) => {
           console.error("Recapture enrollment failed (non-blocking):", err);
         });
 
