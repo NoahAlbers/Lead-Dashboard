@@ -47,7 +47,7 @@ function formatEventDetail(event: TimelineEvent): string | null {
     return `${String(data.from ?? "").replace(/_/g, " ")} → ${String(data.to ?? "").replace(/_/g, " ")}`;
   }
   if (event.eventType === "score_calculated") {
-    return `Score: ${data.score} (${data.qualityTier} Lead)`;
+    return `Score: ${data.score} (${data.qualityTier})`;
   }
   if (event.eventType === "quick_log") {
     return String(data.actionType ?? "").replace(/_/g, " ");

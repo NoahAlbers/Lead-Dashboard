@@ -20,7 +20,25 @@ const STEP_LABELS: Record<string, string> = {
   contact_info: "Entered contact info",
   debt_types: "Picked debt types",
   portfolio_details: "Portfolio details",
+  debtsNow: "Debts ready now",
+  priorAgency: "Prior agency",
+  totalUnits: "Total units",
+  rentalTypes: "Rental types",
+  propertyTypes: "Property types",
+  avgRent: "Average rent",
+  listingSites: "Listing sites",
+  pmSoftware: "PM software",
+  ownership: "Ownership",
+  states: "States",
+  comments: "Comments",
 };
+
+// Fallback for unmapped step keys: camelCase/snake_case to words.
+function stepLabel(step: string): string {
+  if (STEP_LABELS[step]) return STEP_LABELS[step];
+  const words = step.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 export function RecaptureFunnel({ data }: RecaptureFunnelProps) {
   const { steps, enrollments } = data;
@@ -53,7 +71,7 @@ export function RecaptureFunnel({ data }: RecaptureFunnelProps) {
             {steps.map((s) => (
               <div key={s.step} className="flex items-center gap-2 text-sm">
                 <span className="w-40 shrink-0 truncate text-muted-foreground" title={s.step}>
-                  {STEP_LABELS[s.step] ?? s.step}
+                  {stepLabel(s.step)}
                 </span>
                 <div className="flex-1 h-4 rounded bg-muted overflow-hidden">
                   <div

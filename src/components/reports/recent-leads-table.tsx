@@ -26,10 +26,10 @@ export function RecentLeadsTable({ leads, tierColorMap }: { leads: Lead[]; tierC
               <th className="text-left py-2 font-medium">Date</th>
               <th className="text-left py-2 font-medium">Company</th>
               <th className="text-left py-2 font-medium">Contact</th>
-              <th className="text-right py-2 font-medium">Score</th>
+              <th className="text-right py-2 px-2 font-medium">Score</th>
               <th className="text-left py-2 font-medium">Tier</th>
               <th className="text-left py-2 font-medium">Status</th>
-              <th className="text-right py-2 font-medium">Units</th>
+              <th className="text-right py-2 px-2 font-medium">Units</th>
               <th className="text-left py-2 font-medium">State</th>
             </tr>
           </thead>
@@ -45,10 +45,10 @@ export function RecentLeadsTable({ leads, tierColorMap }: { leads: Lead[]; tierC
                   </Link>
                 </td>
                 <td className="py-2">{lead.fullName || "—"}</td>
-                <td className="py-2 text-right"><ScoreBadge score={lead.score} /></td>
+                <td className="py-2 px-2 text-right"><ScoreBadge score={lead.score} /></td>
                 <td className="py-2"><TierBadge tier={lead.qualityTier} colorMap={tierColorMap} /></td>
                 <td className="py-2"><StatusBadge status={lead.status as never} /></td>
-                <td className="py-2 text-right tabular-nums">{lead.accountVolume || "—"}</td>
+                <td className="py-2 px-2 text-right tabular-nums">{lead.accountVolume || "—"}</td>
                 <td className="py-2">{lead.state || "—"}</td>
               </tr>
             ))}
