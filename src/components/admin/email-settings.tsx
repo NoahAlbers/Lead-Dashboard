@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { updateSystemConfig } from "@/actions/config.actions";
+import { sendTestConfirmationEmail } from "@/actions/email-test.actions";
 import { toast } from "@/components/ui/use-toast";
 import { DEFAULT_HOT_LEAD_CONDITIONS, type HotLeadConditions } from "@/lib/hot-lead";
 
@@ -29,6 +30,23 @@ export function EmailSettings({
   const [debtKeywords, setDebtKeywords] = useState(initialHotConditions.requiredDebtKeywords.join(", "));
   const [ownershipKeywords, setOwnershipKeywords] = useState(initialHotConditions.ownershipKeywords.join(", "));
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  async function sendTest(flavor: "standard" | "hot") {
+    setTesting(true);
+    try {
+      const res = await sendTestConfirmationEmail(flavor);
+      if (res.success) {
+        toast({ title: `Test email sent to ${res.to}`, variant: "success" });
+      } else {
+        toast({ title: `Test email failed: ${res.error ?? "unknown error"}`, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Test email failed", variant: "destructive" });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   const splitList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
@@ -110,13 +128,29 @@ export function EmailSettings({
         </div>
       </div>
 
-      <button
-        onClick={save}
-        disabled={saving}
-        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-      >
-        {saving ? "Saving..." : "Save Email Settings"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save Email Settings"}
+        </button>
+        <button
+          onClick={() => sendTest("standard")}
+          disabled={testing}
+          className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
+          Send me a test (standard)
+        </button>
+        <button
+          onClick={() => sendTest("hot")}
+          disabled={testing}
+          className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
+          Send me a test (high value)
+        </button>
+      </div>
     </div>
   );
 }
