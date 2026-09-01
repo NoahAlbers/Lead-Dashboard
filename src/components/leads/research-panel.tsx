@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { ExternalLink, Sparkles, Globe } from "lucide-react";
-import { autoResearchLead, type AutoResearchResult } from "@/actions/research.actions";
+import { autoResearchLead } from "@/actions/research.actions";
+import type { AutoResearchResult } from "@/services/research.service";
 import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
 import { toast } from "@/components/ui/use-toast";
 

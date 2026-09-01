@@ -1,41 +1,31 @@
+import { estCalendarDaysSince, relativeDayLabel } from "@/lib/timezone";
+
 interface AgingBadgeProps {
   createdAt: string | Date;
   thresholds?: { green: number; yellow: number; orange: number; red: number };
 }
 
+/** Age by Eastern calendar day: Today, Yesterday, then Nd with aging colors. */
 export function AgingBadge({ createdAt, thresholds }: AgingBadgeProps) {
   const t = thresholds ?? { green: 2, yellow: 4, orange: 6, red: 7 };
-  const daysSince = Math.floor(
-    (Date.now() - new Date(createdAt).getTime()) / 86400000
-  );
+  const daysSince = estCalendarDaysSince(createdAt);
+  const label = relativeDayLabel(createdAt);
 
-  let label: string;
   let className: string;
-
-  if (daysSince === 0) {
-    label = "Today";
-    className = "bg-green-100 text-green-700";
-  } else if (daysSince <= t.green) {
-    label = `${daysSince}d`;
+  if (daysSince <= t.green) {
     className = "bg-green-100 text-green-700";
   } else if (daysSince <= t.yellow) {
-    label = `${daysSince}d`;
     className = "bg-amber-100 text-amber-700";
   } else if (daysSince <= t.orange) {
-    label = `${daysSince}d`;
     className = "bg-orange-100 text-orange-700";
   } else if (daysSince < t.red) {
-    label = `${daysSince}d`;
     className = "bg-red-100 text-red-700";
   } else {
-    label = `${daysSince}d`;
     className = "bg-red-200 text-red-800 font-bold";
   }
 
   return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${className}`}
-    >
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${className}`}>
       {label}
     </span>
   );

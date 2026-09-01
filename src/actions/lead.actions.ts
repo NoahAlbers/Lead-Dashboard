@@ -6,7 +6,7 @@ import { logEvent } from "@/services/activity-log.service";
 import { scoreAndUpdateLead } from "@/services/scoring.service";
 import { Prisma, type LeadStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { estStartOfDay, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
+import { estStartOfDay, estStartOfDayDaysAgo, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
 import { hasAnyStates, buildStateClassWhere, numericRange } from "@/lib/lead-state-filter";
 import { getStateClassifications } from "@/actions/state-classification.actions";
 import { stopRecaptureForLead } from "@/services/recapture.service";
@@ -169,7 +169,8 @@ export async function getLeads(params: {
   }
 
   if (params.ageMin && params.ageMin > 0) {
-    const cutoff = new Date(Date.now() - params.ageMin * 86400000);
+    // "At least N days old" by Eastern calendar day: N=1 means created before today.
+    const cutoff = estStartOfDayDaysAgo(params.ageMin - 1);
     where.createdAt = {
       ...(where.createdAt as Record<string, Date> | undefined),
       lte: cutoff,
@@ -593,7 +594,7 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     },
     sla_breached: () => prisma.lead.count({ where: { slaStatus: { in: ["breached", "escalated"] }, ...notArchived } }),
     sla_at_risk: () => prisma.lead.count({ where: { slaStatus: { in: ["warning", "breached", "escalated"] }, ...notArchived } }),
-    aging_stale: () => prisma.lead.count({ where: { createdAt: { lte: new Date(Date.now() - 7 * 86400000) }, ...notArchived } }),
+    aging_stale: () => prisma.lead.count({ where: { createdAt: { lt: estStartOfDayDaysAgo(6) }, ...notArchived } }),
     // Abandoned forms + recapture
     abandons_today: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: today } } }),
     abandons_week: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: weekAgo } } }),
