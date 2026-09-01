@@ -18,6 +18,7 @@ interface EmailSettingsProps {
   initialHighValueSender: string;
   initialConfirmationEnabled: boolean;
   initialHotConditions: HotLeadRules;
+  initialIntakeFormUrl: string;
 }
 
 const inputCls = "h-9 rounded-md border border-input bg-card px-3 text-sm";
@@ -27,9 +28,11 @@ export function EmailSettings({
   initialHighValueSender,
   initialConfirmationEnabled,
   initialHotConditions,
+  initialIntakeFormUrl,
 }: EmailSettingsProps) {
   const [defaultSender, setDefaultSender] = useState(initialDefaultSender);
   const [highValueSender, setHighValueSender] = useState(initialHighValueSender);
+  const [intakeFormUrl, setIntakeFormUrl] = useState(initialIntakeFormUrl);
   const [confirmationEnabled, setConfirmationEnabled] = useState(initialConfirmationEnabled);
   const [conditions, setConditions] = useState<FieldCondition[]>(initialHotConditions.conditions);
   const [saving, setSaving] = useState(false);
@@ -60,6 +63,7 @@ export function EmailSettings({
         updateSystemConfig("email_sender_high_value", highValueSender.trim()),
         updateSystemConfig("lead_confirmation_enabled", confirmationEnabled),
         updateSystemConfig("hot_lead_conditions", { conditions: cleaned } as unknown as Record<string, unknown>),
+        updateSystemConfig("intake_form_url", intakeFormUrl.trim() || "https://www.advancedcb.com/"),
       ]);
       setConditions(cleaned);
       toast({ title: "Email settings saved", variant: "success" });
@@ -113,6 +117,13 @@ export function EmailSettings({
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={confirmationEnabled} onChange={(e) => setConfirmationEnabled(e.target.checked)} className="h-4 w-4" />
         Send a confirmation email to leads when they complete the intake form
+      </label>
+
+      <label className="text-sm space-y-1 block max-w-xl">
+        <span className="font-medium">Intake form page URL</span>
+        <span className="block text-xs text-muted-foreground">Resume and edit links in emails point here (the page with the form on it).</span>
+        <input value={intakeFormUrl} onChange={(e) => setIntakeFormUrl(e.target.value)} className={`${inputCls} w-full`}
+          placeholder="https://www.advancedcb.com/" />
       </label>
 
       <div className="border-t pt-4">

@@ -15,6 +15,7 @@ import { GeoHeatmap } from "@/components/reports/geo-heatmap";
 import { ScoringInsights } from "@/components/reports/scoring-insights";
 import { AvgScoreChart } from "@/components/reports/avg-score-chart";
 import { TrendsWidget } from "@/components/reports/trends-widget";
+import { RecaptureFunnel } from "@/components/reports/recapture-funnel";
 import { RecentLeadsTable } from "@/components/reports/recent-leads-table";
 import { TopLeads } from "@/components/reports/top-leads";
 import { FollowUpTable } from "@/components/reports/follow-up-table";
@@ -54,6 +55,7 @@ import {
   getCouldHaveWonBreakdown,
   getPartnerLeaderboard,
   getTrendSeries,
+  getRecaptureFunnel,
 } from "@/actions/report.actions";
 
 function getRangeDate(range: TimeRange): { from: Date; to: Date } | null {
@@ -75,6 +77,8 @@ const DEFAULT_LAYOUT = [
   { i: "geo", w: 1 },
   { i: "rules", w: 1 },
   { i: "avg-score", w: 1 },
+  { i: "trends", w: 2 },
+  { i: "recapture", w: 1 },
   { i: "recent", w: 2 },
   { i: "top-leads", w: 1 },
   { i: "follow-ups", w: 1 },
@@ -114,7 +118,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     funnel, avgScoreTime, ruleStats, recentLeads, topLeads, followUps,
     responseTime, unitDist, rentDist, activity, sparkline, stateClassifications,
     tierColorMap, winLossStats, lossReasons, winRateTrend, couldHaveWon,
-    partnerLeaderboard, trendSeries,
+    partnerLeaderboard, trendSeries, recaptureFunnel,
   ] = await Promise.all([
     getReportKPIs(dateRange),
     getLeadVolumeByDay(dateRange),
@@ -140,6 +144,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getCouldHaveWonBreakdown(dateRange),
     getPartnerLeaderboard(dateRange),
     getTrendSeries(180),
+    getRecaptureFunnel(),
   ]);
 
   const ruleInsights = await generateScoringInsights(ruleStats);
@@ -204,6 +209,10 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
         <DashboardWidget title="Trends Over Time" subtitle="Weekly and monthly patterns (last 180 days)">
           <TrendsWidget data={trendSeries} />
+        </DashboardWidget>
+
+        <DashboardWidget title="Abandoned Form Recapture" subtitle="Drop-off points and win-back results">
+          <RecaptureFunnel data={recaptureFunnel} />
         </DashboardWidget>
 
         {/* Tables */}

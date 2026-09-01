@@ -464,6 +464,47 @@ export async function getTrendSeries(days: number = 180) {
   return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/** Abandoned-form funnel: where visitors drop off, and how recapture performs. */
+export async function getRecaptureFunnel() {
+  const [partialRows, enrollmentGroups, enrollments] = await Promise.all([
+    prisma.ingestionQueue.findMany({
+      where: { partialStep: { not: null } },
+      select: { partialStep: true },
+    }),
+    prisma.recaptureEnrollment.groupBy({ by: ["status"], _count: { id: true } }),
+    prisma.recaptureEnrollment.aggregate({ _sum: { currentStep: true }, _count: { id: true } }),
+  ]);
+
+  const stepCounts: Record<string, number> = {};
+  for (const r of partialRows) {
+    const raw = r.partialStep ?? "unknown";
+    const step = raw.replace(/^abandoned_at_/, "");
+    stepCounts[step] = (stepCounts[step] || 0) + 1;
+  }
+  const steps = Object.entries(stepCounts)
+    .map(([step, count]) => ({ step, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const byStatus: Record<string, number> = {};
+  for (const g of enrollmentGroups) byStatus[g.status] = g._count.id;
+  const total = enrollments._count.id;
+  const converted = byStatus.converted ?? 0;
+
+  return {
+    steps,
+    enrollments: {
+      total,
+      active: byStatus.active ?? 0,
+      converted,
+      stopped: byStatus.stopped ?? 0,
+      exhausted: byStatus.exhausted ?? 0,
+      recoveryRate: total > 0 ? Math.round((converted / total) * 100) : 0,
+      emailsSent: enrollments._sum.currentStep ?? 0,
+    },
+  };
+}
+
 // Multi-select fields that are stored in rawPayloadJson._rawIntakeForm as arrays
 const MULTI_SELECT_FIELDS = new Set([
   "states", "pmSoftware", "listingSites", "rentalTypes", "propertyTypes", "debtTypes",

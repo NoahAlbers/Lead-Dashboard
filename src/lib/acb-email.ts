@@ -118,6 +118,46 @@ export function buildUnsubscribeUrl(email: string): string {
   return `${appBaseUrl()}/api/email/unsubscribe?email=${encodeURIComponent(e)}&token=${unsubscribeToken(e)}`;
 }
 
+/** Where the public intake form lives (resume + edit links point here). */
+export async function intakeFormUrl(): Promise<string> {
+  const row = await prisma.systemConfig.findUnique({ where: { key: "intake_form_url" } });
+  return (row?.value as string) || "https://www.advancedcb.com/";
+}
+
+// ---- Edit links for completed submissions ----
+// Stateless token "e.<base64url(sessionId)>.<hmac>": the confirmation email
+// can link back to a prefilled form without storing anything extra.
+
+export function buildEditToken(sessionId: string): string {
+  const mac = crypto
+    .createHmac("sha256", unsubSecret())
+    .update(`edit:${sessionId}`)
+    .digest("base64url")
+    .slice(0, 24);
+  return `e.${Buffer.from(sessionId).toString("base64url")}.${mac}`;
+}
+
+export function verifyEditToken(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts[0] !== "e") return null;
+  try {
+    const sessionId = Buffer.from(parts[1], "base64url").toString();
+    const mac = crypto
+      .createHmac("sha256", unsubSecret())
+      .update(`edit:${sessionId}`)
+      .digest("base64url")
+      .slice(0, 24);
+    return crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(parts[2])) ? sessionId : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function buildEditUrl(sessionId: string): Promise<string> {
+  const base = await intakeFormUrl();
+  return `${base}${base.includes("?") ? "&" : "?"}resume=${buildEditToken(sessionId)}`;
+}
+
 export async function isEmailSuppressed(email: string): Promise<boolean> {
   const row = await prisma.emailSuppression.findUnique({
     where: { email: email.trim().toLowerCase() },

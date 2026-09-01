@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { ingestLead } from "@/services/lead-ingestion.service";
+import { ingestLead, updateLeadFromResubmission } from "@/services/lead-ingestion.service";
 import { normalizeState } from "@/lib/us-states";
 import {
   sendFailureAlertEmail,
@@ -314,8 +314,29 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     if (item.sourceIp && !meta.location) meta.location = `(IP: ${item.sourceIp})`;
     if (item.userAgent && !meta.user_agent) meta.user_agent = item.userAgent;
 
-    // Call existing ingestLead — it handles mapping, scoring, duplicates, referrals, notifications
-    const lead = await ingestLead(formData, metadata);
+    // Same-session resubmission: the prospect used their edit link, or came
+    // back through a recapture resume link and finished a previously abandoned
+    // session. Update the existing lead instead of creating a duplicate.
+    let lead: Awaited<ReturnType<typeof ingestLead>> | null = null;
+    let isResubmission = false;
+    if (item.sessionId) {
+      const priorRow = await prisma.ingestionQueue.findFirst({
+        where: { sessionId: item.sessionId, leadId: { not: null }, id: { not: item.id } },
+        orderBy: { receivedAt: "desc" },
+      });
+      if (priorRow?.leadId) {
+        lead = await updateLeadFromResubmission(priorRow.leadId, formData, metadata);
+        isResubmission = true;
+        logger.info("PIPELINE", "Same-session resubmission merged into existing lead", {
+          queueId,
+          leadId: lead.id,
+        });
+      }
+    }
+    if (!lead) {
+      // Call existing ingestLead — it handles mapping, scoring, duplicates, referrals, notifications
+      lead = await ingestLead(formData, metadata);
+    }
 
     logger.info("PIPELINE", "Lead ingested successfully", {
       queueId,
@@ -323,25 +344,28 @@ export async function processIngestionItem(queueId: string): Promise<void> {
       submissionId: item.submissionId,
     });
 
-    // Send email notification with full normalized data
-    sendNewLeadEmail({
-      receiptId: item.receiptId || "N/A",
-      normalized,
-      score: lead.score ?? undefined,
-      qualityTier: lead.qualityTier ?? undefined,
-      recommendedAction: lead.recommendedAction ?? undefined,
-      leadId: lead.id,
-    }).catch((err) => {
-      logger.error("PIPELINE", "Email notification failed (non-blocking)", {
-        error: err instanceof Error ? err.message : String(err),
+    // Send email notification with full normalized data (skip for
+    // resubmissions — the assigned user gets a targeted notification instead)
+    if (!isResubmission) {
+      sendNewLeadEmail({
+        receiptId: item.receiptId || "N/A",
+        normalized,
+        score: lead.score ?? undefined,
+        qualityTier: lead.qualityTier ?? undefined,
+        recommendedAction: lead.recommendedAction ?? undefined,
+        leadId: lead.id,
+      }).catch((err) => {
+        logger.error("PIPELINE", "Email notification failed (non-blocking)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
+    }
 
     // Confirmation email to the lead — completed submissions only. Items that
     // came from an abandoned partial (partialStep set) get the recapture
     // sequence instead of a confirmation.
     if (!item.partialStep) {
-      sendLeadConfirmationEmail(lead.id).catch((err) => {
+      sendLeadConfirmationEmail(lead.id, item.sessionId).catch((err) => {
         logger.error("PIPELINE", "Lead confirmation email failed (non-blocking)", {
           error: err instanceof Error ? err.message : String(err),
         });

@@ -226,3 +226,102 @@ export async function ingestLead(
 
   return lead;
 }
+
+/**
+ * A prospect resubmitted the form for a session that already produced a lead:
+ * either they used the edit link from their confirmation email, or they came
+ * back through a recapture resume link and finished a previously abandoned
+ * session. Updates the existing lead in place (no duplicate), rescores it,
+ * logs the change, and tells the assigned user.
+ */
+export async function updateLeadFromResubmission(
+  leadId: string,
+  formData: WebflowFormData,
+  metadata?: { source?: string; [key: string]: unknown }
+) {
+  const mapped = mapFields(formData);
+  const rawIntake = formData._rawIntakeForm as Record<string, unknown> | undefined;
+  const avgRentRaw = rawIntake?.avgRent;
+  const avgRentNum =
+    typeof avgRentRaw === "number" && !Number.isNaN(avgRentRaw) ? Math.round(avgRentRaw) : null;
+
+  const before = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const wasAbandoned = before.fromAbandonedForm;
+
+  const data: Record<string, unknown> = {
+    firstName: mapped.firstName,
+    lastName: mapped.lastName,
+    fullName: mapped.fullName,
+    companyName: mapped.companyName,
+    title: mapped.title,
+    email: mapped.email,
+    phone: mapped.phone,
+    alternatePhone: mapped.alternatePhone,
+    address1: mapped.address1,
+    address2: mapped.address2,
+    city: mapped.city,
+    state: mapped.state,
+    states: mapped.statesArray,
+    zip: mapped.zip,
+    country: mapped.country,
+    industry: mapped.industry,
+    debtType: mapped.debtType,
+    balanceAmount: mapped.balanceAmount,
+    estimatedClaimValue: mapped.estimatedClaimValue,
+    accountVolume: mapped.accountVolume,
+    accountVolumeNum: mapped.accountVolumeNum,
+    avgRentNum,
+    serviceRequested: mapped.serviceRequested,
+    notesFromForm: mapped.notesFromForm,
+    urgency: mapped.urgency,
+    businessType: mapped.businessType,
+    rawPayloadJson: formData as Record<string, string>,
+    // A completed resubmission means this is a real inquiry now.
+    fromAbandonedForm: false,
+    lastActivityAt: new Date(),
+  };
+  for (const k of Object.keys(data)) {
+    if (data[k] === undefined) delete data[k];
+  }
+
+  await prisma.lead.update({ where: { id: leadId }, data: data as never });
+
+  await logEvent(leadId, "lead_data_received", {
+    fields: (formData._rawIntakeForm as Record<string, unknown>) ?? formData,
+    metadata: { ...(metadata ?? {}), resubmission: true },
+  });
+  await prisma.leadEvent.create({
+    data: {
+      leadId,
+      eventType: "prospect_updated_details",
+      eventDataJson: { wasAbandoned },
+    },
+  });
+
+  const scoreResult = await scoreAndUpdateLead(leadId);
+
+  if (before.assignedUserId) {
+    const { createNotification } = await import("./notification.service");
+    await createNotification(
+      before.assignedUserId,
+      "lead_updated",
+      wasAbandoned
+        ? `Abandoned lead completed the form: ${before.fullName ?? before.companyName ?? "Lead"}`
+        : `Lead updated their details: ${before.fullName ?? before.companyName ?? "Lead"}`,
+      `New score: ${scoreResult.score ?? "N/A"}`,
+      leadId,
+      "NORMAL"
+    ).catch(() => {});
+  } else if (wasAbandoned) {
+    await createNotificationsForRole(
+      "INTAKE",
+      "new_lead",
+      `Recaptured: ${before.fullName ?? before.companyName ?? "Lead"} finished the form`,
+      `Score: ${scoreResult.score ?? "N/A"}`,
+      leadId,
+      "HIGH"
+    ).catch(() => {});
+  }
+
+  return prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+}

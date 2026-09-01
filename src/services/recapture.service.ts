@@ -15,6 +15,8 @@ import {
   escHtml,
   buildUnsubscribeUrl,
   isEmailSuppressed,
+  intakeFormUrl,
+  verifyEditToken,
 } from "@/lib/acb-email";
 import { resolveSenderForLead } from "@/services/lead-emails.service";
 import { logger } from "@/lib/logger";
@@ -22,11 +24,6 @@ import { logger } from "@/lib/logger";
 const MAX_SENDS = 3;
 // Delay from each send to the next one
 const STEP_DELAYS_HOURS = [23, 48];
-
-async function intakeFormUrl(): Promise<string> {
-  const row = await prisma.systemConfig.findUnique({ where: { key: "intake_form_url" } });
-  return (row?.value as string) || "https://www.advancedcb.com/";
-}
 
 async function resumeUrl(token: string): Promise<string> {
   const base = await intakeFormUrl();
@@ -293,6 +290,32 @@ export async function resolveResumeToken(token: string): Promise<
   | { ok: true; sessionId: string | null; fields: Record<string, unknown>; step: string | null }
   | { ok: false; error: "not_found" | "expired" }
 > {
+  // Edit tokens (from confirmation emails, completed submissions): stateless,
+  // land the prospect at the start of the form with everything prefilled.
+  if (token.startsWith("e.")) {
+    const sessionId = verifyEditToken(token);
+    if (!sessionId) return { ok: false, error: "not_found" };
+    const queueRow = await prisma.ingestionQueue.findFirst({
+      where: { sessionId },
+      orderBy: { receivedAt: "desc" },
+    });
+    if (!queueRow) return { ok: false, error: "not_found" };
+    const payload = (queueRow.rawPayload as Record<string, unknown> | null) ?? {};
+    if (queueRow.leadId) {
+      await prisma.leadEvent
+        .create({
+          data: { leadId: queueRow.leadId, eventType: "edit_link_opened", eventDataJson: {} },
+        })
+        .catch(() => {});
+    }
+    return {
+      ok: true,
+      sessionId,
+      fields: (payload.fields as Record<string, unknown>) ?? {},
+      step: "form_opened",
+    };
+  }
+
   const enrollment = await prisma.recaptureEnrollment.findUnique({
     where: { resumeToken: token },
     include: { lead: true },

@@ -77,6 +77,14 @@ function formatEventDetail(event: TimelineEvent): string | null {
   if (event.eventType === "onboarding_profile_created") {
     return `Portal: ${data.portalUrl ?? ""}`;
   }
+  if (event.eventType === "prospect_updated_details") {
+    return data.wasAbandoned
+      ? "Finished the form they had abandoned; lead updated and rescored"
+      : "Updated their details through the edit link; lead rescored";
+  }
+  if (event.eventType === "edit_link_opened") {
+    return "Opened the edit link from their confirmation email";
+  }
   if (event.eventType.startsWith("email_")) {
     return `${event.eventType.replace("email_", "Email ").replace(/_/g, " ")}${data.subject ? `: ${data.subject}` : ""}`;
   }

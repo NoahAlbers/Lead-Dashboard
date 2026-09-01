@@ -11,6 +11,7 @@ import {
   escHtml,
   buildUnsubscribeUrl,
   isEmailSuppressed,
+  buildEditUrl,
 } from "@/lib/acb-email";
 import {
   evaluateHotLead,
@@ -84,7 +85,10 @@ export async function resolveSenderForLead(leadId: string): Promise<SenderIdenti
  * abandoned-form conversions (those get the recapture sequence instead),
  * suppressed addresses, and when disabled in settings.
  */
-export async function sendLeadConfirmationEmail(leadId: string): Promise<void> {
+export async function sendLeadConfirmationEmail(
+  leadId: string,
+  sessionId?: string | null
+): Promise<void> {
   const enabled = await configValue("lead_confirmation_enabled");
   if (enabled === false) return;
 
@@ -128,7 +132,11 @@ export async function sendLeadConfirmationEmail(leadId: string): Promise<void> {
     ${nextStep}
     <p style="margin:0 0 14px;">In the meantime, you can learn more about how we recover past-due rent while protecting your relationships with former tenants.</p>
     ${emailButton("See how we work", "https://www.advancedcb.com/residential-services")}
-    <p style="margin:0;color:#4A4A68;font-size:13px;">Need to add or correct anything? Just reply to this email.</p>`;
+    <p style="margin:0;color:#4A4A68;font-size:13px;">Need to add or correct anything? ${
+      sessionId
+        ? `<a href="${escHtml(await buildEditUrl(sessionId))}" style="color:#3D5AF1;">Edit your details here</a> or just reply to this email.`
+        : "Just reply to this email."
+    }</p>`;
 
   const html = renderAcbEmail({
     preheader: "We received your inquiry. Here's what happens next.",

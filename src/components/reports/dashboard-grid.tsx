@@ -11,13 +11,15 @@ const HIDDEN_KEY = "dashboard-widget-hidden";
 
 function humanize(key: string): string {
   const names: Record<string, string> = {
-    kpi: "KPI Cards", volume: "Lead Volume", quality: "Quality Distribution",
-    qualityTrend: "Quality Trend", funnel: "Pipeline Funnel", status: "Status Breakdown",
-    geo: "Geographic Heatmap", rules: "Rule Effectiveness", avgScore: "Avg Score Over Time",
-    trends: "Trends Over Time", recent: "Recent Leads", top: "Top Leads",
-    followups: "Upcoming Follow-Ups", units: "Unit Distribution", rent: "Avg Rent Distribution",
-    response: "Response Time", activity: "Activity Feed", winloss: "Win/Loss Ratio",
-    custom: "Custom Charts",
+    kpi: "KPI Cards", volume: "Lead Volume Over Time", "quality-donut": "Quality Distribution",
+    "quality-trend": "Quality Trend", funnel: "Pipeline Funnel", status: "Status Breakdown",
+    geo: "Geographic Heatmap", rules: "Rule Effectiveness", "avg-score": "Avg Score Over Time",
+    trends: "Trends Over Time", recapture: "Abandoned Form Recapture", recent: "Recent Leads",
+    "top-leads": "Top Leads by Score", "follow-ups": "Upcoming Follow-Ups",
+    units: "Unit Distribution", rent: "Avg Rent Distribution", response: "Response Time",
+    activity: "Activity Feed", "win-loss": "Win/Loss Ratio", "loss-reasons": "Loss Reasons",
+    "win-rate-trend": "Win Rate Trend", "could-have-won": "Could Have Won",
+    "partner-leaderboard": "Partner Leaderboard", custom: "Custom Charts",
   };
   return names[key] ?? key.replace(/[-_]/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 }

@@ -19,6 +19,7 @@ import { MarkReadOnView } from "@/components/leads/mark-read-on-view";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { BackToInboxLink } from "@/components/leads/back-to-inbox-link";
 import { LeadEditDialog } from "@/components/leads/lead-edit-dialog";
+import { RecapturePanel } from "@/components/leads/recapture-panel";
 import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { ScoreCircle } from "@/components/leads/score-circle";
@@ -126,7 +127,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome] = await Promise.all([
+  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome, recapture] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
@@ -134,6 +135,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     getTierColorMap(),
     getLeadSlaInfo(id),
     getOutcome(id),
+    prisma.recaptureEnrollment.findUnique({ where: { leadId: id } }),
   ]);
 
   if (!lead) {
@@ -580,6 +582,21 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 referralPartners={activePartners}
               />
             </div>
+
+            {/* Recapture campaign status (abandoned-form leads) */}
+            {recapture && (
+              <RecapturePanel
+                leadId={lead.id}
+                enrollment={{
+                  status: recapture.status,
+                  stopReason: recapture.stopReason,
+                  currentStep: recapture.currentStep,
+                  nextSendAt: recapture.nextSendAt?.toISOString() ?? null,
+                  lastSentAt: recapture.lastSentAt?.toISOString() ?? null,
+                  abandonedStep: recapture.abandonedStep,
+                }}
+              />
+            )}
 
             {/* Research */}
             <div className="rounded-lg border bg-card p-3">
