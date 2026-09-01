@@ -180,9 +180,14 @@ export default async function LeadsPage({ searchParams }: PageProps) {
         </Link>
         <Link href={abandonedHref} className={tabCls(currentView === "abandoned")}>
           Abandoned
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-            {abandonedCount}
-          </span>
+          {abandonedCount > 0 && (
+            <span
+              className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
+              title={`${abandonedCount} unhandled abandon${abandonedCount === 1 ? "" : "s"}`}
+            >
+              {abandonedCount}
+            </span>
+          )}
         </Link>
       </div>
 

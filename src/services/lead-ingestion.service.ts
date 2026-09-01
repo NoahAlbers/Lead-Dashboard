@@ -105,6 +105,9 @@ export async function ingestLead(
     utmMedium?: string;
     utmCampaign?: string;
     referrer?: string;
+    /** Visitor context (location/device/timezone/user_agent/clarity_url) —
+     * stored for the timeline's submission table, internal eyes only. */
+    [key: string]: unknown;
   }
 ) {
   const mapped = mapFields(formData);

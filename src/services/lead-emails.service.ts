@@ -15,7 +15,7 @@ import {
 import {
   evaluateHotLead,
   parseHotLeadConditions,
-  type HotLeadInput,
+  type HotLeadContext,
 } from "@/lib/hot-lead";
 import { logger } from "@/lib/logger";
 
@@ -49,17 +49,28 @@ export async function resolveSenderForLead(leadId: string): Promise<SenderIdenti
 
   const raw = (lead.rawPayloadJson as Record<string, unknown> | null) ?? {};
   const intake = (raw._rawIntakeForm as Record<string, unknown> | null) ?? raw;
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
-  const input: HotLeadInput = {
-    accountVolumeNum: lead.accountVolumeNum != null ? Number(lead.accountVolumeNum) : null,
-    states: (lead.states as string[] | null) ?? ((intake.states as string[]) || null),
-    rentalTypes: (intake.rentalTypes as string[]) || null,
-    debtTypes: (intake.debtTypes as string[]) || (lead.debtType ? [lead.debtType] : null),
-    ownershipType: (intake.ownershipType as string) || lead.businessType || null,
+  const ctx: HotLeadContext = {
+    units: lead.accountVolumeNum != null ? Number(lead.accountVolumeNum) : null,
+    avgRent: lead.avgRentNum != null ? Number(lead.avgRentNum) : null,
+    score: lead.score ?? null,
+    states: arr(lead.states).length ? arr(lead.states) : arr(intake.states),
+    rentalTypes: arr(intake.rentalTypes),
+    propertyTypes: arr(intake.propertyTypes),
+    debtTypes: arr(intake.debtTypes).length ? arr(intake.debtTypes) : lead.debtType ? [lead.debtType] : [],
+    listingSites: arr(intake.listingSites),
+    pmSoftware: arr(intake.pmSoftware),
+    ownership: (intake.ownershipType as string) || lead.businessType || "",
+    industry: lead.industry ?? "",
+    businessType: lead.businessType ?? "",
+    urgency: lead.urgency ?? "",
+    qualityTier: lead.qualityTier ?? "",
+    leadSource: lead.leadSource ?? lead.source ?? "",
   };
 
-  const conditions = parseHotLeadConditions(await configValue("hot_lead_conditions"));
-  const isHot = evaluateHotLead(input, conditions, await stateClassMap());
+  const rules = parseHotLeadConditions(await configValue("hot_lead_conditions"));
+  const isHot = evaluateHotLead(ctx, rules, await stateClassMap());
 
   const from = isHot
     ? ((await configValue("email_sender_high_value")) as string) || HIGH_VALUE_SENDER

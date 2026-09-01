@@ -215,7 +215,14 @@ function buildIngestArgs(body: Record<string, unknown>) {
     utmSource: (body.utm_source ?? undefined) as string | undefined,
     utmMedium: (body.utm_medium ?? undefined) as string | undefined,
     utmCampaign: (body.utm_campaign ?? undefined) as string | undefined,
-    referrer: p.referrer ?? undefined,
+    referrer: p.referrer ?? ((body.referrer ?? undefined) as string | undefined),
+    // Visitor context for internal eyes only (shown on the lead page's
+    // submission data; never included in any outbound email).
+    location: (body.location ?? undefined) as string | undefined,
+    device: (body.device ?? undefined) as string | undefined,
+    timezone: (body.timezone ?? undefined) as string | undefined,
+    user_agent: (body.user_agent ?? undefined) as string | undefined,
+    clarity_url: (body.clarity_url ?? undefined) as string | undefined,
   };
 
   return { formData, metadata, normalized: p };
@@ -300,6 +307,12 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     if (payloadMetadata.source && typeof payloadMetadata.source === "string") {
       metadata.source = payloadMetadata.source;
     }
+
+    // Fill visitor context from what the queue captured server-side (partials
+    // don't always carry it in the payload).
+    const meta = metadata as Record<string, unknown>;
+    if (item.sourceIp && !meta.location) meta.location = `(IP: ${item.sourceIp})`;
+    if (item.userAgent && !meta.user_agent) meta.user_agent = item.userAgent;
 
     // Call existing ingestLead — it handles mapping, scoring, duplicates, referrals, notifications
     const lead = await ingestLead(formData, metadata);

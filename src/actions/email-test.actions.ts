@@ -11,13 +11,16 @@ import { renderAcbEmail, emailPanel, emailButton, escHtml } from "@/lib/acb-emai
 const DEFAULT_SENDER = "Advanced Collection Bureau <noreply@advancedcb.com>";
 const HIGH_VALUE_SENDER = "Noah Albers <nalbers@advancedcb.com>";
 
-export async function sendTestConfirmationEmail(flavor: "standard" | "hot"): Promise<{ success: boolean; error?: string; to?: string }> {
+export async function sendTestConfirmationEmail(
+  flavor: "standard" | "hot",
+  toOverride?: string
+): Promise<{ success: boolean; error?: string; to?: string }> {
   const session = await auth();
   if (!session || !["ADMIN", "MANAGER"].includes(session.user.role)) {
     throw new Error("Unauthorized");
   }
-  const to = session.user.email;
-  if (!to) return { success: false, error: "Your account has no email address" };
+  const to = toOverride?.includes("@") ? toOverride.trim() : session.user.email;
+  if (!to) return { success: false, error: "No recipient address" };
 
   const senderKey = flavor === "hot" ? "email_sender_high_value" : "email_sender_default";
   const senderRow = await prisma.systemConfig.findUnique({ where: { key: senderKey } });

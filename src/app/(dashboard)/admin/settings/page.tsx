@@ -51,6 +51,7 @@ export default async function SettingsPage() {
         </p>
       </div>
 
+      <section id="general" className="scroll-mt-20">
       <SettingsClient
         statuses={statuses.map((s) => ({
           id: s.id,
@@ -83,9 +84,10 @@ export default async function SettingsPage() {
           active: sc.active,
         }))}
       />
+      </section>
 
       {/* SLA Configuration */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="sla" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <SlaSettings
           initialConfigs={slaConfigs.map((c) => ({
             id: c.id,
@@ -107,22 +109,25 @@ export default async function SettingsPage() {
           }))}
           tierNames={tierRanges.map((t) => t.name)}
         />
-      </div>
+      </section>
 
       {/* Lead Aging Thresholds */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="aging" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <AgingThresholdSettings initialThresholds={agingThresholds} />
+      </section>
 
+      {/* Lead Emails (senders, confirmation, high-value rules) */}
+      <section id="emails" className="scroll-mt-20">
         <EmailSettings
           initialDefaultSender={(senderDefault as string) ?? "Advanced Collection Bureau <noreply@advancedcb.com>"}
           initialHighValueSender={(senderHighValue as string) ?? "Noah Albers <nalbers@advancedcb.com>"}
           initialConfirmationEnabled={confirmationEnabledRaw !== false}
           initialHotConditions={hotConditions}
         />
-      </div>
+      </section>
 
       {/* Outcome Reasons */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="outcomes" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <OutcomeReasonSettings
           initialConfigs={outcomeReasonConfigs.map((c) => ({
             id: c.id,
@@ -132,34 +137,34 @@ export default async function SettingsPage() {
             active: c.active,
           }))}
         />
-      </div>
+      </section>
 
       {/* Ingestion Field Mapping */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="field-mapping" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <FieldMappingSettings initialMapping={fieldMapping as Record<string, string> ?? {}} />
-      </div>
+      </section>
 
       {/* Ingestion Health Monitoring */}
       {ingestionStats && (
-        <div className="rounded-lg border bg-card p-5">
+        <section id="ingestion" className="scroll-mt-20 rounded-lg border bg-card p-5">
           <IngestionHealthDashboard
             initialStats={ingestionStats}
             isAdmin={session?.user.role === "ADMIN"}
           />
-        </div>
+        </section>
       )}
 
-      {/* Recalculate Scores */}
-      <div className="rounded-lg border bg-card p-5">
-        <RecalculateScoresButton />
-      </div>
+      {/* Data tools */}
+      <section id="data-tools" className="scroll-mt-20 space-y-6">
+        <div className="rounded-lg border bg-card p-5">
+          <RecalculateScoresButton />
+        </div>
+        <div className="rounded-lg border bg-card p-5">
+          <BackfillSubmissionDataButton />
+        </div>
+      </section>
 
-      {/* Backfill Submission Data */}
-      <div className="rounded-lg border bg-card p-5">
-        <BackfillSubmissionDataButton />
-      </div>
-
-      <div className="rounded-lg border bg-card p-5 space-y-6">
+      <section id="integrations" className="scroll-mt-20 rounded-lg border bg-card p-5 space-y-6">
         {/* CRM Field Mapping */}
         <div>
           <h2 className="font-semibold mb-2">Act! CRM Field Mapping</h2>
@@ -213,7 +218,7 @@ export default async function SettingsPage() {
             Include header: <code>x-webhook-secret: [your secret]</code>
           </p>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

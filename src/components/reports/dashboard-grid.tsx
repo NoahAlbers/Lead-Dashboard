@@ -1,12 +1,26 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import { ResponsiveGridLayout, useContainerWidth, type Layout, type LayoutItem, type ResponsiveLayouts } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
 const STORAGE_KEY = "dashboard-widget-layout";
+const HIDDEN_KEY = "dashboard-widget-hidden";
+
+function humanize(key: string): string {
+  const names: Record<string, string> = {
+    kpi: "KPI Cards", volume: "Lead Volume", quality: "Quality Distribution",
+    qualityTrend: "Quality Trend", funnel: "Pipeline Funnel", status: "Status Breakdown",
+    geo: "Geographic Heatmap", rules: "Rule Effectiveness", avgScore: "Avg Score Over Time",
+    trends: "Trends Over Time", recent: "Recent Leads", top: "Top Leads",
+    followups: "Upcoming Follow-Ups", units: "Unit Distribution", rent: "Avg Rent Distribution",
+    response: "Response Time", activity: "Activity Feed", winloss: "Win/Loss Ratio",
+    custom: "Custom Charts",
+  };
+  return names[key] ?? key.replace(/[-_]/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+}
 
 interface OldLayoutItem {
   i: string;
@@ -50,6 +64,8 @@ export function DashboardGrid({ children, widgetKeys, defaultLayout }: Dashboard
   const { width, containerRef, mounted: widthReady } = useContainerWidth();
 
   const [layouts, setLayouts] = useState<ResponsiveLayouts>({ lg: defaultRGL });
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -65,7 +81,21 @@ export function DashboardGrid({ children, widgetKeys, defaultLayout }: Dashboard
         }
       }
     } catch { /* ignore */ }
+    try {
+      const savedHidden = localStorage.getItem(HIDDEN_KEY);
+      if (savedHidden) setHidden(new Set(JSON.parse(savedHidden) as string[]));
+    } catch { /* ignore */ }
   }, []);
+
+  function toggleHidden(key: string) {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   const handleLayoutChange = useCallback((_layout: Layout, allLayouts: ResponsiveLayouts) => {
     setLayouts(allLayouts);
@@ -75,8 +105,12 @@ export function DashboardGrid({ children, widgetKeys, defaultLayout }: Dashboard
   function resetLayout() {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem("dashboard-widget-order");
+    localStorage.removeItem(HIDDEN_KEY);
     setLayouts({ lg: defaultRGL });
+    setHidden(new Set());
   }
+
+  const visibleKeys = widgetKeys.filter((k) => !hidden.has(k));
 
   const childMap = useMemo(
     () => Object.fromEntries(widgetKeys.map((k, i) => [k, children[i]])),
@@ -93,7 +127,35 @@ export function DashboardGrid({ children, widgetKeys, defaultLayout }: Dashboard
 
   return (
     <div ref={containerRef}>
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-end gap-2 mb-3">
+        <div className="relative">
+          <button
+            onClick={() => setPickerOpen((o) => !o)}
+            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Widgets{hidden.size > 0 ? ` (${hidden.size} hidden)` : ""}
+          </button>
+          {pickerOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
+              <div className="absolute right-0 top-full z-50 mt-1 w-60 rounded-lg border bg-card p-2 shadow-lg max-h-80 overflow-y-auto">
+                <p className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Show / hide widgets</p>
+                {widgetKeys.map((key) => (
+                  <label key={key} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!hidden.has(key)}
+                      onChange={() => toggleHidden(key)}
+                      className="h-4 w-4"
+                    />
+                    {humanize(key)}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <button
           onClick={resetLayout}
           className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -115,7 +177,7 @@ export function DashboardGrid({ children, widgetKeys, defaultLayout }: Dashboard
         margin={[24, 24]}
         containerPadding={[0, 0]}
       >
-        {widgetKeys.map((key) => (
+        {visibleKeys.map((key) => (
           <div key={key}>
             {childMap[key]}
           </div>

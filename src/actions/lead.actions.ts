@@ -819,11 +819,13 @@ export async function updateLeadDetails(
   return { changed: changes.length };
 }
 
+/** Abandons still needing attention: unread and not yet worked/dispositioned. */
 export async function getAbandonedLeadCount() {
   return prisma.lead.count({
     where: {
       fromAbandonedForm: true,
-      status: { notIn: ["ARCHIVED", "MERGED"] },
+      isRead: false,
+      status: { in: ["NEW", "REVIEWED"] },
     },
   });
 }

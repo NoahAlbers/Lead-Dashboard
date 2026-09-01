@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useWidgetPref } from "@/lib/use-widget-pref";
 import {
   LineChart,
   Line,
@@ -53,7 +54,7 @@ const SERIES = [
 ] as const;
 
 export function TrendsWidget({ data }: { data: DailyPoint[] }) {
-  const [granularity, setGranularity] = useState<Granularity>("weekly");
+  const [granularity, setGranularity] = useWidgetPref<Granularity>("trends.granularity", "weekly");
 
   const series = useMemo(() => {
     const buckets: Record<string, DailyPoint & { label: string }> = {};
