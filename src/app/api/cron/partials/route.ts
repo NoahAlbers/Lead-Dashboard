@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { processIngestionItem } from "@/services/ingestion-pipeline.service";
 import { createNotificationsForRole } from "@/services/notification.service";
+import { enrollAbandonedLead } from "@/services/recapture.service";
 
 async function processAbandonedPartials() {
   // 1. Read timeout from SystemConfig (default 60 minutes)
@@ -67,6 +68,16 @@ async function processAbandonedPartials() {
             },
           });
         }
+
+        // Flag as an abandoned-form lead (drives the Abandons inbox tab) and
+        // enroll it in the recapture email sequence.
+        await prisma.lead.update({
+          where: { id: updated.leadId },
+          data: { fromAbandonedForm: true },
+        });
+        await enrollAbandonedLead(updated.leadId, item.sessionId, item.partialStep).catch((err) => {
+          console.error("Recapture enrollment failed (non-blocking):", err);
+        });
 
         processed++;
       } else if (updated?.status === "failed") {

@@ -8,6 +8,8 @@ import { revalidatePath } from "next/cache";
 export async function createOutcome(leadId: string, data: {
   outcomeType: string;
   reason: string;
+  /** All selected reasons (multi-select); `reason` stays the first for compat. */
+  reasons?: string[];
   reasonDetail?: string;
   competitor?: string;
   couldHaveWon?: string;

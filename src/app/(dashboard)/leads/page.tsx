@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { getLeads, getLeadStats, getWidgetMetrics } from "@/actions/lead.actions";
+import { getLeads, getLeadStats, getWidgetMetrics, getAbandonedLeadCount } from "@/actions/lead.actions";
+import Link from "next/link";
 import { getSystemConfig } from "@/actions/config.actions";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { getTierColorMap } from "@/actions/status.actions";
@@ -52,6 +53,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     debtType: params.debtType as string | undefined,
     businessType: params.businessType as string | undefined,
     software: params.software as string | undefined,
+    view: params.view as string | undefined,
     dateFrom: params.dateFrom as string | undefined,
     dateTo: params.dateTo as string | undefined,
     isRead: params.isRead as string | undefined,
@@ -123,6 +125,25 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     label: name,
   }));
 
+  // Inquiries / Abandoned tabs — keep filters, drop page + view
+  const abandonedCount = await getAbandonedLeadCount();
+  const currentView = (params.view as string) === "abandoned" ? "abandoned" : "inquiries";
+  const tabQs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (k === "view" || k === "page" || v == null) continue;
+    tabQs.set(k, Array.isArray(v) ? v[0] : v);
+  }
+  const baseQs = tabQs.toString();
+  const inquiriesHref = `/leads${baseQs ? `?${baseQs}` : ""}`;
+  tabQs.set("view", "abandoned");
+  const abandonedHref = `/leads?${tabQs.toString()}`;
+  const tabCls = (active: boolean) =>
+    `inline-flex items-center gap-2 border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
+      active
+        ? "border-primary text-foreground"
+        : "border-transparent text-muted-foreground hover:text-foreground"
+    }`;
+
   return (
     <div className="space-y-6">
       <AutoRefreshBar variant="inbox" />
@@ -151,6 +172,19 @@ export default async function LeadsPage({ searchParams }: PageProps) {
           userRole={session.user.role}
         />
       )}
+
+      {/* Inquiries / Abandoned tabs */}
+      <div className="flex items-center gap-6 border-b">
+        <Link href={inquiriesHref} className={tabCls(currentView === "inquiries")}>
+          Inquiries
+        </Link>
+        <Link href={abandonedHref} className={tabCls(currentView === "abandoned")}>
+          Abandoned
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+            {abandonedCount}
+          </span>
+        </Link>
+      </div>
 
       {/* Lead Table with integrated filters */}
       <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Loading leads...</div>}>

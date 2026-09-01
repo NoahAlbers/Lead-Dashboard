@@ -40,7 +40,7 @@ export function OutcomeModal({
   const [reasons, setReasons] = useState<Array<{ id: string; reasonText: string }>>([]);
 
   // Form state
-  const [reason, setReason] = useState("");
+  const [selectedReasons, setSelectedReasons] = useState<string[]>([]);
   const [reasonDetail, setReasonDetail] = useState("");
   const [notes, setNotes] = useState("");
   const [estimatedValue, setEstimatedValue] = useState("");
@@ -53,7 +53,7 @@ export function OutcomeModal({
   useEffect(() => {
     if (open) {
       // Reset form
-      setReason("");
+      setSelectedReasons([]);
       setReasonDetail("");
       setNotes("");
       setEstimatedValue("");
@@ -70,9 +70,15 @@ export function OutcomeModal({
     }
   }, [open, outcomeType]);
 
+  function toggleReason(text: string) {
+    setSelectedReasons((prev) =>
+      prev.includes(text) ? prev.filter((r) => r !== text) : [...prev, text]
+    );
+  }
+
   function handleSave() {
-    if (!reason) {
-      toast({ title: "Please select a reason", variant: "destructive" });
+    if (selectedReasons.length === 0) {
+      toast({ title: "Please select at least one reason", variant: "destructive" });
       return;
     }
 
@@ -80,7 +86,8 @@ export function OutcomeModal({
       try {
         await createOutcome(leadId, {
           outcomeType,
-          reason,
+          reason: selectedReasons[0],
+          reasons: selectedReasons,
           reasonDetail: reasonDetail || undefined,
           notes: notes || undefined,
           competitor: competitor || undefined,
@@ -112,22 +119,35 @@ export function OutcomeModal({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Reason (all types) */}
+          {/* Reasons (all types, multi-select) */}
           <div>
-            <label className="text-sm font-medium mb-1 block">Reason *</label>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass}>
-              <option value="">Select a reason...</option>
+            <label className="text-sm font-medium mb-1 block">Reasons * <span className="text-muted-foreground font-normal">(select all that apply)</span></label>
+            <div className="rounded-md border p-2 space-y-1 max-h-44 overflow-y-auto">
               {reasons.map((r) => (
-                <option key={r.id} value={r.reasonText}>
+                <label key={r.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedReasons.includes(r.reasonText)}
+                    onChange={() => toggleReason(r.reasonText)}
+                    className="h-4 w-4"
+                  />
                   {r.reasonText}
-                </option>
+                </label>
               ))}
-              <option value="Other">Other</option>
-            </select>
+              <label className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedReasons.includes("Other")}
+                  onChange={() => toggleReason("Other")}
+                  className="h-4 w-4"
+                />
+                Other
+              </label>
+            </div>
           </div>
 
           {/* Reason Detail (when Other is selected or for extra context) */}
-          {reason === "Other" && (
+          {selectedReasons.includes("Other") && (
             <div>
               <label className="text-sm font-medium mb-1 block">Specify Reason</label>
               <input
@@ -271,7 +291,7 @@ export function OutcomeModal({
           </button>
           <button
             onClick={handleSave}
-            disabled={isPending || !reason}
+            disabled={isPending || selectedReasons.length === 0}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {isPending ? "Saving..." : "Save & Continue"}

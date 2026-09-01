@@ -15,8 +15,12 @@ import {
   Copy,
   Merge,
   Printer,
+  Trophy,
+  XCircle,
+  FileSignature,
 } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
+import { createOnboardingProfile } from "@/actions/onboarding.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
 import { EmailDialog } from "@/components/leads/email-dialog";
@@ -151,6 +155,23 @@ export function LeadActions({
     });
   }
 
+  function handleCreateOnboarding() {
+    startTransition(async () => {
+      try {
+        const res = await createOnboardingProfile(leadId);
+        if (res.success && res.portalUrl) {
+          try { await navigator.clipboard.writeText(res.portalUrl); } catch {}
+          toast({ title: "Onboarding profile created, portal link copied to clipboard", variant: "success" });
+          router.refresh();
+        } else {
+          toast({ title: res.error ?? "Failed to create onboarding profile", variant: "destructive" });
+        }
+      } catch {
+        toast({ title: "Failed to create onboarding profile", variant: "destructive" });
+      }
+    });
+  }
+
   function handleOutcomeConfirm(result?: { referralPartnerId?: string }) {
     if (!outcomeModal) return;
     const targetStatus = outcomeModal.targetStatus;
@@ -261,6 +282,28 @@ export function LeadActions({
 
       <div className="border-t" />
 
+      {/* Outcome: Won / Lost */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => handleStatusChange("WON" as LeadStatus)}
+          disabled={isPending}
+          className="flex items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+        >
+          <Trophy className="h-4 w-4" />
+          Mark Won
+        </button>
+        <button
+          onClick={() => handleStatusChange("LOST" as LeadStatus)}
+          disabled={isPending}
+          className="flex items-center justify-center gap-1.5 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+        >
+          <XCircle className="h-4 w-4" />
+          Mark Lost
+        </button>
+      </div>
+
+      <div className="border-t" />
+
       {/* Other Actions */}
       <div className="space-y-1.5">
         <button
@@ -270,6 +313,15 @@ export function LeadActions({
         >
           <Handshake className="h-4 w-4 text-orange-500" />
           Refer Out
+        </button>
+        <button
+          onClick={handleCreateOnboarding}
+          disabled={isPending}
+          className={actionBtn}
+          title="Pre-create their profile in the onboarding tool and get the portal link"
+        >
+          <FileSignature className="h-4 w-4 text-blue-500" />
+          Create Onboarding Profile
         </button>
         <button
           onClick={() => handleQuickLog("duplicate_found", "Marked as Duplicate")}

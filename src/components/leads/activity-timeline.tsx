@@ -59,6 +59,27 @@ function formatEventDetail(event: TimelineEvent): string | null {
     const d = data as { recommendation?: string; sources?: string[] };
     return d.recommendation ? `Recommendation: ${d.recommendation}` : null;
   }
+  if (event.eventType === "lead_edited" && Array.isArray(data.changes)) {
+    const changes = data.changes as Array<{ field: string; from?: string | null; to?: string | null }>;
+    return changes
+      .map((c) => `${c.field}: "${c.from ?? "empty"}" → "${c.to ?? "empty"}"`)
+      .join(" · ");
+  }
+  if (event.eventType === "recapture_email_sent") {
+    return `Recapture email ${data.step ?? ""}: ${data.subject ?? ""}`;
+  }
+  if (event.eventType === "confirmation_email_sent") {
+    return `Confirmation sent to ${data.to ?? ""}${data.isHot ? " (high value)" : ""}`;
+  }
+  if (event.eventType === "recapture_link_opened") {
+    return "Opened their resume link from a recapture email";
+  }
+  if (event.eventType === "onboarding_profile_created") {
+    return `Portal: ${data.portalUrl ?? ""}`;
+  }
+  if (event.eventType.startsWith("email_")) {
+    return `${event.eventType.replace("email_", "Email ").replace(/_/g, " ")}${data.subject ? `: ${data.subject}` : ""}`;
+  }
   return null;
 }
 

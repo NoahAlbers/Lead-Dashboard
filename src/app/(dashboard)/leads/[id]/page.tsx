@@ -18,6 +18,7 @@ import { WorkingModeBarWrapper, DispositionPanelWrapper, SessionSummaryWrapper }
 import { MarkReadOnView } from "@/components/leads/mark-read-on-view";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { BackToInboxLink } from "@/components/leads/back-to-inbox-link";
+import { LeadEditDialog } from "@/components/leads/lead-edit-dialog";
 import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { ScoreCircle } from "@/components/leads/score-circle";
@@ -215,6 +216,29 @@ export default async function LeadDetailPage({ params }: PageProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <LeadEditDialog
+            lead={{
+              id: lead.id,
+              fullName: lead.fullName,
+              firstName: lead.firstName,
+              lastName: lead.lastName,
+              companyName: lead.companyName,
+              email: lead.email,
+              phone: lead.phone,
+              alternatePhone: lead.alternatePhone,
+              title: lead.title,
+              address1: lead.address1,
+              city: lead.city,
+              state: lead.state,
+              zip: lead.zip,
+              industry: lead.industry,
+              debtType: lead.debtType,
+              businessType: lead.businessType,
+              accountVolume: lead.accountVolume,
+              urgency: lead.urgency,
+              notesFromForm: lead.notesFromForm,
+            }}
+          />
           <ScoreCircle score={lead.score} tierColor={tierHex} />
           <div className="flex flex-col items-end gap-1">
             <TierBadge tier={lead.qualityTier} colorMap={tierColorMap} />

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { logEvent } from "@/services/activity-log.service";
 import { revalidatePath } from "next/cache";
+import { stopRecaptureForLead } from "@/services/recapture.service";
 
 export async function addNote(leadId: string, noteBody: string) {
   const session = await auth();
@@ -80,6 +81,9 @@ export async function logQuickAction(
     "IMPORTED_TO_CRM", "DUPLICATE", "ARCHIVED", "MERGED",
   ]);
   const PROGRESS_STATUSES = new Set(["CONTACTED", "FOLLOW_UP_NEEDED"]);
+
+  // Team contact of any kind ends the automated recapture chase.
+  stopRecaptureForLead(leadId, `quick_action_${actionType}`).catch(() => {});
 
   const newStatus = statusMap[actionType];
   if (newStatus) {

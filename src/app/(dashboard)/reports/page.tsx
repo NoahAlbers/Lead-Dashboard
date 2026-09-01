@@ -14,6 +14,7 @@ import { StatusBreakdown } from "@/components/reports/status-breakdown";
 import { GeoHeatmap } from "@/components/reports/geo-heatmap";
 import { ScoringInsights } from "@/components/reports/scoring-insights";
 import { AvgScoreChart } from "@/components/reports/avg-score-chart";
+import { TrendsWidget } from "@/components/reports/trends-widget";
 import { RecentLeadsTable } from "@/components/reports/recent-leads-table";
 import { TopLeads } from "@/components/reports/top-leads";
 import { FollowUpTable } from "@/components/reports/follow-up-table";
@@ -52,6 +53,7 @@ import {
   getWinRateTrend as getWinRateTrendData,
   getCouldHaveWonBreakdown,
   getPartnerLeaderboard,
+  getTrendSeries,
 } from "@/actions/report.actions";
 
 function getRangeDate(range: TimeRange): { from: Date; to: Date } | null {
@@ -112,7 +114,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     funnel, avgScoreTime, ruleStats, recentLeads, topLeads, followUps,
     responseTime, unitDist, rentDist, activity, sparkline, stateClassifications,
     tierColorMap, winLossStats, lossReasons, winRateTrend, couldHaveWon,
-    partnerLeaderboard,
+    partnerLeaderboard, trendSeries,
   ] = await Promise.all([
     getReportKPIs(dateRange),
     getLeadVolumeByDay(dateRange),
@@ -137,6 +139,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getWinRateTrendData(dateRange),
     getCouldHaveWonBreakdown(dateRange),
     getPartnerLeaderboard(dateRange),
+    getTrendSeries(180),
   ]);
 
   const ruleInsights = await generateScoringInsights(ruleStats);
@@ -197,6 +200,10 @@ export default async function ReportsPage({ searchParams }: PageProps) {
         </DashboardWidget>
         <DashboardWidget title="Avg Score Over Time" subtitle="Lead quality trend">
           <AvgScoreChart data={avgScoreTime} />
+        </DashboardWidget>
+
+        <DashboardWidget title="Trends Over Time" subtitle="Weekly and monthly patterns (last 180 days)">
+          <TrendsWidget data={trendSeries} />
         </DashboardWidget>
 
         {/* Tables */}

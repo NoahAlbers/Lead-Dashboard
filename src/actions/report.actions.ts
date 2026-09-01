@@ -425,6 +425,45 @@ export async function getDailyLeadCounts(range: DateRange | null) {
   return Object.entries(daily).map(([date, count]) => ({ date, count }));
 }
 
+/**
+ * Daily series for the Trends widget: new inquiries, abandons, and outcomes.
+ * The client aggregates into weekly or monthly buckets.
+ */
+export async function getTrendSeries(days: number = 180) {
+  const start = new Date(Date.now() - days * 86400000);
+  const [leads, outcomes] = await Promise.all([
+    prisma.lead.findMany({
+      where: { createdAt: { gte: start }, status: { notIn: ["ARCHIVED", "MERGED"] } },
+      select: { createdAt: true, fromAbandonedForm: true },
+    }),
+    prisma.leadOutcome.findMany({
+      where: { outcomeDate: { gte: start } },
+      select: { outcomeDate: true, outcomeType: true },
+    }),
+  ]);
+
+  const buckets: Record<string, { date: string; leads: number; abandoned: number; won: number; lost: number; referred: number }> = {};
+  const ensure = (d: Date) => {
+    const key = toEstDateString(d);
+    if (!buckets[key]) buckets[key] = { date: key, leads: 0, abandoned: 0, won: 0, lost: 0, referred: 0 };
+    return buckets[key];
+  };
+
+  for (const l of leads) {
+    const b = ensure(l.createdAt);
+    if (l.fromAbandonedForm) b.abandoned++;
+    else b.leads++;
+  }
+  for (const o of outcomes) {
+    const b = ensure(o.outcomeDate);
+    if (o.outcomeType === "won") b.won++;
+    else if (o.outcomeType === "lost") b.lost++;
+    else if (o.outcomeType === "referred_out") b.referred++;
+  }
+
+  return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 // Multi-select fields that are stored in rawPayloadJson._rawIntakeForm as arrays
 const MULTI_SELECT_FIELDS = new Set([
   "states", "pmSoftware", "listingSites", "rentalTypes", "propertyTypes", "debtTypes",

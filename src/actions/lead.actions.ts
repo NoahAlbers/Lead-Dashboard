@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { estStartOfDay, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
 import { hasAnyStates, buildStateClassWhere, numericRange } from "@/lib/lead-state-filter";
 import { getStateClassifications } from "@/actions/state-classification.actions";
+import { stopRecaptureForLead } from "@/services/recapture.service";
 
 export async function getLeads(params: {
   search?: string;
@@ -30,6 +31,8 @@ export async function getLeads(params: {
   debtType?: string;
   businessType?: string;
   software?: string;
+  /** "abandoned" shows abandoned-form leads; default shows completed inquiries. */
+  view?: string;
   dateFrom?: string;
   dateTo?: string;
   isRead?: string;
@@ -140,6 +143,9 @@ export async function getLeads(params: {
   if (rentR) where.avgRentNum = rentR;
 
   // Free-text categorical filters.
+  // Abandoned-form leads live in their own tab; the main inbox excludes them.
+  where.fromAbandonedForm = params.view === "abandoned";
+
   if (params.industry) where.industry = { contains: params.industry, mode: "insensitive" };
   if (params.debtType) where.debtType = { contains: params.debtType, mode: "insensitive" };
   if (params.businessType) where.businessType = { contains: params.businessType, mode: "insensitive" };
@@ -272,6 +278,11 @@ export async function updateLeadStatus(leadId: string, newStatus: LeadStatus) {
     where: { id: leadId },
     data: updateData,
   });
+
+  // Any real status movement means the team is on it; stop chasing by email.
+  if (!["NEW", "REVIEWED"].includes(newStatus)) {
+    stopRecaptureForLead(leadId, `status_${newStatus.toLowerCase()}`).catch(() => {});
+  }
 
   if (newStatus === "CONTACTED" && !lead.firstContactAt) {
     await logEvent(leadId, "first_contact_recorded", {}, session.user.id);
@@ -758,6 +769,63 @@ export async function backfillSubmissionDataEvents() {
 
   revalidatePath("/leads");
   return { created };
+}
+
+// Fields any ACB staff member may edit from the lead page. Every change is
+// diffed and logged to the timeline as a lead_edited event (the edit history).
+const EDITABLE_LEAD_FIELDS = [
+  "fullName", "firstName", "lastName", "companyName", "email", "phone",
+  "alternatePhone", "title", "address1", "city", "state", "zip",
+  "industry", "debtType", "businessType", "accountVolume", "urgency",
+  "notesFromForm",
+] as const;
+
+export async function updateLeadDetails(
+  leadId: string,
+  updates: Record<string, string | null>
+) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const leadObj = lead as unknown as Record<string, unknown>;
+
+  const changes: Array<{ field: string; from: string | null; to: string | null }> = [];
+  const data: Record<string, unknown> = {};
+
+  for (const field of EDITABLE_LEAD_FIELDS) {
+    if (!(field in updates)) continue;
+    const next = updates[field]?.trim() || null;
+    const prev = (leadObj[field] as string | null) ?? null;
+    if (next !== prev) {
+      data[field] = next;
+      changes.push({ field, from: prev, to: next });
+    }
+  }
+
+  if (changes.length === 0) return { changed: 0 };
+
+  // Keep the derived numeric copy of units in sync for filters/sorting.
+  if ("accountVolume" in data) {
+    const n = parseInt(String(data.accountVolume ?? "").replace(/[^0-9-]/g, ""), 10);
+    data.accountVolumeNum = Number.isNaN(n) ? null : n;
+  }
+
+  await prisma.lead.update({ where: { id: leadId }, data });
+  await logEvent(leadId, "lead_edited", { changes }, session.user.id);
+
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+  return { changed: changes.length };
+}
+
+export async function getAbandonedLeadCount() {
+  return prisma.lead.count({
+    where: {
+      fromAbandonedForm: true,
+      status: { notIn: ["ARCHIVED", "MERGED"] },
+    },
+  });
 }
 
 export async function getArchivedLeads() {

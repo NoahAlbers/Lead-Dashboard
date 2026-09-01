@@ -125,6 +125,8 @@ model Lead {
 
   // Read/Unread
   isRead Boolean @default(false) @map("is_read")
+  // Lead was created from an abandoned (incomplete) form session
+  fromAbandonedForm Boolean @default(false) @map("from_abandoned_form")
 
   // CRM
   crmStatus     String? @map("crm_status")
@@ -167,6 +169,7 @@ model Lead {
   mergeHistoryDuplicate MergeHistory[] @relation("MergeDuplicate")
   outcome               LeadOutcome?
   ingestionQueue        IngestionQueue[]
+  recaptureEnrollment   RecaptureEnrollment?
 
   @@index([status])
   @@index([qualityTier])
@@ -574,6 +577,30 @@ model SystemConfig {
   @@map("system_config")
 }
 
+// Automated win-back sequence for leads created from abandoned form sessions.
+// One enrollment per lead; the recapture cron advances currentStep until a
+// stop condition fires (completion, reply/contact, unsubscribe, 3 sends).
+model RecaptureEnrollment {
+  id              String    @id @default(cuid())
+  leadId          String    @unique @map("lead_id")
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sessionId       String?   @map("session_id")
+  email           String
+  resumeToken     String    @unique @map("resume_token")
+  status          String    @default("active") // active, converted, stopped, exhausted
+  stopReason      String?   @map("stop_reason")
+  currentStep     Int       @default(0) @map("current_step") // emails sent so far
+  nextSendAt      DateTime? @map("next_send_at")
+  lastSentAt      DateTime? @map("last_sent_at")
+  abandonedStep   String?   @map("abandoned_step")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, nextSendAt])
+  @@index([email])
+  @@map("recapture_enrollments")
+}
+
 // Addresses we must never email again (unsubscribes, bounces, complaints).
 // Checked before every lead-facing automated send.
 model EmailSuppression {
@@ -596,7 +623,8 @@ model LeadOutcome {
   lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   outcomeType    String  @map("outcome_type") // won, lost, disqualified, referred_out
-  reason         String
+  reason         String   // kept for backward compat: first selected reason
+  reasons        String[] @default([]) // all selected reasons (multi-select)
   reasonDetail   String? @map("reason_detail") @db.Text
   competitor     String?
   couldHaveWon   String? @map("could_have_won") // yes, maybe, no

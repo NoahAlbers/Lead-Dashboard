@@ -13,6 +13,11 @@ export async function getActivePartners() {
   const partners = await prisma.referralPartner.findMany({
     where: { active: true },
     orderBy: { rankingPriority: "asc" },
+    include: {
+      defaultEmailTemplate: {
+        select: { id: true, name: true, type: true, subjectTemplate: true, bodyTemplate: true },
+      },
+    },
   });
   return partners.map((p) => ({
     id: p.id,
@@ -44,6 +49,8 @@ export async function getActivePartners() {
     insuranceInfo: p.insuranceInfo,
     yearsInBusiness: p.yearsInBusiness,
     complianceNotes: p.complianceNotes,
+    // Per-partner email template (used by the referral compose flow when set)
+    defaultEmailTemplate: p.defaultEmailTemplate,
   }));
 }
 

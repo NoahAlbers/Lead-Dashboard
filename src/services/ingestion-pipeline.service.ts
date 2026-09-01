@@ -6,6 +6,7 @@ import {
   sendNewLeadEmail,
 } from "@/services/email-notification.service";
 import { sendLeadConfirmationEmail } from "@/services/lead-emails.service";
+import { markRecaptureConverted } from "@/services/recapture.service";
 import { logger } from "@/lib/logger";
 
 // --- Helpers (mirrored from intake-form route for consistency) ---
@@ -332,6 +333,9 @@ export async function processIngestionItem(queueId: string): Promise<void> {
           error: err instanceof Error ? err.message : String(err),
         });
       });
+      // A completed submission ends any active recapture sequence for this
+      // person (matched by email or by the resumed session).
+      markRecaptureConverted(normalized.email ?? null, item.sessionId).catch(() => {});
     }
 
     // Update queue with success

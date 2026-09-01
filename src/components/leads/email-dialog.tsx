@@ -29,6 +29,7 @@ interface ReferralPartner {
   id: string;
   name: string;
   contactName: string | null;
+  defaultEmailTemplate?: EmailTemplate | null;
   email: string | null;
   emails: string[] | null;
   phone: string | null;
@@ -194,8 +195,10 @@ export function EmailDialog({
     if (!open || !autoReferralPartnerId) return;
     if (autoHandledRef.current === autoReferralPartnerId) return;
     const partner = referralPartners.find((p) => p.id === autoReferralPartnerId);
-    // Prefer a referral template with the formatted data table.
+    // The partner's own template wins; else prefer a referral template with
+    // the formatted data table.
     const tmpl =
+      partner?.defaultEmailTemplate ??
       allTemplates.find((t) => isReferralTemplate(t) && t.bodyTemplate.includes("{{lead_data_table}}")) ??
       allTemplates.find(isReferralTemplate);
     if (!partner || !tmpl) return;
@@ -239,7 +242,9 @@ export function EmailDialog({
 
   function handleSelectPartner(partner: ReferralPartner) {
     setSelectedPartner(partner);
-    if (selectedTemplate) composeEmail(selectedTemplate, partner);
+    // A partner's own template wins over the generic referral template.
+    const tmpl = partner.defaultEmailTemplate ?? selectedTemplate;
+    if (tmpl) composeEmail(tmpl, partner);
   }
 
   function doCopy(): boolean {
