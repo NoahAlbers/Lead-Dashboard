@@ -8,6 +8,8 @@ import {
 import { sendLeadConfirmationEmail } from "@/services/lead-emails.service";
 import { markRecaptureConverted } from "@/services/recapture.service";
 import { logger } from "@/lib/logger";
+import { runAutoResearch } from "@/services/research.service";
+import { formatServerGeo, type ServerGeo } from "@/lib/request-geo";
 
 // --- Helpers (mirrored from intake-form route for consistency) ---
 
@@ -258,6 +260,23 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     if (payloadMetadata.utm_campaign) body.utm_campaign = payloadMetadata.utm_campaign;
     if (payloadMetadata.source_page) body.sourcePage = payloadMetadata.source_page;
     if (payloadMetadata.referrer && !body.referrer) body.referrer = payloadMetadata.referrer;
+    // Visitor context lives in payload.metadata for completed submissions;
+    // pull it into the body so normalizePayload and buildIngestArgs see it.
+    for (const k of ["location", "device", "timezone", "user_agent", "clarity_url"] as const) {
+      if (payloadMetadata[k] && !body[k]) body[k] = payloadMetadata[k];
+    }
+    // Server-side geo (Vercel edge headers) fills in whenever the form's own
+    // IP lookup didn't finish ("Loading...") or was blocked.
+    const serverGeo = payloadMetadata.server_geo as ServerGeo | undefined;
+    const clientLocation = typeof body.location === "string" ? body.location : "";
+    const locationUsable =
+      clientLocation && !/^\(?(Loading|Could not|Unknown)/i.test(clientLocation);
+    if (serverGeo) {
+      const formatted = formatServerGeo(serverGeo);
+      if (!locationUsable && formatted) body.location = formatted;
+      if (!body.timezone && serverGeo.timezone) body.timezone = serverGeo.timezone;
+    }
+    if (!locationUsable && !body.location && item.sourceIp) body.location = `(IP: ${item.sourceIp})`;
 
     // Check for partial records with same sessionId — merge fields
     if (item.sessionId) {
@@ -311,7 +330,6 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     // Fill visitor context from what the queue captured server-side (partials
     // don't always carry it in the payload).
     const meta = metadata as Record<string, unknown>;
-    if (item.sourceIp && !meta.location) meta.location = `(IP: ${item.sourceIp})`;
     if (item.userAgent && !meta.user_agent) meta.user_agent = item.userAgent;
 
     // Same-session resubmission: the prospect used their edit link, or came
@@ -343,6 +361,16 @@ export async function processIngestionItem(queueId: string): Promise<void> {
       leadId: lead.id,
       submissionId: item.submissionId,
     });
+
+    // They gave us a website: read it right away so the profile links are
+    // waiting on the lead page before anyone opens it.
+    if (normalized.companyWebsite && !normalized.noWebsite) {
+      runAutoResearch(lead.id, null).catch((err) => {
+        logger.warn("PIPELINE", "Auto research failed (non-blocking)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
 
     // Send email notification with full normalized data (skip for
     // resubmissions — the assigned user gets a targeted notification instead)

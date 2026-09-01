@@ -165,10 +165,18 @@ const ALL_COLUMNS: ColumnConfig[] = [
 ];
 
 const DEFAULT_VISIBLE = new Set([
-  "readIndicator", "createdAt", "age", "companyName", "fullName", "email", "state",
-  "score", "qualityTier", "status", "sla", "actions",
+  "readIndicator", "createdAt", "age", "companyName", "accountVolume", "fullName", "email", "state",
+  "score", "status", "actions",
 ]);
-const DEFAULT_ORDER = ALL_COLUMNS.map((c) => c.id);
+// Default order: the visible set in reading order, then everything else (hidden)
+const DEFAULT_ORDER = [
+  "readIndicator", "createdAt", "age", "companyName", "accountVolume", "fullName", "email", "state",
+  "score", "status", "actions",
+  ...ALL_COLUMNS.map((c) => c.id).filter((id) => ![
+    "readIndicator", "createdAt", "age", "companyName", "accountVolume", "fullName", "email", "state",
+    "score", "status", "actions",
+  ].includes(id)),
+];
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   readIndicator: 40, createdAt: 140, age: 60, companyName: 200, fullName: 140,
@@ -177,7 +185,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, sla: 110, actions: 220,
 };
 
-const STORAGE_KEY = "lead-table-config";
+const STORAGE_KEY = "lead-table-config-v2";
 
 function loadConfig(): { visible: Set<string>; order: string[]; widths: Record<string, number> } {
   if (typeof window === "undefined") return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER, widths: DEFAULT_COLUMN_WIDTHS };

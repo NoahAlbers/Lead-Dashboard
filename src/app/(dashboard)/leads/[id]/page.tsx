@@ -25,6 +25,7 @@ import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { ScoreCircle } from "@/components/leads/score-circle";
 import { WonLostButtons } from "@/components/leads/won-lost-buttons";
 import { leadWebDomain } from "@/lib/lead-domain";
+import { phoneAreaLocation } from "@/lib/area-codes";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 
@@ -41,6 +42,32 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
     <div className="flex justify-between py-1 text-[13px]">
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="font-medium text-right max-w-[60%]">{value}</span>
+    </div>
+  );
+}
+
+/** Label above, value below: long emails/URLs wrap instead of truncating. */
+function ContactRow({
+  label,
+  value,
+  sub,
+  muted,
+  children,
+}: {
+  label: string;
+  value?: string | null;
+  sub?: string;
+  muted?: boolean;
+  children?: React.ReactNode;
+}) {
+  if (!children && !value) return null;
+  return (
+    <div className="py-1.5 text-[13px]">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className={`mt-0.5 break-words leading-snug ${muted ? "text-muted-foreground italic" : "font-medium"}`}>
+        {children ?? value}
+      </div>
+      {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -225,36 +252,44 @@ export default async function LeadDetailPage({ params }: PageProps) {
       <div className="flex items-start justify-between">
         <div>
           <BackToInboxLink />
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3 mt-1">
             {webDomain ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
-                src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=64`}
+                src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=128`}
                 alt=""
-                className="h-9 w-9 rounded-md border bg-card p-1"
+                title={webDomain}
+                className="h-14 w-14 rounded-xl border bg-card p-1.5 shadow-sm shrink-0"
               />
             ) : (
-              <span className="flex h-9 w-9 items-center justify-center rounded-md border bg-muted text-sm font-bold text-muted-foreground">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border bg-muted text-xl font-bold text-muted-foreground">
                 {(lead.companyName || lead.fullName || "?").charAt(0).toUpperCase()}
               </span>
             )}
-            <h1 className="text-xl font-bold leading-tight">
-              {lead.fullName || "Unknown"}{lead.companyName ? ` | ${lead.companyName}` : ""}
-            </h1>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold leading-tight truncate">
+                {lead.fullName || "Unknown"}{lead.companyName ? ` | ${lead.companyName}` : ""}
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Created {format(toZonedTime(new Date(lead.createdAt), EST_TZ), "MMMM d, yyyy 'at' h:mm a", { timeZone: EST_TZ })} EST
+                {lead.assignedUser && (
+                  <> &middot; Assigned to {lead.assignedUser.name}</>
+                )}
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Created {format(toZonedTime(new Date(lead.createdAt), EST_TZ), "MMMM d, yyyy 'at' h:mm a", { timeZone: EST_TZ })} EST
-            {lead.assignedUser && (
-              <> &middot; Assigned to {lead.assignedUser.name}</>
-            )}
-          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <WonLostButtons
-            leadId={lead.id}
-            currentStatus={lead.status}
-            referralPartners={activePartners.map((p) => ({ id: p.id, name: p.name }))}
-          />
+        <div className="flex items-center gap-3 shrink-0">
+          {/* Info first: score, tier, status, SLA */}
+          <ScoreCircle score={lead.score} tierColor={tierHex} />
+          <div className="flex flex-col items-end gap-1">
+            <TierBadge tier={lead.qualityTier} colorMap={tierColorMap} />
+            <StatusBadge status={lead.status} />
+            {slaInfo && slaInfo.slaStatus !== "paused" && (
+              <SlaBadge slaStatus={slaInfo.slaStatus} remainingMinutes={slaInfo.remainingMinutes} compact />
+            )}
+          </div>
+          <div className="h-10 w-px bg-border" />
           <LeadEditDialog
             lead={{
               id: lead.id,
@@ -278,14 +313,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
               notesFromForm: lead.notesFromForm,
             }}
           />
-          <ScoreCircle score={lead.score} tierColor={tierHex} />
-          <div className="flex flex-col items-end gap-1">
-            <TierBadge tier={lead.qualityTier} colorMap={tierColorMap} />
-            <StatusBadge status={lead.status} />
-            {slaInfo && slaInfo.slaStatus !== "paused" && (
-              <SlaBadge slaStatus={slaInfo.slaStatus} remainingMinutes={slaInfo.remainingMinutes} compact />
-            )}
-          </div>
+          <WonLostButtons
+            leadId={lead.id}
+            currentStatus={lead.status}
+            referralPartners={activePartners.map((p) => ({ id: p.id, name: p.name }))}
+          />
         </div>
       </div>
 
@@ -297,46 +329,52 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Contact Information */}
           <CompactCard title="Contact Information">
-            <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-              <InfoRow label="Contact Name" value={lead.fullName} />
-              <InfoRow label="Company" value={lead.companyName} />
-              {intakeFields?.noCompany && <InfoRow label="" value="(Independent Owner)" />}
+            <div className="divide-y divide-border/60">
+              <ContactRow label="Name" value={lead.fullName} />
+              <ContactRow
+                label="Company"
+                value={lead.companyName ?? (intakeFields?.noCompany ? "Independent owner" : null)}
+                sub={lead.companyName && intakeFields?.noCompany ? "Independent owner" : undefined}
+              />
               {lead.email && (
-                <div className="flex justify-between py-1 text-[13px]">
-                  <span className="text-muted-foreground text-xs">Email</span>
-                  <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline text-right max-w-[60%] truncate">
+                <ContactRow label="Email">
+                  <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline break-all">
                     {lead.email}
                   </a>
-                </div>
+                </ContactRow>
               )}
               {lead.phone && (
-                <div className="flex justify-between py-1 text-[13px]">
-                  <span className="text-muted-foreground text-xs">Phone</span>
+                <ContactRow label="Phone" sub={phoneAreaLocation(lead.phone) ?? undefined}>
                   <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
                     {lead.phone}
                   </a>
-                </div>
+                </ContactRow>
               )}
-              <InfoRow label="Alt. Phone" value={lead.alternatePhone} />
+              {lead.alternatePhone && (
+                <ContactRow label="Alt. Phone" sub={phoneAreaLocation(lead.alternatePhone) ?? undefined}>
+                  <a href={`tel:${lead.alternatePhone}`} className="font-medium text-primary hover:underline">
+                    {lead.alternatePhone}
+                  </a>
+                </ContactRow>
+              )}
               {intakeFields?.companyWebsite && !intakeFields?.noWebsite ? (
-                <div className="flex justify-between py-1 text-[13px]">
-                  <span className="text-muted-foreground text-xs">Website</span>
+                <ContactRow label="Website">
                   <a
                     href={intakeFields.companyWebsite.startsWith("http") ? intakeFields.companyWebsite : `https://${intakeFields.companyWebsite}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-primary hover:underline text-right max-w-[60%] truncate inline-flex items-center gap-1"
+                    className="font-medium text-primary hover:underline break-all inline-flex items-center gap-1"
                   >
-                    {intakeFields.companyWebsite}
+                    {intakeFields.companyWebsite.replace(/^https?:\/\/(www\.)?/, "")}
                     <ExternalLink className="h-3 w-3 shrink-0" />
                   </a>
-                </div>
+                </ContactRow>
               ) : intakeFields?.noWebsite ? (
-                <InfoRow label="Website" value="(No website)" />
+                <ContactRow label="Website" value="No website" muted />
               ) : null}
               {displayStates && (
-                <div className="py-1 sm:col-span-2">
-                  <p className="text-xs text-muted-foreground mb-1">States</p>
+                <div className="py-2">
+                  <p className="text-xs text-muted-foreground mb-1.5">States</p>
                   <TagList items={displayStates} stateClassMap={stateClassMap} />
                 </div>
               )}
@@ -434,31 +472,29 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Tracking & Source */}
           <CompactCard title="Tracking & Source" defaultOpen={true}>
-            <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-              <InfoRow label="Source" value={lead.source ?? lead.leadSource} />
-              <InfoRow label="Source Page" value={lead.sourcePage} />
-              <InfoRow label="Urgency" value={lead.urgency} />
-              {intakeFields?.location && <InfoRow label="Location / IP" value={intakeFields.location} />}
-              {intakeFields?.device && <InfoRow label="Device" value={intakeFields.device} />}
-              {lead.utmSource && <InfoRow label="UTM Source" value={lead.utmSource} />}
-              {lead.utmMedium && <InfoRow label="UTM Medium" value={lead.utmMedium} />}
-              {lead.utmCampaign && <InfoRow label="UTM Campaign" value={lead.utmCampaign} />}
-              {lead.referrer && <InfoRow label="Referrer" value={lead.referrer} />}
-              {intakeFields?.timezone && <InfoRow label="Timezone" value={intakeFields.timezone} />}
-              {intakeFields?.submittedAt && <InfoRow label="Submitted (EST)" value={intakeFields.submittedAt} />}
+            <div className="divide-y divide-border/60">
+              <ContactRow label="Source" value={lead.source ?? lead.leadSource} />
+              <ContactRow label="Urgency" value={lead.urgency} />
+              <ContactRow label="Location / IP" value={intakeFields?.location ?? "Not captured"} muted={!intakeFields?.location} />
+              <ContactRow label="Timezone" value={intakeFields?.timezone ?? "Not captured"} muted={!intakeFields?.timezone} />
+              <ContactRow label="Device" value={intakeFields?.device} />
+              <ContactRow label="Referrer" value={lead.referrer} />
+              <ContactRow label="UTM Source" value={lead.utmSource} />
+              <ContactRow label="UTM Medium" value={lead.utmMedium} />
+              <ContactRow label="UTM Campaign" value={lead.utmCampaign} />
+              <ContactRow label="Submitted (EST)" value={intakeFields?.submittedAt} />
               {intakeFields?.clarityRecording && (
-                <div className="flex justify-between py-1 text-[13px] sm:col-span-2">
-                  <span className="text-muted-foreground text-xs">Clarity Recording</span>
+                <ContactRow label="Clarity Recording">
                   <a
                     href={intakeFields.clarityRecording}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-primary hover:underline inline-flex items-center gap-1 text-xs"
+                    className="font-medium text-primary hover:underline inline-flex items-center gap-1"
                   >
                     View Recording
                     <ExternalLink className="h-3 w-3" />
                   </a>
-                </div>
+                </ContactRow>
               )}
             </div>
           </CompactCard>
@@ -513,6 +549,20 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <CompactCard title="Activity Timeline">
             <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
           </CompactCard>
+
+          {/* Research: auto findings + quick links */}
+          <ResearchPanel
+            leadId={lead.id}
+            companyName={lead.companyName}
+            fullName={lead.fullName}
+            firstName={lead.firstName}
+            lastName={lead.lastName}
+            state={lead.state}
+            city={lead.city}
+            companyWebsite={intakeFields?.companyWebsite}
+            hasResearchLog={events.some((e) => e.eventType === "research_completed")}
+            initialAutoResearch={latestAutoResearch}
+          />
 
           {/* SLA Tracking */}
           {slaInfo && (
@@ -634,20 +684,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 }}
               />
             )}
-
-            {/* Research */}
-            <ResearchPanel
-              leadId={lead.id}
-              companyName={lead.companyName}
-              fullName={lead.fullName}
-              firstName={lead.firstName}
-              lastName={lead.lastName}
-              state={lead.state}
-              city={lead.city}
-              companyWebsite={intakeFields?.companyWebsite}
-              hasResearchLog={events.some((e) => e.eventType === "research_completed")}
-              initialAutoResearch={latestAutoResearch}
-            />
 
             {/* Assignment */}
             <div className="rounded-lg border bg-card p-3">

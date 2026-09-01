@@ -37,6 +37,7 @@ const eventLabels: Record<string, string> = {
   quick_log: "Quick log action",
   research_completed: "Research completed",
   auto_research: "Auto research ran",
+  prospect_comment: "Comment from the prospect",
   lead_data_received: "Submission Data Received",
 };
 
@@ -59,6 +60,9 @@ function formatEventDetail(event: TimelineEvent): string | null {
   if (event.eventType === "research_completed") {
     const d = data as { recommendation?: string; sources?: string[] };
     return d.recommendation ? `Recommendation: ${d.recommendation}` : null;
+  }
+  if (event.eventType === "prospect_comment") {
+    return typeof data.comment === "string" ? data.comment : null;
   }
   if (event.eventType === "auto_research") {
     const d = data as { domain?: string; profiles?: Array<{ kind: string }> };
@@ -122,6 +126,7 @@ const PROSPECT_EVENTS = new Set([
   "recapture_link_opened",
   "edit_link_opened",
   "prospect_updated_details",
+  "prospect_comment",
 ]);
 const SYSTEM_EVENTS = new Set(["lead_created", "score_calculated", "duplicate_flagged"]);
 

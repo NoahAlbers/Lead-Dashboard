@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getLeads, getLeadStats, getWidgetMetrics, getAbandonedLeadCount } from "@/actions/lead.actions";
+import { getLeads, getLeadStats, getWidgetMetrics, getAbandonedLeadCount, getWidgetSeries } from "@/actions/lead.actions";
 import Link from "next/link";
 import { getSystemConfig } from "@/actions/config.actions";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
@@ -70,12 +70,14 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     "a_leads", "b_leads", "c_leads", "poor_leads", "follow_up", "referred",
     "contacted", "disqualified", "duplicates", "avg_score", "good_states",
     "bad_states", "total_value", "total_units", "sla_breached", "sla_at_risk",
-    "aging_stale",
+    "aging_stale", "abandons_today", "abandons_week", "recapture_active",
+    "recapture_recovered_month", "live_sessions", "hot_week", "unassigned",
+    "won_month", "lost_month", "contact_rate_7d", "avg_response_hrs", "top_state_week",
   ];
 
   const session = await auth();
 
-  const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners, agingThresholds, savedViews] = await Promise.all([
+  const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners, agingThresholds, savedViews, widgetSeries] = await Promise.all([
     getLeads(filters),
     getLeadStats(),
     prisma.emailTemplate.findMany({
@@ -89,6 +91,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     getActivePartners(),
     getSystemConfig("aging_thresholds"),
     getSavedViews(),
+    getWidgetSeries().catch(() => ({} as Record<string, number[]>)),
   ]);
 
   const serializedLeads = result.leads.map((l) => ({
@@ -145,50 +148,52 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     }`;
 
   return (
-    <div className="space-y-6">
-      <AutoRefreshBar variant="inbox" />
-
-      {/* Title + Quick Stats — configurable */}
+    <div className="space-y-5">
+      {/* Title row: name + count + Start Working on the left; refresh controls + Customize on the right */}
       <InboxWidgets
         metrics={widgetMetrics}
+        series={widgetSeries}
         titleRow={
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-2xl font-bold">Lead Inbox</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <h1 className="text-2xl font-bold leading-tight">Lead Inbox</h1>
+              <p className="text-sm text-muted-foreground">
                 {result.total} total leads
               </p>
             </div>
             <StartWorkingButton />
           </div>
         }
+        controls={<AutoRefreshBar variant="inbox" />}
       />
 
-      {/* Pinned saved views */}
-      {session?.user?.id && (
-        <PinnedViewsBar
-          views={mappedViews}
-          currentUserId={session.user.id}
-          userRole={session.user.role}
-        />
-      )}
-
-      {/* Inquiries / Abandoned tabs */}
-      <div className="flex items-center gap-6 border-b">
-        <Link href={inquiriesHref} className={tabCls(currentView === "inquiries")}>
-          Inquiries
-        </Link>
-        <Link href={abandonedHref} className={tabCls(currentView === "abandoned")}>
-          Abandoned
-          {abandonedCount > 0 && (
-            <span
-              className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
-              title={`${abandonedCount} unhandled abandon${abandonedCount === 1 ? "" : "s"}`}
-            >
-              {abandonedCount}
-            </span>
-          )}
-        </Link>
+      {/* Inquiries / Abandoned tabs, with pinned views on the same row */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b">
+        <div className="flex items-center gap-6">
+          <Link href={inquiriesHref} className={tabCls(currentView === "inquiries")}>
+            Inquiries
+          </Link>
+          <Link href={abandonedHref} className={tabCls(currentView === "abandoned")}>
+            Abandoned
+            {abandonedCount > 0 && (
+              <span
+                className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
+                title={`${abandonedCount} unhandled abandon${abandonedCount === 1 ? "" : "s"}`}
+              >
+                {abandonedCount}
+              </span>
+            )}
+          </Link>
+        </div>
+        {session?.user?.id && (
+          <div className="pb-1.5">
+            <PinnedViewsBar
+              views={mappedViews}
+              currentUserId={session.user.id}
+              userRole={session.user.role}
+            />
+          </div>
+        )}
       </div>
 
       {/* Lead Table with integrated filters */}

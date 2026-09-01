@@ -75,7 +75,7 @@ export async function getRecentCompletions() {
     throw new Error("Unauthorized");
 
   return prisma.ingestionQueue.findMany({
-    where: { status: "completed", isPartial: false },
+    where: { status: "completed", isPartial: false, partialStep: null },
     orderBy: { processedAt: "desc" },
     take: 20,
     include: {

@@ -73,7 +73,7 @@ export function PinnedViewsBar({
         return (
           <div
             key={view.id}
-            className={`group flex items-center gap-1 rounded-full border px-3 py-1 text-sm transition-colors ${
+            className={`group flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
               active
                 ? "border-primary bg-primary/10 text-primary"
                 : "border-input bg-card text-foreground hover:bg-muted"

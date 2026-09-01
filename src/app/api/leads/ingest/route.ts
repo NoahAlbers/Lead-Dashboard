@@ -1,3 +1,4 @@
+import { attachServerGeo } from "@/lib/request-geo";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateReceiptId } from "@/services/receipt.service";
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
 
     // Parse body FIRST (before auth) so we never lose data
     const body = await req.json();
+    attachServerGeo(body, req.headers);
     const submissionId = body.submission_id;
     if (!submissionId) {
       return NextResponse.json(

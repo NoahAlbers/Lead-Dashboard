@@ -51,7 +51,7 @@ export function AutoRefreshBar({ variant = "inbox" }: AutoRefreshBarProps) {
   }, [lastRefreshAt]);
 
   return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       {/* Left: Updated X ago */}
       <span className="whitespace-nowrap">
         Updated {timeAgo}
@@ -74,9 +74,6 @@ export function AutoRefreshBar({ variant = "inbox" }: AutoRefreshBarProps) {
           {newLeadCount} new lead{newLeadCount > 1 ? "s" : ""}
         </button>
       )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
 
       {/* Right: manual refresh */}
       <button

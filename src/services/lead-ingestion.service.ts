@@ -96,6 +96,22 @@ function mapFields(data: WebflowFormData): Record<string, unknown> {
   return mapped;
 }
 
+/** Post the prospect's free-text comment to the timeline (skipped when empty,
+ * when they ticked "no questions", or when it's unchanged from a prior submission). */
+async function logProspectComment(
+  leadId: string,
+  intake: Record<string, unknown> | undefined,
+  previousIntake: Record<string, unknown> | null
+) {
+  const comment = typeof intake?.comments === "string" ? intake.comments.trim() : "";
+  if (!comment || intake?.noQuestions) return;
+  const prev = typeof previousIntake?.comments === "string" ? previousIntake.comments.trim() : "";
+  if (prev === comment) return;
+  await prisma.leadEvent.create({
+    data: { leadId, eventType: "prospect_comment", eventDataJson: { comment } },
+  });
+}
+
 export async function ingestLead(
   formData: WebflowFormData,
   metadata?: {
@@ -179,6 +195,9 @@ export async function ingestLead(
       } as Prisma.InputJsonValue,
     },
   });
+
+  // Anything they typed in the comments box goes straight onto the timeline.
+  await logProspectComment(lead.id, rawIntake, null);
 
   // Run scoring
   const scoreResult = await scoreAndUpdateLead(lead.id);
@@ -297,6 +316,9 @@ export async function updateLeadFromResubmission(
       eventDataJson: { wasAbandoned },
     },
   });
+  const beforeRaw = before.rawPayloadJson as Record<string, unknown> | null;
+  const beforeIntake = (beforeRaw?._rawIntakeForm as Record<string, unknown>) ?? beforeRaw ?? null;
+  await logProspectComment(leadId, rawIntake, beforeIntake);
 
   const scoreResult = await scoreAndUpdateLead(leadId);
 

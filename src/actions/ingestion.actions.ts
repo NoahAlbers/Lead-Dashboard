@@ -23,9 +23,12 @@ export async function getIngestionStats() {
   ]);
 
   // Compute stats from recent items
-  const received = recent.filter((r) => !r.isPartial).length;
+  // Abandoned partials converted by the cron keep their partialStep; they are
+  // not real-time submissions and would skew every number below.
+  const isDirect = (r: { isPartial: boolean; partialStep: string | null }) => !r.isPartial && !r.partialStep;
+  const received = recent.filter(isDirect).length;
   const completed = recent.filter(
-    (r) => r.status === "completed" && !r.isPartial
+    (r) => r.status === "completed" && isDirect(r)
   ).length;
   const failed = recent.filter((r) => r.status === "failed").length;
   const partial = recent.filter((r) => r.isPartial).length;
@@ -35,7 +38,7 @@ export async function getIngestionStats() {
 
   // Avg processing time
   const completedItems = recent.filter(
-    (r) => r.status === "completed" && r.processedAt
+    (r) => r.status === "completed" && r.processedAt && isDirect(r)
   );
   const avgMs =
     completedItems.length > 0

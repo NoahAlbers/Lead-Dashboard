@@ -594,6 +594,56 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     sla_breached: () => prisma.lead.count({ where: { slaStatus: { in: ["breached", "escalated"] }, ...notArchived } }),
     sla_at_risk: () => prisma.lead.count({ where: { slaStatus: { in: ["warning", "breached", "escalated"] }, ...notArchived } }),
     aging_stale: () => prisma.lead.count({ where: { createdAt: { lte: new Date(Date.now() - 7 * 86400000) }, ...notArchived } }),
+    // Abandoned forms + recapture
+    abandons_today: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: today } } }),
+    abandons_week: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: weekAgo } } }),
+    recapture_active: () => prisma.recaptureEnrollment.count({ where: { status: "active" } }),
+    recapture_recovered_month: () =>
+      prisma.recaptureEnrollment.count({ where: { status: "converted", updatedAt: { gte: monthAgo } } }),
+    live_sessions: () =>
+      prisma.ingestionQueue.count({
+        where: { isPartial: true, status: "partial", receivedAt: { gte: new Date(Date.now() - 60 * 60000) } },
+      }),
+    // Quality + pipeline health
+    hot_week: async () => {
+      const { getTierRanges } = await import("@/actions/status.actions");
+      const tiers = await getTierRanges();
+      const top = tiers.slice(0, 2).map((t) => t.name);
+      return prisma.lead.count({ where: { qualityTier: { in: top }, createdAt: { gte: weekAgo }, ...notArchived } });
+    },
+    unassigned: () =>
+      prisma.lead.count({ where: { assignedUserId: null, status: { in: ["NEW", "REVIEWED"] }, fromAbandonedForm: false } }),
+    won_month: () => prisma.leadOutcome.count({ where: { outcomeType: "won", createdAt: { gte: monthAgo } } }),
+    lost_month: () => prisma.leadOutcome.count({ where: { outcomeType: "lost", createdAt: { gte: monthAgo } } }),
+    contact_rate_7d: async () => {
+      const where = { createdAt: { gte: weekAgo }, fromAbandonedForm: false, ...notArchived };
+      const [total, contacted] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.count({ where: { ...where, firstContactAt: { not: null } } }),
+      ]);
+      return total > 0 ? `${Math.round((contacted / total) * 100)}%` : "—";
+    },
+    avg_response_hrs: async () => {
+      const rows = await prisma.lead.findMany({
+        where: { createdAt: { gte: monthAgo }, firstContactAt: { not: null } },
+        select: { createdAt: true, firstContactAt: true },
+      });
+      if (rows.length === 0) return "—";
+      const avgMs = rows.reduce((s, r) => s + (r.firstContactAt!.getTime() - r.createdAt.getTime()), 0) / rows.length;
+      const hrs = avgMs / 3600000;
+      return hrs < 1 ? `${Math.round(hrs * 60)}m` : `${hrs.toFixed(1)}h`;
+    },
+    top_state_week: async () => {
+      const rows = await prisma.lead.groupBy({
+        by: ["state"],
+        where: { createdAt: { gte: weekAgo }, state: { not: null }, ...notArchived },
+        _count: { _all: true },
+        orderBy: { _count: { state: "desc" } },
+        take: 1,
+      });
+      const r = rows[0];
+      return r?.state ? `${r.state} (${r._count._all})` : "—";
+    },
   };
 
   const promises = metricIds.map(async (id) => {
@@ -605,6 +655,53 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
 
   await Promise.all(promises);
   return results;
+}
+
+/** Daily series for the inbox sparklines: last 14 EST days, oldest first. */
+export async function getWidgetSeries(): Promise<Record<string, number[]>> {
+  const DAYS = 14;
+  const start = estStartOfDay();
+  start.setDate(start.getDate() - (DAYS - 1));
+
+  const rows = await prisma.lead.findMany({
+    where: { createdAt: { gte: start }, status: { notIn: ["ARCHIVED", "MERGED"] } },
+    select: { createdAt: true, fromAbandonedForm: true, qualityTier: true, score: true, firstContactAt: true },
+  });
+  const { getTierRanges } = await import("@/actions/status.actions");
+  const tiers = await getTierRanges();
+  const hot = new Set(tiers.slice(0, 2).map((t) => t.name));
+
+  const dayIndex = (d: Date) => {
+    // Index by EST calendar day relative to `start`
+    const est = new Date(d.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const s = new Date(start.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    return Math.floor((est.getTime() - s.getTime()) / 86400000);
+  };
+
+  const created = new Array(DAYS).fill(0);
+  const abandons = new Array(DAYS).fill(0);
+  const hotLeads = new Array(DAYS).fill(0);
+  const contacted = new Array(DAYS).fill(0);
+  const scoreSum = new Array(DAYS).fill(0);
+  const scoreN = new Array(DAYS).fill(0);
+
+  for (const r of rows) {
+    const i = dayIndex(r.createdAt);
+    if (i < 0 || i >= DAYS) continue;
+    if (r.fromAbandonedForm) {
+      abandons[i]++;
+    } else {
+      created[i]++;
+      if (r.qualityTier && hot.has(r.qualityTier)) hotLeads[i]++;
+      if (r.score != null) { scoreSum[i] += r.score; scoreN[i]++; }
+    }
+    if (r.firstContactAt) {
+      const j = dayIndex(r.firstContactAt);
+      if (j >= 0 && j < DAYS) contacted[j]++;
+    }
+  }
+  const avgScore = scoreSum.map((s, i) => (scoreN[i] ? Math.round(s / scoreN[i]) : 0));
+  return { created, abandons, hot: hotLeads, contacted, avgScore };
 }
 
 export async function markLeadAsRead(leadId: string) {
