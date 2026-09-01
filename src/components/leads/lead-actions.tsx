@@ -7,7 +7,6 @@ import {
   Phone,
   Handshake,
   CheckCircle,
-  Clock,
   ThumbsUp,
   ThumbsDown,
   Download,
@@ -15,8 +14,6 @@ import {
   Copy,
   Merge,
   Printer,
-  Trophy,
-  XCircle,
   FileSignature,
 } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
@@ -102,7 +99,6 @@ export function LeadActions({
   const [isPending, startTransition] = useTransition();
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState("");
-  const [showStatusSelect, setShowStatusSelect] = useState(false);
   const [showMergeSearch, setShowMergeSearch] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [referralEmailPartnerId, setReferralEmailPartnerId] = useState<string | null>(null);
@@ -145,12 +141,10 @@ export function LeadActions({
     const outcomeType = TERMINAL_STATUSES[newStatus];
     if (outcomeType) {
       setOutcomeModal({ outcomeType, targetStatus: newStatus });
-      setShowStatusSelect(false);
       return;
     }
     startTransition(async () => {
       await updateLeadStatus(leadId, newStatus);
-      setShowStatusSelect(false);
       toast({ title: `Status changed to ${newStatus.replace(/_/g, " ")}`, variant: "success" });
     });
   }
@@ -255,12 +249,12 @@ export function LeadActions({
           Mark Contacted
         </button>
         <button
-          onClick={() => handleQuickLog("follow_up_scheduled", "Marked for Follow-Up")}
+          onClick={() => handleStatusChange("REFERRED_OUT" as LeadStatus)}
           disabled={isPending}
           className={actionBtn}
         >
-          <Clock className="h-4 w-4 text-amber-500" />
-          Follow-Up
+          <Handshake className="h-4 w-4 text-orange-500" />
+          Refer Out
         </button>
         <button
           onClick={() => handleStatusChange("QUALIFIED")}
@@ -282,38 +276,8 @@ export function LeadActions({
 
       <div className="border-t" />
 
-      {/* Outcome: Won / Lost */}
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={() => handleStatusChange("WON" as LeadStatus)}
-          disabled={isPending}
-          className="flex items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-        >
-          <Trophy className="h-4 w-4" />
-          Mark Won
-        </button>
-        <button
-          onClick={() => handleStatusChange("LOST" as LeadStatus)}
-          disabled={isPending}
-          className="flex items-center justify-center gap-1.5 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-        >
-          <XCircle className="h-4 w-4" />
-          Mark Lost
-        </button>
-      </div>
-
-      <div className="border-t" />
-
       {/* Other Actions */}
       <div className="space-y-1.5">
-        <button
-          onClick={() => handleStatusChange("REFERRED_OUT" as LeadStatus)}
-          disabled={isPending}
-          className={actionBtn}
-        >
-          <Handshake className="h-4 w-4 text-orange-500" />
-          Refer Out
-        </button>
         <button
           onClick={handleCreateOnboarding}
           disabled={isPending}
@@ -362,42 +326,41 @@ export function LeadActions({
         </button>
       </div>
 
-      {/* Status Change */}
+      <div className="border-t" />
+
+      {/* Status Change — always visible, shows the current status */}
       <div>
-        <button
-          onClick={() => setShowStatusSelect(!showStatusSelect)}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+          Lead Status
+        </label>
+        <select
+          className="w-full rounded-md border border-input bg-card p-2 text-sm font-medium"
+          value={currentStatus}
+          disabled={isPending}
+          onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
         >
-          Change Status...
-        </button>
-        {showStatusSelect && (
-          <select
-            className="mt-2 w-full rounded-md border border-input bg-card p-2 text-sm"
-            value={currentStatus}
-            onChange={(e) =>
-              handleStatusChange(e.target.value as LeadStatus)
-            }
-          >
-            {[
-              "NEW",
-              "REVIEWED",
-              "QUALIFIED",
-              "CONTACTED",
-              "FOLLOW_UP_NEEDED",
-              "REFERRED_OUT",
-              "IMPORTED_TO_CRM",
-              "WON",
-              "LOST",
-              "DISQUALIFIED",
-              "DUPLICATE",
-              "ARCHIVED",
-            ].map((s) => (
-              <option key={s} value={s}>
-                {s.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        )}
+          {[
+            "NEW",
+            "REVIEWED",
+            "QUALIFIED",
+            "CONTACTED",
+            "FOLLOW_UP_NEEDED",
+            "REFERRED_OUT",
+            "IMPORTED_TO_CRM",
+            "WON",
+            "LOST",
+            "DISQUALIFIED",
+            "DUPLICATE",
+            "ARCHIVED",
+          ].map((s) => (
+            <option key={s} value={s}>
+              {s.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Changing to Won, Lost, Disqualified, or Referred Out asks for the outcome details first.
+        </p>
       </div>
 
       {/* Note Form */}

@@ -22,8 +22,21 @@ import { resolveSenderForLead } from "@/services/lead-emails.service";
 import { logger } from "@/lib/logger";
 
 const MAX_SENDS = 3;
-// Delay from each send to the next one
-const STEP_DELAYS_HOURS = [23, 48];
+// Delay from each send to the next one (defaults; configurable in Settings)
+const DEFAULT_STEP_DELAYS_HOURS = [23, 48];
+
+async function stepDelaysHours(): Promise<number[]> {
+  const [d2, d3] = await Promise.all([
+    prisma.systemConfig.findUnique({ where: { key: "recapture_email2_delay_hours" } }),
+    prisma.systemConfig.findUnique({ where: { key: "recapture_email3_delay_hours" } }),
+  ]);
+  const n2 = Number(d2?.value);
+  const n3 = Number(d3?.value);
+  return [
+    Number.isFinite(n2) && n2 > 0 ? n2 : DEFAULT_STEP_DELAYS_HOURS[0],
+    Number.isFinite(n3) && n3 > 0 ? n3 : DEFAULT_STEP_DELAYS_HOURS[1],
+  ];
+}
 
 async function resumeUrl(token: string): Promise<string> {
   const base = await intakeFormUrl();
@@ -45,11 +58,30 @@ async function maxAbandonAgeDays(): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : 7;
 }
 
+/** Hard launch cutoff: abandons from before this moment are never emailed.
+ * The production migration seeds the config with the exact go-live time; the
+ * constant below is the fallback when the config row doesn't exist yet, so
+ * the historical backlog can never be chased no matter what the age guard is
+ * set to. */
+const FALLBACK_IGNORE_BEFORE = new Date("2026-09-01T20:00:00Z");
+
+async function recaptureIgnoreBefore(): Promise<Date> {
+  const row = await prisma.systemConfig.findUnique({
+    where: { key: "recapture_ignore_before" },
+  });
+  if (typeof row?.value === "string") {
+    const d = new Date(row.value);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return FALLBACK_IGNORE_BEFORE;
+}
+
 /**
  * Enroll a lead created from an abandoned partial. Safe to call blindly; it
- * quietly skips when recapture is disabled, the abandon is too old, the lead
- * has no email, the address is suppressed or already belongs to a completed
- * inquiry, or an enrollment already exists. Sends Email 1 immediately.
+ * quietly skips when recapture is disabled, the abandon is too old or from
+ * before the launch cutoff, the lead has no email, the address is suppressed
+ * or already belongs to a completed inquiry, or an enrollment already exists.
+ * Sends Email 1 immediately.
  */
 export async function enrollAbandonedLead(
   leadId: string,
@@ -60,6 +92,14 @@ export async function enrollAbandonedLead(
   if (!(await recaptureEnabled())) return;
 
   if (abandonedAt) {
+    const ignoreBefore = await recaptureIgnoreBefore();
+    if (abandonedAt < ignoreBefore) {
+      logger.info("RECAPTURE", "Skipping enrollment, abandon predates cutoff", {
+        leadId,
+        abandonedAt: abandonedAt.toISOString(),
+      });
+      return;
+    }
     const ageDays = (Date.now() - abandonedAt.getTime()) / 86400000;
     if (ageDays > (await maxAbandonAgeDays())) {
       logger.info("RECAPTURE", "Skipping enrollment, abandon too old", { leadId, ageDays: Math.round(ageDays) });
@@ -218,7 +258,7 @@ async function sendNextRecaptureEmail(enrollmentId: string): Promise<boolean> {
     return false;
   }
 
-  const delayHours = STEP_DELAYS_HOURS[step - 1];
+  const delayHours = (await stepDelaysHours())[step - 1];
   await prisma.recaptureEnrollment.update({
     where: { id: enrollmentId },
     data: {

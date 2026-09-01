@@ -60,6 +60,7 @@ export function Sidebar({
     { label: "SLA & Office Hours", hash: "#sla" },
     { label: "Lead Aging", hash: "#aging" },
     { label: "Lead Emails", hash: "#emails" },
+    { label: "Abandoned Forms", hash: "#abandons" },
     { label: "Outcome Reasons", hash: "#outcomes" },
     { label: "Field Mapping", hash: "#field-mapping" },
     { label: "Ingestion Health", hash: "#ingestion" },

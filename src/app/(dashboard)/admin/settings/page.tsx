@@ -15,11 +15,12 @@ import { IngestionHealthDashboard } from "@/components/admin/ingestion-health";
 import { FieldMappingSettings } from "@/components/admin/field-mapping-settings";
 import { RecalculateScoresButton } from "@/components/admin/recalculate-scores-button";
 import { EmailSettings } from "@/components/admin/email-settings";
+import { AbandonSettings } from "@/components/admin/abandon-settings";
 import { parseHotLeadConditions } from "@/lib/hot-lead";
 import { BackfillSubmissionDataButton } from "@/components/admin/backfill-submission-data-button";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session, senderDefault, senderHighValue, confirmationEnabledRaw, hotConditionsRaw, intakeFormUrlRaw, recaptureEnabledRaw] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session, senderDefault, senderHighValue, confirmationEnabledRaw, hotConditionsRaw, intakeFormUrlRaw, recaptureEnabledRaw, partialTimeoutRaw, maxAgeDaysRaw, email2DelayRaw, email3DelayRaw, ignoreBeforeRaw] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
@@ -39,6 +40,11 @@ export default async function SettingsPage() {
     getSystemConfig("hot_lead_conditions"),
     getSystemConfig("intake_form_url"),
     getSystemConfig("recapture_enabled"),
+    getSystemConfig("partial_lead_timeout_minutes"),
+    getSystemConfig("recapture_max_abandon_age_days"),
+    getSystemConfig("recapture_email2_delay_hours"),
+    getSystemConfig("recapture_email3_delay_hours"),
+    getSystemConfig("recapture_ignore_before"),
   ]);
 
   const agingThresholds = (agingThresholdsRaw as { green: number; yellow: number; orange: number; red: number } | null) ?? { green: 2, yellow: 4, orange: 6, red: 7 };
@@ -126,7 +132,18 @@ export default async function SettingsPage() {
           initialConfirmationEnabled={confirmationEnabledRaw !== false}
           initialHotConditions={hotConditions}
           initialIntakeFormUrl={(intakeFormUrlRaw as string) ?? "https://www.advancedcb.com/"}
+        />
+      </section>
+
+      {/* Abandoned Forms (timeout + recapture sequence) */}
+      <section id="abandons" className="scroll-mt-20">
+        <AbandonSettings
           initialRecaptureEnabled={recaptureEnabledRaw !== false}
+          initialTimeoutMinutes={Number(partialTimeoutRaw) > 0 ? Number(partialTimeoutRaw) : 60}
+          initialMaxAgeDays={Number(maxAgeDaysRaw) > 0 ? Number(maxAgeDaysRaw) : 7}
+          initialEmail2DelayHours={Number(email2DelayRaw) > 0 ? Number(email2DelayRaw) : 23}
+          initialEmail3DelayHours={Number(email3DelayRaw) > 0 ? Number(email3DelayRaw) : 48}
+          initialIgnoreBefore={typeof ignoreBeforeRaw === "string" ? ignoreBeforeRaw : null}
         />
       </section>
 

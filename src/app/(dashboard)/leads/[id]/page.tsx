@@ -20,9 +20,11 @@ import { LeadActions } from "@/components/leads/lead-actions";
 import { BackToInboxLink } from "@/components/leads/back-to-inbox-link";
 import { LeadEditDialog } from "@/components/leads/lead-edit-dialog";
 import { RecapturePanel } from "@/components/leads/recapture-panel";
-import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
+import { ResearchPanel } from "@/components/leads/research-panel";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { ScoreCircle } from "@/components/leads/score-circle";
+import { WonLostButtons } from "@/components/leads/won-lost-buttons";
+import { leadWebDomain } from "@/lib/lead-domain";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 
@@ -31,6 +33,7 @@ const EST_TZ = "America/New_York";
 interface PageProps {
   params: Promise<{ id: string }>;
 }
+
 
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -195,6 +198,21 @@ export default async function LeadDetailPage({ params }: PageProps) {
     : lead.state;
 
   const tierHex = lead.qualityTier ? tierColorMap[lead.qualityTier] : undefined;
+  const webDomain = leadWebDomain(intakeFields?.companyWebsite, lead.email);
+
+  // Most recent auto-research findings, so the panel shows them on load.
+  const latestAutoResearch = (() => {
+    const evt = events.find((e) => e.eventType === "auto_research");
+    if (!evt) return null;
+    const d = evt.eventDataJson as {
+      domain?: string;
+      siteTitle?: string | null;
+      siteDescription?: string | null;
+      profiles?: Array<{ kind: string; url: string }>;
+      fetchedAt?: string;
+    } | null;
+    return d ?? null;
+  })();
 
   return (
     <div className="space-y-3">
@@ -207,9 +225,23 @@ export default async function LeadDetailPage({ params }: PageProps) {
       <div className="flex items-start justify-between">
         <div>
           <BackToInboxLink />
-          <h1 className="text-xl font-bold leading-tight">
-            {lead.fullName || "Unknown"}{lead.companyName ? ` | ${lead.companyName}` : ""}
-          </h1>
+          <div className="flex items-center gap-2.5">
+            {webDomain ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=64`}
+                alt=""
+                className="h-9 w-9 rounded-md border bg-card p-1"
+              />
+            ) : (
+              <span className="flex h-9 w-9 items-center justify-center rounded-md border bg-muted text-sm font-bold text-muted-foreground">
+                {(lead.companyName || lead.fullName || "?").charAt(0).toUpperCase()}
+              </span>
+            )}
+            <h1 className="text-xl font-bold leading-tight">
+              {lead.fullName || "Unknown"}{lead.companyName ? ` | ${lead.companyName}` : ""}
+            </h1>
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Created {format(toZonedTime(new Date(lead.createdAt), EST_TZ), "MMMM d, yyyy 'at' h:mm a", { timeZone: EST_TZ })} EST
             {lead.assignedUser && (
@@ -218,6 +250,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <WonLostButtons
+            leadId={lead.id}
+            currentStatus={lead.status}
+            referralPartners={activePartners.map((p) => ({ id: p.id, name: p.name }))}
+          />
           <LeadEditDialog
             lead={{
               id: lead.id,
@@ -425,10 +462,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
               )}
             </div>
           </CompactCard>
-        </div>
-
-        {/* ===== CENTER COLUMN (5 cols) — Qualification + Timeline ===== */}
-        <div className="col-span-12 lg:col-span-5 space-y-2">
 
           {/* Qualification */}
           <CompactCard title="Qualification">
@@ -470,6 +503,15 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 </div>
               </div>
             )}
+          </CompactCard>
+        </div>
+
+        {/* ===== CENTER COLUMN (5 cols) — Timeline + SLA ===== */}
+        <div className="col-span-12 lg:col-span-5 space-y-2">
+
+          {/* Activity Timeline (merged events + notes) */}
+          <CompactCard title="Activity Timeline">
+            <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
           </CompactCard>
 
           {/* SLA Tracking */}
@@ -537,11 +579,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
             </CompactCard>
           )}
 
-          {/* Activity Timeline (merged events + notes) */}
-          <CompactCard title="Activity Timeline">
-            <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
-          </CompactCard>
-
           {/* Disposition Panel (Working Mode) */}
           <DispositionPanelWrapper
             leadId={lead.id}
@@ -599,24 +636,18 @@ export default async function LeadDetailPage({ params }: PageProps) {
             )}
 
             {/* Research */}
-            <div className="rounded-lg border bg-card p-3">
-              <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">Research</h3>
-              <EnrichmentButtons
-                leadId={lead.id}
-                companyName={lead.companyName}
-                fullName={lead.fullName}
-                firstName={lead.firstName}
-                lastName={lead.lastName}
-                state={lead.state}
-                city={lead.city}
-                companyWebsite={intakeFields?.companyWebsite}
-              />
-              {events.some((e) => e.eventType === "research_completed") ? (
-                <p className="text-xs text-emerald-600 mt-2">Research completed</p>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-2">Not yet researched</p>
-              )}
-            </div>
+            <ResearchPanel
+              leadId={lead.id}
+              companyName={lead.companyName}
+              fullName={lead.fullName}
+              firstName={lead.firstName}
+              lastName={lead.lastName}
+              state={lead.state}
+              city={lead.city}
+              companyWebsite={intakeFields?.companyWebsite}
+              hasResearchLog={events.some((e) => e.eventType === "research_completed")}
+              initialAutoResearch={latestAutoResearch}
+            />
 
             {/* Assignment */}
             <div className="rounded-lg border bg-card p-3">

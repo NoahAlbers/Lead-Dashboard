@@ -26,3 +26,13 @@ CREATE INDEX IF NOT EXISTS recapture_enrollments_email_idx ON recapture_enrollme
 -- Backfill: mark leads that originated from abandoned partial submissions
 UPDATE leads SET from_abandoned_form = true
 WHERE id IN (SELECT lead_id FROM ingestion_queue WHERE partial_step IS NOT NULL AND lead_id IS NOT NULL);
+
+-- Launch cutoff: abandons from before this migration runs are never emailed.
+-- Recapture only chases sessions abandoned after go-live.
+INSERT INTO system_config (id, key, value)
+VALUES (
+  'cfg_recapture_ignore_before',
+  'recapture_ignore_before',
+  to_jsonb(to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))
+)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
