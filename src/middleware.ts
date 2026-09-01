@@ -4,6 +4,12 @@ import { NextResponse } from "next/server";
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
+  // Allow static assets in /public (logo, favicons, sounds) without auth —
+  // the login page itself needs them.
+  if (/\.(svg|png|webp|jpg|jpeg|gif|ico|mp3|wav|woff2?)$/i.test(pathname)) {
+    return NextResponse.next();
+  }
+
   // Allow webhook endpoints without auth
   if (pathname.startsWith("/api/webhooks")) {
     return NextResponse.next();
