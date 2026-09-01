@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
-import { useTransition, useState, useEffect, useRef, useCallback, useMemo, cloneElement, isValidElement } from "react";
+import { useTransition, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -27,7 +27,6 @@ import {
   Star,
   XCircle,
   Archive,
-  Settings2,
   X,
   GripVertical,
   EyeOff,
@@ -295,6 +294,14 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
     } catch {}
   }, [searchParams]);
 
+  // The Columns button lives in the filter bar (a separate component tree);
+  // it signals us with a custom event, same pattern as focus-search.
+  useEffect(() => {
+    const open = () => setShowPicker(true);
+    window.addEventListener("open-column-picker", open);
+    return () => window.removeEventListener("open-column-picker", open);
+  }, []);
+
   // Refer Out from the row quick actions: record the outcome, set the status,
   // then hand off to the email dialog pre-targeted at the chosen partner.
   async function handleReferConfirm(result?: { referralPartnerId?: string }) {
@@ -546,29 +553,8 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       {/* Bulk Action Bar */}
       <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} userRole={userRole} />
 
-      {/* Filter bar (Columns button injected into its control row) */}
-      {(() => {
-        const columnsButton = (
-          <button
-            onClick={() => setShowPicker(true)}
-            className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-            Columns
-          </button>
-        );
-        return isValidElement(filterBar)
-          ? cloneElement(
-              filterBar as React.ReactElement<{ trailing?: React.ReactNode }>,
-              { trailing: columnsButton }
-            )
-          : (
-            <div className="flex flex-wrap items-center gap-3">
-              {filterBar}
-              {columnsButton}
-            </div>
-          );
-      })()}
+      {/* Filter bar (its Columns button opens our picker via a custom event) */}
+      {filterBar}
 
       {/* Column Picker Modal */}
       {showPicker && (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { Search, X, Settings2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { getActiveUsers } from "@/actions/assignment.actions";
 import { SavedViewsPanel } from "./saved-views-panel";
@@ -92,14 +92,16 @@ export function LeadFilters({
   }
 
   function clearFilters() {
-    router.push(pathname);
+    // Keep the Inquiries/Abandoned tab selection when clearing filters.
+    const view = searchParams.get("view");
+    router.push(view ? `${pathname}?view=${view}` : pathname);
     setSearchInput("");
   }
 
   const isUnreadFilter = searchParams.get("isRead") === "false";
 
   const hasFilters = Array.from(searchParams.keys()).some(
-    (k) => !["page", "pageSize", "sortField", "sortDirection"].includes(k)
+    (k) => !["page", "pageSize", "sortField", "sortDirection", "view"].includes(k)
   );
 
   return (
@@ -142,6 +144,14 @@ export function LeadFilters({
             userRole={userRole}
           />
         )}
+
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent("open-column-picker"))}
+          className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
+        >
+          <Settings2 className="h-3.5 w-3.5" />
+          Columns
+        </button>
 
         {trailing}
 
