@@ -28,6 +28,7 @@ export const eventLabels: Record<string, string> = {
   email_reply_received: "Replied by email",
   onboarding_profile_created: "Onboarding portal created",
   onboarding_milestone: "Onboarding progress",
+  onboarding_portal_deleted: "Onboarding portal deleted",
   follow_up_scheduled: "Follow-up scheduled",
   follow_up_completed: "Follow-up completed",
   follow_up_cancelled: "Follow-up cancelled",
@@ -104,6 +105,9 @@ export function formatEventDetail(event: EventDetailInput): string | null {
   }
   if (event.eventType === "onboarding_profile_created") {
     return `${data.emailed ? "Emailed to the client" : "Link not emailed"} · ${data.portalUrl ?? ""}`;
+  }
+  if (event.eventType === "onboarding_portal_deleted") {
+    return "Deleted in the onboarding tool; its progress was removed from this lead";
   }
   if (event.eventType === "onboarding_milestone") {
     const d = data as { label?: string; detail?: string | null };

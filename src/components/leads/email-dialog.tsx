@@ -20,6 +20,7 @@ import {
   wrapEmailDocument,
   copyHtmlToClipboard,
   BUILTIN_REFERRAL_TEMPLATE,
+  BUILTIN_ONBOARDING_TEMPLATE,
 } from "@/lib/referral-email";
 
 interface EmailTemplate {
@@ -77,6 +78,10 @@ interface EmailDialogProps {
   rawIntakeForm?: Record<string, unknown> | null;
   /** When set on open, jump straight to composing a referral email for this partner. */
   autoReferralPartnerId?: string | null;
+  /** The lead's onboarding portal link; enables the built-in onboarding intro template. */
+  onboardingPortalUrl?: string | null;
+  /** When set on open, compose this template right away (e.g. "builtin-onboarding"). */
+  autoTemplateId?: string | null;
 }
 
 function isReferralTemplate(t: EmailTemplate): boolean {
@@ -166,6 +171,7 @@ function templateBadgeLabel(t: EmailTemplate): string {
 
 const TYPE_COLORS: Record<string, string> = {
   intro: "bg-blue-100 text-blue-700",
+  onboarding: "bg-emerald-100 text-emerald-700",
   referral: "bg-orange-100 text-orange-700",
   follow_up: "bg-amber-100 text-amber-700",
   internal_handoff: "bg-purple-100 text-purple-700",
@@ -180,6 +186,8 @@ export function EmailDialog({
   referralPartners = [],
   rawIntakeForm = null,
   autoReferralPartnerId = null,
+  onboardingPortalUrl = null,
+  autoTemplateId = null,
 }: EmailDialogProps) {
   const [isPending, setIsPending] = useState(false);
   const [step, setStep] = useState<"templates" | "partners" | "partner-detail" | "compose">("templates");
@@ -207,7 +215,30 @@ export function EmailDialog({
   const hasTableReferral = templates.some(
     (t) => isReferralTemplate(t) && t.bodyTemplate.includes("{{lead_data_table}}")
   );
-  const allTemplates = hasTableReferral ? templates : [...templates, builtinReferral];
+  const builtinOnboarding: EmailTemplate = {
+    id: "builtin-onboarding",
+    name: BUILTIN_ONBOARDING_TEMPLATE.name,
+    type: "onboarding",
+    subjectTemplate: BUILTIN_ONBOARDING_TEMPLATE.subjectTemplate,
+    bodyTemplate: BUILTIN_ONBOARDING_TEMPLATE.bodyTemplate,
+    emailType: { name: "Onboarding", color: "#10B981", isReferral: false },
+  };
+  const allTemplates = [
+    ...(onboardingPortalUrl ? [builtinOnboarding] : []),
+    ...(hasTableReferral ? templates : [...templates, builtinReferral]),
+  ];
+
+  // Onboarding flow: open straight into the intro email with the portal link filled in.
+  useEffect(() => {
+    if (!open || !autoTemplateId) return;
+    if (autoHandledRef.current === autoTemplateId) return;
+    const tmpl = allTemplates.find((t) => t.id === autoTemplateId);
+    if (!tmpl) return;
+    autoHandledRef.current = autoTemplateId;
+    setSelectedTemplate(tmpl);
+    composeEmail(tmpl, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoTemplateId]);
 
   // Refer Out flow: open straight into composing a referral email for a partner.
   useEffect(() => {
@@ -241,8 +272,11 @@ export function EmailDialog({
       subjectTemplate: template.subjectTemplate,
       bodyTemplate: template.bodyTemplate,
     });
+    // Placeholders the generic renderer doesn't know about.
+    const fill = (s: string) =>
+      s.replace(/\{\{onboarding_url\}\}/g, onboardingPortalUrl ?? "").replace(/\{\{sender_name\}\}/g, assignedUserName);
     setSelectedPartner(partner);
-    setCompose({ partner, subject: rendered.subject, bodyHtml: rendered.bodyHtml, to: rendered.to });
+    setCompose({ partner, subject: fill(rendered.subject), bodyHtml: fill(rendered.bodyHtml), to: rendered.to });
     setComposed(false);
     setCopied(false);
     setStep("compose");

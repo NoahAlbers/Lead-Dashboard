@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { createOnboardingProfile, type MgmtType } from "@/actions/onboarding.actions";
+import { OPEN_ONBOARDING_EMAIL_EVENT } from "@/components/leads/onboarding-panel";
 import { toast } from "@/components/ui/use-toast";
 
 interface OnboardingDialogProps {
@@ -118,7 +119,14 @@ export function OnboardingDialog({ open, onClose, leadId, prefill, existingPorta
                 <button onClick={() => setShowExisting(false)} className="ml-2 underline underline-offset-2">Create another anyway</button>
               </div>
             )}
-            <DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <button
+                onClick={() => { onClose(); setTimeout(() => window.dispatchEvent(new Event(OPEN_ONBOARDING_EMAIL_EVENT)), 50); }}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted"
+                title="Opens the intro email with this link filled in, ready to copy into Outlook"
+              >
+                <Mail className="h-4 w-4" /> Write the intro email
+              </button>
               <button onClick={onClose} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">Done</button>
             </DialogFooter>
           </div>

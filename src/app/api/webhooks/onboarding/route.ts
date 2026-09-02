@@ -60,6 +60,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, matched: false });
   }
 
+  // The portal was deleted in the onboarding tool: drop its tracking here so
+  // the lead page stops showing the panel, and leave one line on the timeline.
+  if (event === "onboarding_deleted") {
+    const tokenFilter = token ? { eventDataJson: { path: ["token"], equals: token } } : {};
+    const removed = await prisma.leadEvent.deleteMany({
+      where: { leadId: lead.id, eventType: { in: ["onboarding_profile_created", "onboarding_milestone"] }, ...tokenFilter },
+    });
+    await prisma.leadEvent.create({
+      data: {
+        leadId: lead.id,
+        eventType: "onboarding_portal_deleted",
+        eventDataJson: { token, removedEvents: removed.count, at: typeof body.at === "string" ? body.at : new Date().toISOString() },
+      },
+    });
+    await prisma.lead.update({ where: { id: lead.id }, data: { lastActivityAt: new Date() } });
+    logger.info("ONBOARDING_WEBHOOK", "Portal deleted; tracking removed", { leadId: lead.id, removed: removed.count });
+    return NextResponse.json({ ok: true, matched: true, removed: removed.count });
+  }
+
   const label = MILESTONE_LABELS[event] ?? event.replace(/_/g, " ");
   await prisma.leadEvent.create({
     data: {
