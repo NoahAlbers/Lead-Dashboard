@@ -101,7 +101,7 @@ export async function recordDisposition(
     const updateData: Record<string, unknown> = { status: newStatus };
 
     // Record first contact
-    if ((newStatus === "CONTACTED" || newStatus === "QUALIFIED") && !lead.firstContactAt) {
+    if ((newStatus === "CONTACTED" || newStatus === "QUALIFIED" || newStatus === "REFERRED_OUT") && !lead.firstContactAt) {
       updateData.firstContactAt = new Date();
     }
 

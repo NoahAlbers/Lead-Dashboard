@@ -72,10 +72,13 @@ async function processAbandonedPartials() {
         }
 
         // Flag as an abandoned-form lead (drives the Abandons inbox tab) and
-        // enroll it in the recapture email sequence.
+        // date it from when the visitor actually walked away (last activity
+        // plus the abandon timeout), not from when this job ran.
+        const lastActivity = item.lastHeartbeatAt ?? item.receivedAt;
+        const abandonedAt = new Date(Math.min(Date.now(), lastActivity.getTime() + timeoutMinutes * 60 * 1000));
         await prisma.lead.update({
           where: { id: updated.leadId },
-          data: { fromAbandonedForm: true },
+          data: { fromAbandonedForm: true, createdAt: abandonedAt },
         });
         await enrollAbandonedLead(updated.leadId, item.sessionId, item.partialStep, item.receivedAt).catch((err) => {
           console.error("Recapture enrollment failed (non-blocking):", err);

@@ -1,20 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  Mail,
-  Phone,
-  Handshake,
-  CheckCircle,
-  ThumbsUp,
-  ThumbsDown,
-  Download,
-  MessageSquare,
-  Copy,
-  Merge,
-  Printer,
-  FileSignature,
-} from "lucide-react";
+import { Mail, Phone, Handshake, CheckCircle, ThumbsUp, ThumbsDown, Download, MessageSquare, Copy, Merge, Printer, FileSignature, ChevronDown, ChevronRight } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { OnboardingDialog } from "@/components/leads/onboarding-dialog";
 import type { MgmtType } from "@/actions/onboarding.actions";
@@ -99,6 +86,7 @@ export function LeadActions({
   onboardingPortalUrl,
 }: LeadActionsProps) {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -274,7 +262,17 @@ export function LeadActions({
 
       <div className="border-t" />
 
-      {/* Other Actions */}
+      {/* Secondary actions, collapsed by default */}
+      <button
+        type="button"
+        onClick={() => setMoreOpen((o) => !o)}
+        aria-expanded={moreOpen}
+        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        {moreOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        More actions
+      </button>
+      {moreOpen && (
       <div className="space-y-1.5">
         <button
           onClick={handleCreateOnboarding}
@@ -323,6 +321,7 @@ export function LeadActions({
           Add Note
         </button>
       </div>
+      )}
 
       <div className="border-t" />
 

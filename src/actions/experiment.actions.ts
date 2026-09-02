@@ -168,6 +168,8 @@ export async function getExperimentResults(experimentId: string): Promise<{ vari
     ? await prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, qualityTier: true, firstContactAt: true, status: true } })
     : [];
   const leadById = new Map(leads.map((l) => [l.id, l]));
+  // An archived lead is out of every number until it is unarchived.
+  const archived = new Set(leads.filter((l) => l.status === "ARCHIVED").map((l) => l.id));
   const { getTierRanges } = await import("@/actions/status.actions");
   const tiers = await getTierRanges();
   const hot = new Set(tiers.slice(0, 2).map((t) => t.name));
@@ -185,6 +187,7 @@ export async function getExperimentResults(experimentId: string): Promise<{ vari
   }));
 
   for (const s of sessions) {
+    if (s.leadId && archived.has(s.leadId)) continue;
     const vk = (s.variantsJson as Record<string, string> | null)?.[exp.key];
     const r = vk ? byKey.get(vk) : undefined;
     if (!r) continue;

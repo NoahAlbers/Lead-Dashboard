@@ -27,11 +27,12 @@ export async function getReportKPIs(range: DateRange | null) {
   const [total, prevTotal, avgScore, prevAvgScore, contacted, prevContacted, leads] = await Promise.all([
     prisma.lead.count({ where: { ...where, status: { not: "ARCHIVED" } } }),
     prisma.lead.count({ where: { ...prevWhere, status: { not: "ARCHIVED" } } }),
-    prisma.lead.aggregate({ where, _avg: { score: true } }),
-    prisma.lead.aggregate({ where: prevWhere, _avg: { score: true } }),
-    prisma.lead.count({ where: { ...where, status: { in: ["CONTACTED", "QUALIFIED", "WON"] } } }),
-    prisma.lead.count({ where: { ...prevWhere, status: { in: ["CONTACTED", "QUALIFIED", "WON"] } } }),
-    prisma.lead.findMany({ where, select: { accountVolume: true } }),
+    prisma.lead.aggregate({ where: { ...where, status: { not: "ARCHIVED" } }, _avg: { score: true } }),
+    prisma.lead.aggregate({ where: { ...prevWhere, status: { not: "ARCHIVED" } }, _avg: { score: true } }),
+    // Contacted: a recorded first contact, which includes referring the lead out.
+    prisma.lead.count({ where: { ...where, status: { not: "ARCHIVED" }, OR: [{ firstContactAt: { not: null } }, { status: { in: ["CONTACTED", "QUALIFIED", "REFERRED_OUT", "WON"] } }] } }),
+    prisma.lead.count({ where: { ...prevWhere, status: { not: "ARCHIVED" }, OR: [{ firstContactAt: { not: null } }, { status: { in: ["CONTACTED", "QUALIFIED", "REFERRED_OUT", "WON"] } }] } }),
+    prisma.lead.findMany({ where: { ...where, status: { not: "ARCHIVED" } }, select: { accountVolume: true } }),
   ]);
 
   const units = leads.reduce((s, l) => s + (parseInt(l.accountVolume ?? "0", 10) || 0), 0);
@@ -106,7 +107,7 @@ export async function getStatusBreakdown(range: DateRange | null) {
   const where = buildWhere(range);
   const results = await prisma.lead.groupBy({
     by: ["status"],
-    where,
+    where: { ...where, status: { not: "ARCHIVED" } },
     _count: { id: true },
     orderBy: { _count: { id: "desc" } },
   });
@@ -288,7 +289,7 @@ export async function getResponseTime(range: DateRange | null) {
   const events = await prisma.leadEvent.findMany({
     where: {
       eventType: "status_changed",
-      lead: where,
+      lead: { ...where, status: { not: "ARCHIVED" } },
     },
     select: { leadId: true, createdAt: true },
     orderBy: { createdAt: "asc" },
@@ -468,11 +469,11 @@ export async function getTrendSeries(days: number = 180) {
 export async function getRecaptureFunnel() {
   const [partialRows, enrollmentGroups, enrollments] = await Promise.all([
     prisma.ingestionQueue.findMany({
-      where: { partialStep: { not: null } },
+      where: { partialStep: { not: null }, OR: [{ leadId: null }, { lead: { status: { not: "ARCHIVED" } } }] },
       select: { partialStep: true },
     }),
-    prisma.recaptureEnrollment.groupBy({ by: ["status"], _count: { id: true } }),
-    prisma.recaptureEnrollment.aggregate({ _sum: { currentStep: true }, _count: { id: true } }),
+    prisma.recaptureEnrollment.groupBy({ by: ["status"], where: { lead: { status: { not: "ARCHIVED" } } }, _count: { id: true } }),
+    prisma.recaptureEnrollment.aggregate({ where: { lead: { status: { not: "ARCHIVED" } } }, _sum: { currentStep: true }, _count: { id: true } }),
   ]);
 
   const stepCounts: Record<string, number> = {};

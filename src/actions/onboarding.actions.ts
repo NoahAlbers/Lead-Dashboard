@@ -36,7 +36,8 @@ export async function createOnboardingProfile(leadId: string, input: OnboardingI
   if (!key) {
     return { success: false, error: "The onboarding service key is not configured (ONBOARDING_SERVICE_KEY)." };
   }
-  const base = process.env.ONBOARDING_API_URL ?? "https://onboard.advancedcb.com";
+  // The onboarding tool lives at onboarding.advancedcb.com (onboard.advancedcb.com has no DNS record).
+  const base = (process.env.ONBOARDING_API_URL ?? "https://onboarding.advancedcb.com").replace(/\/+$/, "");
 
   const email = input.email.trim().toLowerCase();
   if (input.sendEmail && !email) {

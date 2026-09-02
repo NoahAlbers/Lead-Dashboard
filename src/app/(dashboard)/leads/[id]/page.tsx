@@ -715,6 +715,19 @@ export default async function LeadDetailPage({ params }: PageProps) {
         {/* ===== RIGHT COLUMN (3 cols) — Actions, sticky ===== */}
         <div className="col-span-12 lg:col-span-3">
           <div className="sticky top-6 space-y-3">
+            {/* Scheduled follow-ups */}
+            <FollowUpScheduler
+              leadId={lead.id}
+              reminders={followUps.map((r) => ({
+                id: r.id,
+                reminderAt: r.reminderAt.toISOString(),
+                note: r.note,
+                completed: r.completed,
+                notifiedAt: r.notifiedAt?.toISOString() ?? null,
+                user: r.user,
+              }))}
+            />
+
             <div className="rounded-lg border bg-card p-3">
               <LeadActions
                 leadId={lead.id}
@@ -757,18 +770,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
               />
             )}
 
-            {/* Scheduled follow-ups */}
-            <FollowUpScheduler
-              leadId={lead.id}
-              reminders={followUps.map((r) => ({
-                id: r.id,
-                reminderAt: r.reminderAt.toISOString(),
-                note: r.note,
-                completed: r.completed,
-                notifiedAt: r.notifiedAt?.toISOString() ?? null,
-                user: r.user,
-              }))}
-            />
 
             {/* Recapture campaign status (abandoned-form leads) */}
             {recapture && (

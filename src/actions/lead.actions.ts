@@ -270,9 +270,11 @@ export async function updateLeadStatus(leadId: string, newStatus: LeadStatus) {
   const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
   const oldStatus = lead.status;
 
-  // Record first contact if moving to CONTACTED and no prior first contact
+  // Record first contact when moving to CONTACTED, or when referring the
+  // lead out (a referral is a contact for every rate and SLA purpose).
+  const countsAsContact = newStatus === "CONTACTED" || newStatus === "REFERRED_OUT";
   const updateData: Record<string, unknown> = { status: newStatus };
-  if (newStatus === "CONTACTED" && !lead.firstContactAt) {
+  if (countsAsContact && !lead.firstContactAt) {
     updateData.firstContactAt = new Date();
   }
 
@@ -286,7 +288,7 @@ export async function updateLeadStatus(leadId: string, newStatus: LeadStatus) {
     stopRecaptureForLead(leadId, `status_${newStatus.toLowerCase()}`).catch(() => {});
   }
 
-  if (newStatus === "CONTACTED" && !lead.firstContactAt) {
+  if (countsAsContact && !lead.firstContactAt) {
     await logEvent(leadId, "first_contact_recorded", {}, session.user.id);
   }
 
@@ -602,9 +604,9 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     followups_overdue: () =>
       prisma.followUpReminder.count({ where: { completed: false, reminderAt: { lt: today } } }),
     // Abandoned forms + recapture
-    abandons_today: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: today } } }),
-    abandons_week: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: weekAgo } } }),
-    recapture_active: () => prisma.recaptureEnrollment.count({ where: { status: "active" } }),
+    abandons_today: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: today }, ...notArchived } }),
+    abandons_week: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: weekAgo }, ...notArchived } }),
+    recapture_active: () => prisma.recaptureEnrollment.count({ where: { status: "active", lead: notArchived } }),
     recapture_recovered_month: () =>
       prisma.recaptureEnrollment.count({ where: { status: "converted", updatedAt: { gte: monthAgo } } }),
     live_sessions: () =>
@@ -632,7 +634,7 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     },
     avg_response_hrs: async () => {
       const rows = await prisma.lead.findMany({
-        where: { createdAt: { gte: monthAgo }, firstContactAt: { not: null } },
+        where: { createdAt: { gte: monthAgo }, firstContactAt: { not: null }, ...notArchived },
         select: { createdAt: true, firstContactAt: true },
       });
       if (rows.length === 0) return "—";
