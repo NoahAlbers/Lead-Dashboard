@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { ingestLead, updateLeadFromResubmission } from "@/services/lead-ingestion.service";
 import { normalizeState } from "@/lib/us-states";
 import {
@@ -361,6 +362,19 @@ export async function processIngestionItem(queueId: string): Promise<void> {
       leadId: lead.id,
       submissionId: item.submissionId,
     });
+
+    // Tie the tracked form session to the lead and remember which experiment
+    // variants this person saw, so experiments can be judged on outcomes.
+    const variants = payloadMetadata.experiment_variants;
+    if (item.sessionId) {
+      prisma.formSession.updateMany({
+        where: { sessionId: item.sessionId },
+        data: { leadId: lead.id, ...(item.partialStep ? { outcome: "abandoned" } : { outcome: "completed" }) },
+      }).catch(() => {});
+    }
+    if (variants && typeof variants === "object" && Object.keys(variants as object).length > 0) {
+      prisma.lead.update({ where: { id: lead.id }, data: { formVariants: variants as Prisma.InputJsonValue } }).catch(() => {});
+    }
 
     // They gave us a website: read it right away so the profile links are
     // waiting on the lead page before anyone opens it.

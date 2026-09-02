@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { createUser, updateUser, deleteUser } from "@/actions/user.actions";
-import { Plus, Pencil, Trash2, UserX } from "lucide-react";
+import { sendInvite } from "@/actions/invite.actions";
+import { Plus, Pencil, UserX, Send } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/use-toast";
 import type { Role } from "@prisma/client";
 
 interface UserItem {
@@ -13,6 +15,21 @@ interface UserItem {
   role: Role;
   active: boolean;
   createdAt: string;
+  lastActiveAt?: string | null;
+  inviteExpiresAt?: string | null;
+}
+
+function lastActiveLabel(iso: string | null | undefined): string {
+  if (!iso) return "Never";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 const ROLES: { value: Role; label: string }[] = [
@@ -27,6 +44,7 @@ export function UsersManager({ initialUsers }: { initialUsers: UserItem[] }) {
   const [editing, setEditing] = useState<UserItem | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
 
@@ -87,6 +105,28 @@ export function UsersManager({ initialUsers }: { initialUsers: UserItem[] }) {
     });
   }
 
+  async function handleInvite(user: UserItem) {
+    setInvitingId(user.id);
+    try {
+      const res = await sendInvite(user.id);
+      if (res.success) {
+        toast({ title: `Invite sent to ${user.email}`, variant: "success" });
+        setUsers((prev) =>
+          prev.map((u) => (u.id === user.id ? { ...u, inviteExpiresAt: res.expiresAt ?? null } : u))
+        );
+      } else {
+        toast({ title: `Invite failed: ${res.error ?? "unknown error"}`, variant: "destructive" });
+      }
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Invite failed",
+        variant: "destructive",
+      });
+    } finally {
+      setInvitingId(null);
+    }
+  }
+
   const inputClass =
     "mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
 
@@ -108,6 +148,9 @@ export function UsersManager({ initialUsers }: { initialUsers: UserItem[] }) {
               </th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                 Status
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                Last active
               </th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">
                 Actions
@@ -138,8 +181,33 @@ export function UsersManager({ initialUsers }: { initialUsers: UserItem[] }) {
                     {user.active ? "Active" : "Inactive"}
                   </span>
                 </td>
+                <td className="px-4 py-3">
+                  <div className="text-sm">{lastActiveLabel(user.lastActiveAt)}</div>
+                  {!user.lastActiveAt && user.inviteExpiresAt && (
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(user.inviteExpiresAt).getTime() > Date.now()
+                        ? "Invite pending"
+                        : "Invite expired"}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-1">
+                  <div className="flex justify-end items-center gap-1">
+                    {user.active && (
+                      <button
+                        onClick={() => handleInvite(user)}
+                        disabled={invitingId === user.id}
+                        className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50"
+                        title={user.inviteExpiresAt ? "Resend the set-password link" : "Email a set-password link"}
+                      >
+                        <Send className="h-3 w-3" />
+                        {invitingId === user.id
+                          ? "Sending..."
+                          : user.inviteExpiresAt
+                            ? "Resend invite"
+                            : "Send invite"}
+                      </button>
+                    )}
                     <button
                       onClick={() => startEdit(user)}
                       className="p-1 hover:bg-muted rounded"

@@ -19,12 +19,14 @@ export default auth((req) => {
   // the form key, crons check CRON_SECRET, resume validates its token, and
   // unsubscribe validates its HMAC.
   if (
+    pathname.startsWith("/set-password") ||
     pathname.startsWith("/api/leads/ingest") ||
     pathname.startsWith("/api/leads/partial") ||
     pathname.startsWith("/api/leads/heartbeat") ||
     pathname.startsWith("/api/leads/resume") ||
     pathname.startsWith("/api/leads/report-failure") ||
     pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/form") ||
     pathname.startsWith("/api/email/unsubscribe") ||
     pathname.startsWith("/api/health")
   ) {

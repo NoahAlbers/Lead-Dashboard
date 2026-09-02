@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Save, Plus, X, ArrowRight } from "lucide-react";
 import { updateSystemConfig } from "@/actions/config.actions";
 import { toast } from "@/components/ui/use-toast";
+import { SettingsSaveBar } from "@/components/admin/settings-save-bar";
 
 interface FieldMappingSettingsProps {
   initialMapping: Record<string, string>;
@@ -14,6 +15,10 @@ export function FieldMappingSettings({ initialMapping }: FieldMappingSettingsPro
     () => Object.entries(initialMapping).map(([formField, leadField]) => ({ formField, leadField }))
   );
   const [isPending, startTransition] = useTransition();
+
+  const unsaved =
+    JSON.stringify(rows) !==
+    JSON.stringify(Object.entries(initialMapping).map(([formField, leadField]) => ({ formField, leadField })));
 
   function handleChange(index: number, side: "formField" | "leadField", value: string) {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, [side]: value } : row)));
@@ -119,6 +124,9 @@ export function FieldMappingSettings({ initialMapping }: FieldMappingSettingsPro
           <Plus className="h-3.5 w-3.5" />
           Add Mapping
         </button>
+      </div>
+
+      <SettingsSaveBar unsaved={unsaved}>
         <button
           type="button"
           onClick={handleSave}
@@ -128,7 +136,7 @@ export function FieldMappingSettings({ initialMapping }: FieldMappingSettingsPro
           <Save className="h-3.5 w-3.5" />
           Save
         </button>
-      </div>
+      </SettingsSaveBar>
     </div>
   );
 }

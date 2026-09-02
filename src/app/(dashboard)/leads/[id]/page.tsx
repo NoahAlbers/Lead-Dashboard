@@ -547,6 +547,9 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <CompactCard title="Tracking & Source" defaultOpen={true}>
             <div className="divide-y divide-border/60">
               <ContactRow label="Source" value={lead.source ?? lead.leadSource} />
+              {lead.formVariants && Object.keys(lead.formVariants as object).length > 0 && (
+                <ContactRow label="Form variant" value={Object.entries(lead.formVariants as Record<string, string>).map(([k, v]) => `${k}: ${v}`).join(", ")} />
+              )}
               <ContactRow label="Urgency" value={lead.urgency} />
               <ContactRow label="Location / IP" value={intakeFields?.location ?? "Not captured"} muted={!intakeFields?.location} />
               <ContactRow label="Timezone" value={intakeFields?.timezone ?? "Not captured"} muted={!intakeFields?.timezone} />

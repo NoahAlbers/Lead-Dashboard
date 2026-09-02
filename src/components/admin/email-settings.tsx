@@ -5,6 +5,7 @@ import { Plus, X } from "lucide-react";
 import { updateSystemConfig } from "@/actions/config.actions";
 import { sendTestConfirmationEmail } from "@/actions/email-test.actions";
 import { toast } from "@/components/ui/use-toast";
+import { SettingsSaveBar } from "@/components/admin/settings-save-bar";
 import {
   CONDITION_FIELDS,
   OPS_BY_KIND,
@@ -41,6 +42,14 @@ export function EmailSettings({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testAddress, setTestAddress] = useState("");
+
+  const unsaved =
+    defaultSender !== initialDefaultSender ||
+    highValueSender !== initialHighValueSender ||
+    intakeFormUrl !== initialIntakeFormUrl ||
+    replyCapture !== initialReplyCaptureAddress ||
+    confirmationEnabled !== initialConfirmationEnabled ||
+    JSON.stringify(conditions) !== JSON.stringify(initialHotConditions.conditions);
 
   function fieldKind(fieldKey: string): "number" | "array" | "string" | "states" {
     return CONDITION_FIELDS.find((f) => f.key === fieldKey)?.kind ?? "string";
@@ -197,14 +206,8 @@ export function EmailSettings({
         </button>
       </div>
 
-      <div className="border-t pt-4 flex flex-wrap items-center gap-2">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Email Settings"}
-        </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Confirmation email test:</span>
         <input
           type="email"
           value={testAddress}
@@ -227,6 +230,16 @@ export function EmailSettings({
           Send test (high value)
         </button>
       </div>
+
+      <SettingsSaveBar unsaved={unsaved}>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save Email Settings"}
+        </button>
+      </SettingsSaveBar>
     </div>
   );
 }

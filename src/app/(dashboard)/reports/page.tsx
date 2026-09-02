@@ -57,6 +57,8 @@ import {
   getTrendSeries,
   getRecaptureFunnel,
 } from "@/actions/report.actions";
+import { getFormFunnel } from "@/actions/form-funnel.actions";
+import { FormFunnel } from "@/components/reports/form-funnel";
 
 function getRangeDate(range: TimeRange): { from: Date; to: Date } | null {
   const to = new Date();
@@ -79,6 +81,7 @@ const DEFAULT_LAYOUT = [
   { i: "avg-score", w: 1 },
   { i: "trends", w: 2 },
   { i: "recapture", w: 1 },
+  { i: "form-funnel", w: 1 },
   { i: "recent", w: 2 },
   { i: "top-leads", w: 1 },
   { i: "follow-ups", w: 1 },
@@ -118,7 +121,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     funnel, avgScoreTime, ruleStats, recentLeads, topLeads, followUps,
     responseTime, unitDist, rentDist, activity, sparkline, stateClassifications,
     tierColorMap, winLossStats, lossReasons, winRateTrend, couldHaveWon,
-    partnerLeaderboard, trendSeries, recaptureFunnel,
+    partnerLeaderboard, trendSeries, recaptureFunnel, formFunnel,
   ] = await Promise.all([
     getReportKPIs(dateRange),
     getLeadVolumeByDay(dateRange),
@@ -145,6 +148,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getPartnerLeaderboard(dateRange),
     getTrendSeries(180),
     getRecaptureFunnel(),
+    getFormFunnel(30).catch(() => ({ days: 30, sessions: 0, reachedContact: 0, completed: 0, abandoned: 0, steps: [], devices: [], pitchSkipRate: null })),
   ]);
 
   const ruleInsights = await generateScoringInsights(ruleStats);
@@ -213,6 +217,10 @@ export default async function ReportsPage({ searchParams }: PageProps) {
 
         <DashboardWidget title="Abandoned Form Recapture" subtitle="Drop-off points and win-back results">
           <RecaptureFunnel data={recaptureFunnel} />
+        </DashboardWidget>
+
+        <DashboardWidget title="Intake Form Funnel" subtitle="Where visitors get to and where they leave (last 30 days)">
+          <FormFunnel data={formFunnel} />
         </DashboardWidget>
 
         {/* Tables */}

@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition, useCallback } from "react";
 import Link from "next/link";
 import {
   getActiveSessions,
+  getRecentSessions,
   getRecentCompletions,
   getAbandonedSessions,
   getConnectionHealth,
@@ -16,6 +17,7 @@ import { TierBadge, ScoreBadge } from "@/components/shared/status-badge";
 import { toast } from "@/components/ui/use-toast";
 
 type ActiveSession = Awaited<ReturnType<typeof getActiveSessions>>[number];
+type RecentSession = Awaited<ReturnType<typeof getRecentSessions>>[number];
 type RecentCompletion = Awaited<ReturnType<typeof getRecentCompletions>>[number];
 type AbandonedSession = Awaited<
   ReturnType<typeof getAbandonedSessions>
@@ -33,6 +35,16 @@ function timeAgo(isoString: string | null): string {
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function leftAgo(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "left just now";
+  if (mins < 60) return `left ${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `left ${hours}h ago`;
+  return `left ${Math.floor(hours / 24)}d ago`;
 }
 
 function StatusDot({ status }: { status: "active" | "idle" | "abandoned" }) {
@@ -78,6 +90,7 @@ function HealthCard({
 
 export function LiveMonitor() {
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [completions, setCompletions] = useState<RecentCompletion[]>([]);
   const [abandoned, setAbandoned] = useState<AbandonedSession[]>([]);
   const [health, setHealth] = useState<HealthData | null>(null);
@@ -91,8 +104,9 @@ export function LiveMonitor() {
   const fetchAll = useCallback(() => {
     startTransition(async () => {
       try {
-        const [sessions, comps, aband, hlth, failures, suspects] = await Promise.all([
+        const [sessions, recent, comps, aband, hlth, failures, suspects] = await Promise.all([
           getActiveSessions(),
+          getRecentSessions(),
           getRecentCompletions(),
           getAbandonedSessions(),
           getConnectionHealth(),
@@ -100,6 +114,7 @@ export function LiveMonitor() {
           getAuthSuspectSubmissions(),
         ]);
         setActiveSessions(sessions);
+        setRecentSessions(recent);
         setCompletions(comps);
         setAbandoned(aband);
         setHealth(hlth);
@@ -349,9 +364,72 @@ export function LiveMonitor() {
       <div>
         <h2 className="text-lg font-semibold mb-3">Active Form Sessions</h2>
         {activeSessions.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-            No active sessions
-          </div>
+          recentSessions.length === 0 ? (
+            <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
+              No active sessions
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border bg-card">
+              <div className="flex items-center justify-between border-b px-3 py-2">
+                <p className="text-sm font-medium">Recent sessions</p>
+                <p className="text-xs text-muted-foreground">
+                  No one is on the form right now. Last {recentSessions.length} partial sessions.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left p-3 font-medium">Session</th>
+                      <th className="text-left p-3 font-medium">Name / Email</th>
+                      <th className="text-left p-3 font-medium">Step Reached</th>
+                      <th className="text-left p-3 font-medium">Left</th>
+                      <th className="text-left p-3 font-medium">Device</th>
+                      <th className="text-left p-3 font-medium">Outcome</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentSessions.map((r) => (
+                      <tr key={r.id} className="border-b last:border-0">
+                        <td className="p-3 font-mono text-xs">{r.sessionId}</td>
+                        <td className="p-3">
+                          <div>{r.name ?? <span className="text-muted-foreground">Anonymous</span>}</div>
+                          {r.email && (
+                            <div className="text-xs text-muted-foreground">{r.email}</div>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-medium">
+                            {r.step}
+                          </span>
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">
+                          {leftAgo(r.lastActiveAt)}
+                        </td>
+                        <td className="p-3 text-xs text-muted-foreground">
+                          {r.device ?? "Unknown"}
+                        </td>
+                        <td className="p-3">
+                          {r.leadId ? (
+                            <Link
+                              href={`/leads/${r.leadId}`}
+                              className="text-blue-600 hover:underline text-xs"
+                            >
+                              Became a lead
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {r.status === "partial" ? "Not converted" : r.status.replace(/_/g, " ")}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         ) : (
           <div className="rounded-lg border border-border overflow-x-auto">
             <table className="w-full text-sm">

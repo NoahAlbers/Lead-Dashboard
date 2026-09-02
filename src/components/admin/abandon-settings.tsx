@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { updateSystemConfig } from "@/actions/config.actions";
 import { toast } from "@/components/ui/use-toast";
+import { SettingsSaveBar } from "@/components/admin/settings-save-bar";
 
 interface AbandonSettingsProps {
   initialRecaptureEnabled: boolean;
@@ -30,6 +31,13 @@ export function AbandonSettings({
   const [email3Delay, setEmail3Delay] = useState(String(initialEmail3DelayHours));
   const [ignoreBefore, setIgnoreBefore] = useState(initialIgnoreBefore);
   const [saving, setSaving] = useState(false);
+
+  const unsaved =
+    recaptureEnabled !== initialRecaptureEnabled ||
+    timeoutMinutes !== String(initialTimeoutMinutes) ||
+    maxAgeDays !== String(initialMaxAgeDays) ||
+    email2Delay !== String(initialEmail2DelayHours) ||
+    email3Delay !== String(initialEmail3DelayHours);
 
   function numOr(value: string, fallback: number): number {
     const n = Number(value);
@@ -135,7 +143,7 @@ export function AbandonSettings({
         </div>
       </div>
 
-      <div className="border-t pt-4">
+      <SettingsSaveBar unsaved={unsaved}>
         <button
           onClick={save}
           disabled={saving}
@@ -143,7 +151,7 @@ export function AbandonSettings({
         >
           {saving ? "Saving..." : "Save Abandon Settings"}
         </button>
-      </div>
+      </SettingsSaveBar>
     </div>
   );
 }

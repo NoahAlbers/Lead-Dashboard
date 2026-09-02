@@ -14,7 +14,7 @@ function humanize(key: string): string {
     kpi: "KPI Cards", volume: "Lead Volume Over Time", "quality-donut": "Quality Distribution",
     "quality-trend": "Quality Trend", funnel: "Pipeline Funnel", status: "Status Breakdown",
     geo: "Geographic Heatmap", rules: "Rule Effectiveness", "avg-score": "Avg Score Over Time",
-    trends: "Trends Over Time", recapture: "Abandoned Form Recapture", recent: "Recent Leads",
+    trends: "Trends Over Time", recapture: "Abandoned Form Recapture", "form-funnel": "Intake Form Funnel", recent: "Recent Leads",
     "top-leads": "Top Leads by Score", "follow-ups": "Upcoming Follow-Ups",
     units: "Unit Distribution", rent: "Avg Rent Distribution", response: "Response Time",
     activity: "Activity Feed", "win-loss": "Win/Loss Ratio", "loss-reasons": "Loss Reasons",

@@ -5,6 +5,7 @@ import { format, toZonedTime } from "date-fns-tz";
 import { addNote } from "@/actions/note.actions";
 import { toast } from "@/components/ui/use-toast";
 import { SubmissionDataTable } from "./submission-data-table";
+import { eventLabels, formatEventDetail } from "@/lib/event-detail";
 
 interface TimelineEvent {
   id: string;
@@ -19,101 +20,6 @@ interface NoteItem {
   noteBody: string;
   createdAt: Date;
   user: { id: string; name: string };
-}
-
-const eventLabels: Record<string, string> = {
-  lead_created: "Lead created",
-  score_calculated: "Score calculated",
-  status_changed: "Status changed",
-  note_added: "Note added",
-  email_action_opened: "Email action opened",
-  call_action_opened: "Call action opened",
-  referral_action_opened: "Referral action opened",
-  referral_marked_sent: "Referral marked as sent",
-  crm_exported: "Exported for CRM",
-  crm_imported: "Imported to CRM",
-  duplicate_flagged: "Duplicate flagged",
-  assigned_user_changed: "Assignment changed",
-  quick_log: "Quick log action",
-  research_completed: "Research completed",
-  auto_research: "Auto research ran",
-  prospect_comment: "Comment from the prospect",
-  first_contact_recorded: "First contact recorded",
-  email_reply_received: "Replied by email",
-  follow_up_scheduled: "Follow-up scheduled",
-  follow_up_completed: "Follow-up completed",
-  follow_up_cancelled: "Follow-up cancelled",
-  follow_up_due: "Follow-up due",
-  lead_data_received: "Submission Data Received",
-};
-
-function formatEventDetail(event: TimelineEvent): string | null {
-  const data = event.eventDataJson as Record<string, unknown> | null;
-  if (!data) return null;
-
-  if (event.eventType === "status_changed") {
-    return `${String(data.from ?? "").replace(/_/g, " ")} → ${String(data.to ?? "").replace(/_/g, " ")}`;
-  }
-  if (event.eventType === "score_calculated") {
-    return `Score: ${data.score} (${data.qualityTier})`;
-  }
-  if (event.eventType === "quick_log") {
-    return String(data.actionType ?? "").replace(/_/g, " ");
-  }
-  if (event.eventType === "duplicate_flagged" && Array.isArray(data.matches)) {
-    return `${data.matches.length} potential duplicate(s) found`;
-  }
-  if (event.eventType === "research_completed") {
-    const d = data as { recommendation?: string; sources?: string[] };
-    return d.recommendation ? `Recommendation: ${d.recommendation}` : null;
-  }
-  if (event.eventType === "email_reply_received") {
-    const d = data as { subject?: string; snippet?: string | null };
-    return [d.subject ? `Subject: ${d.subject}` : null, d.snippet ?? null].filter(Boolean).join(" · ") || null;
-  }
-  if (event.eventType === "follow_up_scheduled") {
-    const d = data as { reminderAt?: string; note?: string };
-    const when = d.reminderAt ? new Date(d.reminderAt).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " EST" : "";
-    return [when, d.note].filter(Boolean).join(" · ") || null;
-  }
-  if (event.eventType === "prospect_comment") {
-    return typeof data.comment === "string" ? data.comment : null;
-  }
-  if (event.eventType === "auto_research") {
-    const d = data as { domain?: string; profiles?: Array<{ kind: string }> };
-    const found = d.profiles?.length ?? 0;
-    return `Read ${d.domain ?? "their site"}; found ${found} linked profile${found !== 1 ? "s" : ""}`;
-  }
-  if (event.eventType === "lead_edited" && Array.isArray(data.changes)) {
-    const changes = data.changes as Array<{ field: string; from?: string | null; to?: string | null }>;
-    return changes
-      .map((c) => `${c.field}: "${c.from ?? "empty"}" → "${c.to ?? "empty"}"`)
-      .join(" · ");
-  }
-  if (event.eventType === "recapture_email_sent") {
-    return `Recapture email ${data.step ?? ""}: ${data.subject ?? ""}`;
-  }
-  if (event.eventType === "confirmation_email_sent") {
-    return `Confirmation sent to ${data.to ?? ""}${data.isHot ? " (high value)" : ""}`;
-  }
-  if (event.eventType === "recapture_link_opened") {
-    return "Opened their resume link from a recapture email";
-  }
-  if (event.eventType === "onboarding_profile_created") {
-    return `Portal: ${data.portalUrl ?? ""}`;
-  }
-  if (event.eventType === "prospect_updated_details") {
-    return data.wasAbandoned
-      ? "Finished the form they had abandoned; lead updated and rescored"
-      : "Updated their details through the edit link; lead rescored";
-  }
-  if (event.eventType === "edit_link_opened") {
-    return "Opened the edit link from their confirmation email";
-  }
-  if (event.eventType.startsWith("email_")) {
-    return `${event.eventType.replace("email_", "Email ").replace(/_/g, " ")}${data.subject ? `: ${data.subject}` : ""}`;
-  }
-  return null;
 }
 
 const EST_TZ = "America/New_York";
@@ -143,6 +49,7 @@ const PROSPECT_EVENTS = new Set([
   "edit_link_opened",
   "prospect_updated_details",
   "prospect_comment",
+  "onboarding_milestone",
 ]);
 const SYSTEM_EVENTS = new Set(["lead_created", "score_calculated", "duplicate_flagged"]);
 

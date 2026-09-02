@@ -3,7 +3,29 @@
 import { prisma } from "@/lib/db";
 import { auth, assertRole } from "@/lib/auth";
 import { emailTemplateSchema } from "@/lib/validators/admin";
+import { sendEmail } from "@/lib/email";
 import { revalidatePath } from "next/cache";
+
+/**
+ * Email an already-rendered template (the editor renders it against a sample
+ * lead) to the signed-in admin so they can see it in a real inbox.
+ */
+export async function sendTestTemplateEmail(input: {
+  subject: string;
+  html: string;
+}): Promise<{ success: boolean; error?: string; to?: string }> {
+  const session = await auth();
+  assertRole(session, "ADMIN");
+
+  const to = session!.user.email;
+  if (!to) return { success: false, error: "Your account has no email address" };
+
+  const subject = `[Test] ${(input.subject ?? "").trim() || "(no subject)"}`;
+  const html = (input.html ?? "").trim() || "<p>(empty template)</p>";
+
+  const result = await sendEmail({ to, subject, html });
+  return { ...result, to };
+}
 
 export async function getTemplates() {
   return prisma.emailTemplate.findMany({ orderBy: { name: "asc" } });

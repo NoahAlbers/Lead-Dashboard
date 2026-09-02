@@ -40,6 +40,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         );
         if (!isValid) return null;
 
+        // Stamp last activity on successful sign-in. Never block login on it.
+        await prisma.user
+          .update({ where: { id: user.id }, data: { lastActiveAt: new Date() } })
+          .catch(() => undefined);
+
         return {
           id: user.id,
           name: user.name,

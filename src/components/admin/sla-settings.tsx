@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect } from "react";
 import { Plus, Trash2, Save, Download } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { SettingsSaveBar } from "@/components/admin/settings-save-bar";
 import {
   upsertSlaConfig,
   updateOfficeHours,
@@ -268,13 +269,6 @@ export function SlaSettings({ initialConfigs, initialOfficeHours, initialHoliday
             ))}
           </div>
         </div>
-        <button
-          onClick={handleSaveOfficeHours}
-          disabled={isPending}
-          className="mt-3 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          Save Office Hours
-        </button>
       </div>
 
       {/* Holidays */}
@@ -340,6 +334,20 @@ export function SlaSettings({ initialConfigs, initialOfficeHours, initialHoliday
           <p className="text-sm text-muted-foreground">No holidays configured.</p>
         )}
       </div>
+
+      <SettingsSaveBar
+        unsaved={JSON.stringify(officeHours) !== JSON.stringify(initialOfficeHours)}
+        hint="Unsaved office hours changes"
+      >
+        <button
+          onClick={handleSaveOfficeHours}
+          disabled={isPending}
+          className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          <Save className="h-3.5 w-3.5" />
+          Save Office Hours
+        </button>
+      </SettingsSaveBar>
     </div>
   );
 }
