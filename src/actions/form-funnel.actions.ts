@@ -17,10 +17,16 @@ export interface FormFunnelData {
 /** Where visitors get to and where they leave, over the last N days. */
 export async function getFormFunnel(days = 30): Promise<FormFunnelData> {
   const since = new Date(Date.now() - days * 86400000);
-  const sessions = await prisma.formSession.findMany({
+  const allSessions = await prisma.formSession.findMany({
     where: { startedAt: { gte: since } },
-    select: { furthestIndex: true, furthestStep: true, outcome: true, reachedContact: true, device: true, sessionId: true },
+    select: { furthestIndex: true, furthestStep: true, outcome: true, reachedContact: true, device: true, sessionId: true, leadId: true },
   });
+  // Sessions that became an archived lead are out of every number.
+  const linkedIds = allSessions.map((s) => s.leadId).filter((x): x is string => !!x);
+  const archivedLeads = linkedIds.length
+    ? new Set((await prisma.lead.findMany({ where: { id: { in: linkedIds }, status: "ARCHIVED" }, select: { id: true } })).map((l) => l.id))
+    : new Set<string>();
+  const sessions = allSessions.filter((s) => !s.leadId || !archivedLeads.has(s.leadId));
 
   const total = sessions.length;
   const completed = sessions.filter((s) => s.outcome === "completed").length;
