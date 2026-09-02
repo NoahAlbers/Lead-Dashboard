@@ -91,15 +91,11 @@ async function processAbandonedPartials() {
         });
 
         processed++;
+      } else if (updated?.status === "skipped") {
+        skipped++;
       } else if (updated?.status === "failed") {
-        if ((updated.errorMessage ?? "").startsWith("Validation failed")) {
-          skipped++;
-        } else {
-          failed++;
-          errors.push(
-            `${item.submissionId}: ${updated.errorMessage ?? "Unknown error"}`
-          );
-        }
+        failed++;
+        errors.push(`${item.submissionId}: ${updated.errorMessage ?? "Unknown error"}`);
       }
     } catch (error) {
       failed++;
