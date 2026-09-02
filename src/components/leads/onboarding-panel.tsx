@@ -1,5 +1,11 @@
+"use client";
+
 import Link from "next/link";
-import { CheckCircle2, Circle, ExternalLink, FileSignature } from "lucide-react";
+import { CheckCircle2, Circle, ExternalLink, FileSignature, Mail } from "lucide-react";
+
+/** Dispatched to open the email dialog on the built-in onboarding intro template. */
+export const OPEN_ONBOARDING_EMAIL_EVENT = "open-onboarding-email";
+
 
 interface Milestone {
   milestone: string;
@@ -29,9 +35,19 @@ export function OnboardingPanel({ portalUrl, emailed, createdAt, milestones }: O
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Onboarding</h3>
-        <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-          Portal <ExternalLink className="h-3 w-3" />
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(OPEN_ONBOARDING_EMAIL_EVENT))}
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            title="Copy a ready-to-send intro email with their agreement link"
+          >
+            <Mail className="h-3 w-3" /> Email intro
+          </button>
+          <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+            Portal <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
       </div>
       <ol className="space-y-1.5">
         {STEPS.map((s) => {

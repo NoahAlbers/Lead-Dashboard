@@ -310,14 +310,16 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     // Build formData and metadata matching what the intake-form route passes to ingestLead
     const { formData, metadata, normalized } = buildIngestArgs(body);
 
-    // Validate — need email OR phone
+    // Validate — need email OR phone. A submission with neither (typically an
+    // abandoned form closed on the first screen) can never become a lead, so
+    // it is skipped, not failed: no retries, no alerts.
     if (!normalized.email && !normalized.phone) {
       await prisma.ingestionQueue.update({
         where: { id: queueId },
         data: {
-          status: "failed",
-          errorMessage: "Validation failed: no email or phone provided",
-          retryCount: { increment: 1 },
+          status: "skipped",
+          errorMessage: "Skipped: no email or phone provided",
+          processedAt: new Date(),
         },
       });
       return;

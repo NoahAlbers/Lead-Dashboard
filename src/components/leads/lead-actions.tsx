@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { Mail, Phone, Handshake, CheckCircle, ThumbsUp, ThumbsDown, Download, MessageSquare, Copy, Merge, Printer, FileSignature, ChevronDown, ChevronRight } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { OnboardingDialog } from "@/components/leads/onboarding-dialog";
+import { OPEN_ONBOARDING_EMAIL_EVENT } from "@/components/leads/onboarding-panel";
 import type { MgmtType } from "@/actions/onboarding.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
@@ -97,6 +98,14 @@ export function LeadActions({
   const [noteText, setNoteText] = useState("");
   const [showMergeSearch, setShowMergeSearch] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [autoTemplateId, setAutoTemplateId] = useState<string | null>(null);
+
+  // The Onboarding panel and dialog ask for the intro email through this event.
+  useEffect(() => {
+    const handler = () => { setAutoTemplateId("builtin-onboarding"); setShowEmailDialog(true); };
+    window.addEventListener(OPEN_ONBOARDING_EMAIL_EVENT, handler);
+    return () => window.removeEventListener(OPEN_ONBOARDING_EMAIL_EVENT, handler);
+  }, []);
   const [referralEmailPartnerId, setReferralEmailPartnerId] = useState<string | null>(null);
   const [outcomeModal, setOutcomeModal] = useState<{ outcomeType: "won" | "lost" | "disqualified" | "referred_out"; targetStatus: LeadStatus } | null>(null);
 
@@ -399,7 +408,9 @@ export function LeadActions({
       {email && (
         <EmailDialog
           open={showEmailDialog}
-          onClose={() => { setShowEmailDialog(false); setReferralEmailPartnerId(null); }}
+          onClose={() => { setShowEmailDialog(false); setReferralEmailPartnerId(null); setAutoTemplateId(null); }}
+          onboardingPortalUrl={onboardingPortalUrl ?? null}
+          autoTemplateId={autoTemplateId}
           lead={{
             id: leadId,
             email,

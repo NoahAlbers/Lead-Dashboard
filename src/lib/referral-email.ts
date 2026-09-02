@@ -141,6 +141,28 @@ export function buildIntakeExtras(
   };
 }
 
+/** Personal intro sent alongside the onboarding portal link. {{onboarding_url}} and {{sender_name}} are filled by the email dialog. */
+export const BUILTIN_ONBOARDING_TEMPLATE = {
+  name: "Onboarding intro (with agreement link)",
+  subjectTemplate: "Advanced Collection Bureau | Collection Agreement for {{company_name}}",
+  bodyTemplate: `<p>Hey {{first_name}},</p>
+<p>To give you a brief background on us at Advanced Collection Bureau;<br>
+We specialize in residential collections and our team of certified collectors employs a unique, sales-minded approach to recover past-due accounts while preserving your valuable relationships with past tenants.</p>
+<p>What sets us apart?</p>
+<ul>
+<li>Expertise in lease contracts, move-out statements, and industry specific residential debt recovery.</li>
+<li>We <b>credit report delinquent accounts twice monthly</b>, whereas most collection agencies only report once, and some not at all!</li>
+<li>Over 25 years of experience focusing on residential collections, we're pros at this point!</li>
+<li>Contingency-based pricing of 40%, so you only pay if we collect.</li>
+<li>Advanced <b>skip tracing technology to locate and contact debtors.</b></li>
+<li>A commitment to maintaining positive relationships with your clients, customers, and tenants.</li>
+</ul>
+<p>You can view and <a href="{{onboarding_url}}">sign our Collection Agreement here</a>.</p>
+<p>For more info you can <a href="https://www.advancedcb.com/residential-services">visit our website here</a> or call me directly at 321-379-6063.</p>
+<p>Many thanks,<br>
+{{sender_name}}</p>`,
+};
+
 export const BUILTIN_REFERRAL_TEMPLATE = {
   name: "Referral (formatted table)",
   subjectTemplate: "Collection Recommendation for {{first_name}} | {{referral_partner_name}}",
