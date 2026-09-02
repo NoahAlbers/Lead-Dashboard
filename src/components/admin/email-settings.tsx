@@ -19,6 +19,7 @@ interface EmailSettingsProps {
   initialConfirmationEnabled: boolean;
   initialHotConditions: HotLeadRules;
   initialIntakeFormUrl: string;
+  initialReplyCaptureAddress: string;
 }
 
 const inputCls = "h-9 rounded-md border border-input bg-card px-3 text-sm";
@@ -29,10 +30,12 @@ export function EmailSettings({
   initialConfirmationEnabled,
   initialHotConditions,
   initialIntakeFormUrl,
+  initialReplyCaptureAddress,
 }: EmailSettingsProps) {
   const [defaultSender, setDefaultSender] = useState(initialDefaultSender);
   const [highValueSender, setHighValueSender] = useState(initialHighValueSender);
   const [intakeFormUrl, setIntakeFormUrl] = useState(initialIntakeFormUrl);
+  const [replyCapture, setReplyCapture] = useState(initialReplyCaptureAddress);
   const [confirmationEnabled, setConfirmationEnabled] = useState(initialConfirmationEnabled);
   const [conditions, setConditions] = useState<FieldCondition[]>(initialHotConditions.conditions);
   const [saving, setSaving] = useState(false);
@@ -64,6 +67,7 @@ export function EmailSettings({
         updateSystemConfig("lead_confirmation_enabled", confirmationEnabled),
         updateSystemConfig("hot_lead_conditions", { conditions: cleaned } as unknown as Record<string, unknown>),
         updateSystemConfig("intake_form_url", intakeFormUrl.trim() || "https://www.advancedcb.com/"),
+        updateSystemConfig("reply_capture_address", replyCapture.trim()),
       ]);
       setConditions(cleaned);
       toast({ title: "Email settings saved", variant: "success" });
@@ -124,6 +128,15 @@ export function EmailSettings({
         <span className="block text-xs text-muted-foreground">Resume and edit links in emails point here (the page with the form on it).</span>
         <input value={intakeFormUrl} onChange={(e) => setIntakeFormUrl(e.target.value)} className={`${inputCls} w-full`}
           placeholder="https://www.advancedcb.com/" />
+      </label>
+
+      <label className="text-sm space-y-1 block max-w-xl">
+        <span className="font-medium">Reply capture address</span>
+        <span className="block text-xs text-muted-foreground">
+          Optional. A Resend inbound mailbox (for example replies@mail.advancedcb.app). Lead emails list it alongside Noah's address in Reply-To, so replies still reach Noah and also land on the lead's timeline.
+        </span>
+        <input value={replyCapture} onChange={(e) => setReplyCapture(e.target.value)} className={`${inputCls} w-full`}
+          placeholder="replies@mail.advancedcb.app" />
       </label>
 
       <div className="border-t pt-4">

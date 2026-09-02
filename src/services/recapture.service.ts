@@ -17,6 +17,7 @@ import {
   isEmailSuppressed,
   intakeFormUrl,
   verifyEditToken,
+  leadReplyTo,
 } from "@/lib/acb-email";
 import { resolveSenderForLead } from "@/services/lead-emails.service";
 import { logger } from "@/lib/logger";
@@ -241,7 +242,7 @@ async function sendNextRecaptureEmail(enrollmentId: string): Promise<boolean> {
     from,
     subject,
     html,
-    replyTo: "nalbers@advancedcb.com",
+    replyTo: await leadReplyTo(),
     headers: { "List-Unsubscribe": `<${buildUnsubscribeUrl(enrollment.email)}>` },
   });
 

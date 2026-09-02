@@ -73,6 +73,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     "aging_stale", "abandons_today", "abandons_week", "recapture_active",
     "recapture_recovered_month", "live_sessions", "hot_week", "unassigned",
     "won_month", "lost_month", "contact_rate_7d", "avg_response_hrs", "top_state_week",
+    "followups_due_today", "followups_overdue",
   ];
 
   const session = await auth();
@@ -99,6 +100,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     lastActivityAt: l.lastActivityAt?.toISOString() ?? null,
+    nextFollowUpAt: l.nextFollowUpAt?.toISOString() ?? null,
   }));
 
   const serializedTemplates = emailTemplates.map((t) => ({

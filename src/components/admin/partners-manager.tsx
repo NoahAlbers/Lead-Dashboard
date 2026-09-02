@@ -209,8 +209,8 @@ export function PartnersManager({ initialPartners, stateClassifications = {} }: 
                 <p className="font-medium">{partner.name}</p>
                 <p className="text-sm text-muted-foreground">
                   {partner.contactName && `${partner.contactName} · `}
-                  {partner.email ?? "No email"} · Priority: {partner.rankingPriority}
-                  {partner.contingencyRate && ` · ${partner.contingencyRate}`}
+                  {partner.email ?? "No email"} · Priority {partner.rankingPriority}
+                  {partner.contingencyRate && ` · Contingency ${String(partner.contingencyRate).includes("%") ? partner.contingencyRate : `${partner.contingencyRate}%`}`}
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {Array.isArray(partner.statesServedJson) &&

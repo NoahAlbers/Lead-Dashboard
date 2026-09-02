@@ -285,7 +285,7 @@ export function LeadActions({
           title="Pre-create their profile in the onboarding tool and get the portal link"
         >
           <FileSignature className="h-4 w-4 text-blue-500" />
-          Create Onboarding Profile
+          Start Onboarding
         </button>
         <button
           onClick={() => handleQuickLog("duplicate_found", "Marked as Duplicate")}

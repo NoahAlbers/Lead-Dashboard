@@ -6,8 +6,9 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
   DialogDescription,
+  DialogBody,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { createOutcome, getOutcomeReasonConfigs } from "@/actions/outcome.actions";
 import { toast } from "@/components/ui/use-toast";
@@ -22,10 +23,10 @@ interface OutcomeModalProps {
 }
 
 const OUTCOME_TITLES: Record<string, string> = {
-  won: "Record Win",
-  lost: "Record Loss",
-  disqualified: "Record Disqualification",
-  referred_out: "Record Referral",
+  won: "Record win",
+  lost: "Record loss",
+  disqualified: "Record disqualification",
+  referred_out: "Record referral",
 };
 
 export function OutcomeModal({
@@ -109,16 +110,22 @@ export function OutcomeModal({
     "w-full rounded-md border border-input bg-card px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        // Keep the dialog up while a save is in flight.
+        if (!v && !isPending) onClose();
+      }}
+    >
+      <DialogContent size="md" scrollable closeDisabled={isPending}>
         <DialogHeader>
-          <DialogTitle>{OUTCOME_TITLES[outcomeType] ?? "Record Outcome"}</DialogTitle>
+          <DialogTitle>{OUTCOME_TITLES[outcomeType] ?? "Record outcome"}</DialogTitle>
           <DialogDescription>
             Provide details about this outcome for reporting purposes.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <DialogBody className="space-y-4">
           {/* Reasons (all types, multi-select) */}
           <div>
             <label className="text-sm font-medium mb-1 block">Reasons * <span className="text-muted-foreground font-normal">(select all that apply)</span></label>
@@ -149,7 +156,7 @@ export function OutcomeModal({
           {/* Reason Detail (when Other is selected or for extra context) */}
           {selectedReasons.includes("Other") && (
             <div>
-              <label className="text-sm font-medium mb-1 block">Specify Reason</label>
+              <label className="text-sm font-medium mb-1 block">Specify reason</label>
               <input
                 type="text"
                 value={reasonDetail}
@@ -164,7 +171,7 @@ export function OutcomeModal({
           {outcomeType === "won" && (
             <>
               <div>
-                <label className="text-sm font-medium mb-1 block">Estimated Contract Value ($)</label>
+                <label className="text-sm font-medium mb-1 block">Estimated contract value ($)</label>
                 <input
                   type="number"
                   value={estimatedValue}
@@ -176,7 +183,7 @@ export function OutcomeModal({
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Estimated Annual Revenue ($)</label>
+                <label className="text-sm font-medium mb-1 block">Estimated annual revenue ($)</label>
                 <input
                   type="number"
                   value={estimatedAnnualRevenue}
@@ -188,7 +195,7 @@ export function OutcomeModal({
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Account Volume</label>
+                <label className="text-sm font-medium mb-1 block">Account volume</label>
                 <input
                   type="number"
                   value={accountVolume}
@@ -215,7 +222,7 @@ export function OutcomeModal({
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Could We Have Won?</label>
+                <label className="text-sm font-medium mb-1 block">Could we have won?</label>
                 <div className="flex gap-4 mt-1">
                   {["yes", "maybe", "no"].map((opt) => (
                     <label key={opt} className="flex items-center gap-1.5 text-sm cursor-pointer">
@@ -239,7 +246,7 @@ export function OutcomeModal({
           {outcomeType === "referred_out" && (
             <>
               <div>
-                <label className="text-sm font-medium mb-1 block">Referral Partner</label>
+                <label className="text-sm font-medium mb-1 block">Referral partner</label>
                 <select
                   value={referralPartnerId}
                   onChange={(e) => setReferralPartnerId(e.target.value)}
@@ -254,7 +261,7 @@ export function OutcomeModal({
                 </select>
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Estimated Value Being Referred ($)</label>
+                <label className="text-sm font-medium mb-1 block">Estimated value being referred ($)</label>
                 <input
                   type="number"
                   value={estimatedValue}
@@ -279,22 +286,24 @@ export function OutcomeModal({
               className={inputClass + " min-h-[70px]"}
             />
           </div>
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <button
+            type="button"
             onClick={onClose}
             disabled={isPending}
-            className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+            className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={isPending || selectedReasons.length === 0}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            {isPending ? "Saving..." : "Save & Continue"}
+            {isPending ? "Saving..." : "Save and continue"}
           </button>
         </DialogFooter>
       </DialogContent>

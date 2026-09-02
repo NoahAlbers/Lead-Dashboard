@@ -26,6 +26,10 @@ import { ScoreCircle } from "@/components/leads/score-circle";
 import { WonLostButtons } from "@/components/leads/won-lost-buttons";
 import { leadWebDomain } from "@/lib/lead-domain";
 import { phoneAreaLocation } from "@/lib/area-codes";
+import { CopyButton } from "@/components/shared/copy-button";
+import { FollowUpScheduler } from "@/components/leads/follow-up-scheduler";
+import { getLeadFollowUps } from "@/actions/follow-up.actions";
+import { AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 
@@ -44,6 +48,17 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
       <span className="font-medium text-right max-w-[60%]">{value}</span>
     </div>
   );
+}
+
+/** "45 min", "3h 20m", "2d 4h" for SLA labels. */
+function fmtMinutes(min: number): string {
+  if (min < 60) return `${Math.round(min)} min`;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (h < 24) return m ? `${h}h ${m}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  const hh = h % 24;
+  return hh ? `${d}d ${hh}h` : `${d}d`;
 }
 
 /** Label above, value below: long emails/URLs wrap instead of truncating. */
@@ -157,7 +172,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome, recapture] = await Promise.all([
+  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome, recapture, followUps] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
@@ -166,6 +181,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     getLeadSlaInfo(id),
     getOutcome(id),
     prisma.recaptureEnrollment.findUnique({ where: { leadId: id } }),
+    getLeadFollowUps(id),
   ]);
 
   if (!lead) {
@@ -226,6 +242,27 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
   const tierHex = lead.qualityTier ? tierColorMap[lead.qualityTier] : undefined;
   const webDomain = leadWebDomain(intakeFields?.companyWebsite, lead.email);
+
+  // Quiet duplicate check: same email, same phone digits, or same business
+  // email domain on another open lead.
+  const phoneDigits = lead.phone?.replace(/\D/g, "").slice(-10);
+  const emailDomain = lead.email?.split("@")[1]?.toLowerCase();
+  const businessDomain = emailDomain && leadWebDomain(null, lead.email) ? emailDomain : null;
+  const possibleDuplicates = (lead.duplicateOfLead || lead.duplicateLeads.length > 0)
+    ? []
+    : await prisma.lead.findMany({
+        where: {
+          id: { not: lead.id },
+          status: { notIn: ["ARCHIVED", "MERGED", "DUPLICATE"] },
+          OR: [
+            ...(lead.email ? [{ email: { equals: lead.email, mode: "insensitive" as const } }] : []),
+            ...(phoneDigits && phoneDigits.length === 10 ? [{ phone: { contains: phoneDigits.slice(0, 3) + "-" + phoneDigits.slice(3, 6) } }, { phone: { contains: phoneDigits } }] : []),
+            ...(businessDomain ? [{ email: { endsWith: `@${businessDomain}`, mode: "insensitive" as const } }] : []),
+          ],
+        },
+        select: { id: true, fullName: true, companyName: true, email: true, status: true, createdAt: true },
+        take: 3,
+      });
 
   // Most recent auto-research findings, so the panel shows them on load.
   const latestAutoResearch = (() => {
@@ -321,6 +358,22 @@ export default async function LeadDetailPage({ params }: PageProps) {
         </div>
       </div>
 
+      {possibleDuplicates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="font-medium">Possibly the same person as</span>
+          {possibleDuplicates.map((d) => (
+            <Link key={d.id} href={`/leads/${d.id}`} className="underline underline-offset-2 hover:text-amber-700">
+              {d.companyName || d.fullName || d.email || d.id}
+              <span className="ml-1 text-xs text-amber-700/80">({d.status.replace(/_/g, " ").toLowerCase()})</span>
+            </Link>
+          ))}
+          <Link href={`/leads/merge?leadA=${lead.id}&leadB=${possibleDuplicates[0].id}`} className="ml-auto rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-amber-100">
+            Compare and merge
+          </Link>
+        </div>
+      )}
+
       {/* 3-Column Grid */}
       <div className="grid grid-cols-12 gap-3">
 
@@ -338,16 +391,22 @@ export default async function LeadDetailPage({ params }: PageProps) {
               />
               {lead.email && (
                 <ContactRow label="Email">
-                  <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline break-all">
-                    {lead.email}
-                  </a>
+                  <span className="group inline-flex items-center max-w-full">
+                    <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline break-all">
+                      {lead.email}
+                    </a>
+                    <CopyButton value={lead.email} label="email" />
+                  </span>
                 </ContactRow>
               )}
               {lead.phone && (
                 <ContactRow label="Phone" sub={phoneAreaLocation(lead.phone) ?? undefined}>
-                  <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
-                    {lead.phone}
-                  </a>
+                  <span className="group inline-flex items-center">
+                    <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
+                      {lead.phone}
+                    </a>
+                    <CopyButton value={lead.phone} label="phone" />
+                  </span>
                 </ContactRow>
               )}
               {lead.alternatePhone && (
@@ -578,8 +637,8 @@ export default async function LeadDetailPage({ params }: PageProps) {
                   <div className="flex-1">
                     <SlaProgressBar percentElapsed={slaInfo.percentElapsed} slaStatus={slaInfo.slaStatus} />
                     <div className="flex justify-between mt-0.5">
-                      <span className="text-[10px] text-muted-foreground">{slaInfo.elapsedMinutes}m elapsed</span>
-                      <span className="text-[10px] text-muted-foreground">{slaInfo.thresholdMinutes}m threshold</span>
+                      <span className="text-[10px] text-muted-foreground">{fmtMinutes(slaInfo.elapsedMinutes)} elapsed</span>
+                      <span className="text-[10px] text-muted-foreground">{fmtMinutes(slaInfo.thresholdMinutes)} threshold</span>
                     </div>
                   </div>
                 </div>
@@ -669,6 +728,19 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 referralPartners={activePartners}
               />
             </div>
+
+            {/* Scheduled follow-ups */}
+            <FollowUpScheduler
+              leadId={lead.id}
+              reminders={followUps.map((r) => ({
+                id: r.id,
+                reminderAt: r.reminderAt.toISOString(),
+                note: r.note,
+                completed: r.completed,
+                notifiedAt: r.notifiedAt?.toISOString() ?? null,
+                user: r.user,
+              }))}
+            />
 
             {/* Recapture campaign status (abandoned-form leads) */}
             {recapture && (

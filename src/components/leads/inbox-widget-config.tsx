@@ -38,6 +38,8 @@ const ALL_METRICS: MetricDefinition[] = [
   { id: "unassigned", label: "Unassigned", icon: UserX, group: "Pipeline", hint: "New inquiries nobody owns yet" },
   { id: "unread", label: "Unread", icon: AlertTriangle, group: "Pipeline" },
   { id: "follow_up", label: "Follow-Up Needed", icon: Clock, group: "Pipeline" },
+  { id: "followups_due_today", label: "Follow-Ups Due Today", icon: Clock, group: "Pipeline", hint: "Scheduled follow-ups due today" },
+  { id: "followups_overdue", label: "Follow-Ups Overdue", icon: AlertTriangle, group: "Pipeline", hint: "Scheduled follow-ups past their time, not yet completed" },
   { id: "contacted", label: "Contacted", icon: CheckCircle, group: "Pipeline", spark: "contacted" },
   { id: "contact_rate_7d", label: "Contact Rate (7d)", icon: Activity, group: "Pipeline", hint: "Share of this week's inquiries that have had a first contact" },
   { id: "avg_response_hrs", label: "Avg Response Time", icon: Timer, group: "Pipeline", hint: "Average time to first contact, last 30 days" },

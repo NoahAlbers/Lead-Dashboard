@@ -31,6 +31,8 @@ async function processAbandonedPartials() {
 
   let processed = 0;
   let failed = 0;
+  // Rows with no email or phone can never become leads; they're skipped, not failed.
+  let skipped = 0;
   const errors: string[] = [];
 
   for (const item of abandonedPartials) {
@@ -81,10 +83,14 @@ async function processAbandonedPartials() {
 
         processed++;
       } else if (updated?.status === "failed") {
-        failed++;
-        errors.push(
-          `${item.submissionId}: ${updated.errorMessage ?? "Unknown error"}`
-        );
+        if ((updated.errorMessage ?? "").startsWith("Validation failed")) {
+          skipped++;
+        } else {
+          failed++;
+          errors.push(
+            `${item.submissionId}: ${updated.errorMessage ?? "Unknown error"}`
+          );
+        }
       }
     } catch (error) {
       failed++;
@@ -105,21 +111,24 @@ async function processAbandonedPartials() {
     }
   }
 
-  // Notify admins if any partials were converted
-  if (processed > 0) {
+  // Notify admins when something happened worth a look: new abandoned-form
+  // leads, or a real processing error. Skipped rows (no contact info) are
+  // silent; they're expected and nobody can act on them.
+  if (processed > 0 || failed > 0) {
     await createNotificationsForRole(
       "ADMIN",
       "system_alert",
-      "Partial Leads Converted",
-      `${processed} abandoned partial submission${processed !== 1 ? "s" : ""} converted to leads.${failed > 0 ? ` ${failed} failed.` : ""}`,
+      processed > 0 ? "Abandoned forms turned into leads" : "Abandoned form processing needs attention",
+      `${processed > 0 ? `${processed} abandoned form${processed !== 1 ? "s" : ""} now in the Abandoned tab.` : ""}${failed > 0 ? ` ${failed} could not be processed; see Ingestion Health.` : ""}`.trim(),
       null,
-      "NORMAL"
+      failed > 0 ? "HIGH" : "NORMAL"
     ).catch(() => {});
   }
 
   return {
     found: abandonedPartials.length,
     processed,
+    skipped,
     failed,
     errors: errors.slice(0, 10),
     timeoutMinutes,

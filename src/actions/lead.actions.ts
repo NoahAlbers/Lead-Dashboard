@@ -189,6 +189,7 @@ export async function getLeads(params: {
     "qualityTier",
     "recommendedAction",
     "lastActivityAt",
+    "nextFollowUpAt",
     "balanceAmount",
     "industry",
     "debtType",
@@ -595,6 +596,11 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     sla_breached: () => prisma.lead.count({ where: { slaStatus: { in: ["breached", "escalated"] }, ...notArchived } }),
     sla_at_risk: () => prisma.lead.count({ where: { slaStatus: { in: ["warning", "breached", "escalated"] }, ...notArchived } }),
     aging_stale: () => prisma.lead.count({ where: { createdAt: { lt: estStartOfDayDaysAgo(6) }, ...notArchived } }),
+    // Follow-ups
+    followups_due_today: () =>
+      prisma.followUpReminder.count({ where: { completed: false, reminderAt: { gte: today, lt: estStartOfDayDaysAgo(-1) } } }),
+    followups_overdue: () =>
+      prisma.followUpReminder.count({ where: { completed: false, reminderAt: { lt: today } } }),
     // Abandoned forms + recapture
     abandons_today: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: today } } }),
     abandons_week: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: weekAgo } } }),

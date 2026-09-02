@@ -2,7 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Search, X, Merge } from "lucide-react";
+import { Search, Merge } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+} from "@/components/ui/dialog";
 import { searchLeadsForMerge } from "@/actions/merge.actions";
 
 interface SearchResult {
@@ -28,8 +36,6 @@ export function MergeSearchDialog({ open, onClose, currentLeadId }: MergeSearchD
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  if (!open) return null;
-
   function handleSearch() {
     if (query.length < 2) return;
     startTransition(async () => {
@@ -44,16 +50,16 @@ export function MergeSearchDialog({ open, onClose, currentLeadId }: MergeSearchD
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-card rounded-xl border shadow-lg w-full max-w-lg mx-4 max-h-[70vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="font-semibold">Find Lead to Merge With</h3>
-          <button onClick={onClose} className="rounded-md p-1 hover:bg-muted">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent size="lg" scrollable>
+        <DialogHeader>
+          <DialogTitle>Find lead to merge with</DialogTitle>
+          <DialogDescription className="sr-only">
+            Search for another lead and pick one to merge with this lead.
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="p-4">
+        <DialogBody>
           <form onSubmit={(e) => { e.preventDefault(); handleSearch(); }} className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -62,6 +68,7 @@ export function MergeSearchDialog({ open, onClose, currentLeadId }: MergeSearchD
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search by company, name, email..."
+                aria-label="Search leads"
                 className="w-full h-9 rounded-md border border-input bg-card pl-9 pr-3 text-sm"
                 autoFocus
               />
@@ -82,19 +89,20 @@ export function MergeSearchDialog({ open, onClose, currentLeadId }: MergeSearchD
             {results.map((lead) => (
               <button
                 key={lead.id}
+                type="button"
                 onClick={() => handleSelect(lead.id)}
                 className="w-full flex items-center justify-between rounded-md border p-3 text-left hover:border-primary/50 hover:bg-primary/5 transition-colors"
               >
                 <div>
                   <p className="font-medium text-sm">{lead.companyName || lead.fullName || "Unknown"}</p>
-                  <p className="text-xs text-muted-foreground">{lead.email ?? "No email"} · Score: {lead.score ?? "—"} · {lead.status}</p>
+                  <p className="text-xs text-muted-foreground">{lead.email ?? "No email"} · Score: {lead.score ?? "n/a"} · {lead.status}</p>
                 </div>
                 <Merge className="h-4 w-4 text-muted-foreground shrink-0" />
               </button>
             ))}
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

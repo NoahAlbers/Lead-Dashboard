@@ -23,10 +23,10 @@ export function useSoundManager() {
 }
 
 const SOUND_FILES: Record<string, string> = {
-  high: "/sounds/notification-high.mp3",
-  normal: "/sounds/notification-normal.mp3",
-  low: "/sounds/notification-low.mp3",
-  chime: "/sounds/notification-chime.mp3",
+  high: "/sounds/notification-high.wav",
+  normal: "/sounds/notification-normal.wav",
+  low: "/sounds/notification-low.wav",
+  chime: "/sounds/notification-chime.wav",
 };
 
 const STORAGE_KEY = "sound-preferences";

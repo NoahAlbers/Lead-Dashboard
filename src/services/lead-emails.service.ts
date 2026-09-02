@@ -12,6 +12,7 @@ import {
   buildUnsubscribeUrl,
   isEmailSuppressed,
   buildEditUrl,
+  leadReplyTo,
 } from "@/lib/acb-email";
 import {
   evaluateHotLead,
@@ -149,7 +150,7 @@ export async function sendLeadConfirmationEmail(
     from,
     subject: "We received your inquiry",
     html,
-    replyTo: "nalbers@advancedcb.com",
+    replyTo: await leadReplyTo(),
     headers: { "List-Unsubscribe": `<${buildUnsubscribeUrl(lead.email)}>` },
   });
 

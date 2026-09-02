@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { leadWebDomain } from "@/lib/lead-domain";
 
 interface DuplicateMatch {
   leadId: string;
@@ -27,6 +28,12 @@ export async function findDuplicates(lead: {
     conditions.push({
       companyName: { equals: lead.companyName.trim(), mode: "insensitive" as const },
     });
+  }
+  // Same business email domain (personal-mail domains excluded) usually means
+  // the same company reaching out twice.
+  const domain = lead.email ? leadWebDomain(null, lead.email) : null;
+  if (domain && lead.email?.includes("@")) {
+    conditions.push({ email: { endsWith: `@${domain}`, mode: "insensitive" as const } });
   }
 
   if (conditions.length === 0) return [];

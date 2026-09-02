@@ -10,7 +10,12 @@ import { StatusBadge, TierBadge, ScoreBadge } from "@/components/shared/status-b
 import { getTierColorMap } from "@/actions/status.actions";
 import { SlaBadge } from "@/components/leads/sla-badge";
 
-export default async function AssignmentsPage() {
+const PAGE_SIZE = 25;
+const OPEN_STATUSES_EXCLUDED = ["ARCHIVED", "MERGED", "WON", "LOST", "DISQUALIFIED", "DUPLICATE", "REFERRED_OUT"] as const;
+
+export default async function AssignmentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
   const session = await auth();
   if (!session || !["ADMIN", "MANAGER"].includes(session.user.role)) {
     redirect("/leads");
@@ -31,17 +36,22 @@ export default async function AssignmentsPage() {
   // Manual filter since Prisma doesn't support "__unassigned__"
   // Actually, let's fetch unassigned leads properly
   const { prisma } = await import("@/lib/db");
-  const unassignedLeads = await prisma.lead.findMany({
-    where: {
-      assignedUserId: null,
-      status: { notIn: ["ARCHIVED", "MERGED", "WON", "LOST", "DISQUALIFIED", "DUPLICATE"] },
-    },
-    include: {
-      assignedUser: { select: { id: true, name: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const openWhere = {
+    assignedUserId: null,
+    status: { notIn: [...OPEN_STATUSES_EXCLUDED] },
+    fromAbandonedForm: false,
+  };
+  const [openCount, unassignedLeads] = await Promise.all([
+    prisma.lead.count({ where: openWhere }),
+    prisma.lead.findMany({
+      where: openWhere,
+      include: { assignedUser: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(openCount / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -52,7 +62,8 @@ export default async function AssignmentsPage() {
         </Link>
         <h1 className="text-2xl font-bold">Manage Assignments</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {unassignedCount} unassigned leads
+          {openCount} open inquiries without an owner
+          {unassignedCount > openCount && <span className="text-muted-foreground/70"> · {unassignedCount - openCount} more are closed or referred out</span>}
         </p>
       </div>
 
@@ -87,6 +98,15 @@ export default async function AssignmentsPage() {
               </div>
             )}
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Page {page} of {totalPages}</span>
+              <div className="flex gap-2">
+                {page > 1 && <Link href={`/leads/assignments?page=${page - 1}`} className="rounded-md border px-2.5 py-1 hover:bg-muted">Previous</Link>}
+                {page < totalPages && <Link href={`/leads/assignments?page=${page + 1}`} className="rounded-md border px-2.5 py-1 hover:bg-muted">Next</Link>}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: Staff Workload */}

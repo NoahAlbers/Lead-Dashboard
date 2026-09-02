@@ -57,6 +57,23 @@ const FIELD_MAP: Record<string, string> = {
   "states_array": "statesArray",
 };
 
+export function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase().replace(/^mailto:/, "");
+}
+
+/** 10/11-digit North American numbers become 321-555-0100; anything else is trimmed. */
+export function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const national = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (national.length === 10) return `${national.slice(0, 3)}-${national.slice(3, 6)}-${national.slice(6)}`;
+  return raw.trim();
+}
+
+/** Collapse whitespace, strip stray trailing punctuation, keep the person's casing. */
+export function normalizeText(raw: string): string {
+  return raw.replace(/\s+/g, " ").replace(/[\s,.;:]+$/g, "").trim();
+}
+
 function mapFields(data: WebflowFormData): Record<string, unknown> {
   const mapped: Record<string, unknown> = {};
 
@@ -71,6 +88,18 @@ function mapFields(data: WebflowFormData): Record<string, unknown> {
   // Derive fullName if not provided
   if (!mapped.fullName && (mapped.firstName || mapped.lastName)) {
     mapped.fullName = `${mapped.firstName ?? ""} ${mapped.lastName ?? ""}`.trim();
+  }
+
+  // Hygiene: consistent email / phone / company so search, dedupe, and the
+  // area-code lookup behave. Display strings stay human (no E.164 in the UI).
+  if (typeof mapped.email === "string") mapped.email = normalizeEmail(mapped.email);
+  if (typeof mapped.phone === "string") mapped.phone = normalizePhone(mapped.phone);
+  if (typeof mapped.alternatePhone === "string") mapped.alternatePhone = normalizePhone(mapped.alternatePhone);
+  for (const k of ["fullName", "firstName", "lastName", "companyName", "city", "title"] as const) {
+    if (typeof mapped[k] === "string") mapped[k] = normalizeText(mapped[k] as string);
+  }
+  if (typeof mapped.companyName === "string" && /^(n\/?a|none|no|-+|independent)$/i.test(mapped.companyName)) {
+    mapped.companyName = null;
   }
 
   // Parse balance to number

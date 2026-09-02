@@ -39,6 +39,11 @@ const eventLabels: Record<string, string> = {
   auto_research: "Auto research ran",
   prospect_comment: "Comment from the prospect",
   first_contact_recorded: "First contact recorded",
+  email_reply_received: "Replied by email",
+  follow_up_scheduled: "Follow-up scheduled",
+  follow_up_completed: "Follow-up completed",
+  follow_up_cancelled: "Follow-up cancelled",
+  follow_up_due: "Follow-up due",
   lead_data_received: "Submission Data Received",
 };
 
@@ -61,6 +66,15 @@ function formatEventDetail(event: TimelineEvent): string | null {
   if (event.eventType === "research_completed") {
     const d = data as { recommendation?: string; sources?: string[] };
     return d.recommendation ? `Recommendation: ${d.recommendation}` : null;
+  }
+  if (event.eventType === "email_reply_received") {
+    const d = data as { subject?: string; snippet?: string | null };
+    return [d.subject ? `Subject: ${d.subject}` : null, d.snippet ?? null].filter(Boolean).join(" · ") || null;
+  }
+  if (event.eventType === "follow_up_scheduled") {
+    const d = data as { reminderAt?: string; note?: string };
+    const when = d.reminderAt ? new Date(d.reminderAt).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " EST" : "";
+    return [when, d.note].filter(Boolean).join(" · ") || null;
   }
   if (event.eventType === "prospect_comment") {
     return typeof data.comment === "string" ? data.comment : null;
@@ -124,6 +138,7 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
 
 const PROSPECT_EVENTS = new Set([
   "lead_data_received",
+  "email_reply_received",
   "recapture_link_opened",
   "edit_link_opened",
   "prospect_updated_details",

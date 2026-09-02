@@ -55,6 +55,33 @@ export async function completeFollowUpReminder(reminderId: string) {
   return reminder;
 }
 
+/** All reminders on a lead (pending first), for the lead page panel. */
+export async function getLeadFollowUps(leadId: string) {
+  return prisma.followUpReminder.findMany({
+    where: { leadId },
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: [{ completed: "asc" }, { reminderAt: "asc" }],
+    take: 20,
+  });
+}
+
+export async function cancelFollowUpReminder(reminderId: string) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+  const reminder = await prisma.followUpReminder.delete({ where: { id: reminderId } });
+  const pending = await prisma.followUpReminder.findFirst({
+    where: { leadId: reminder.leadId, completed: false },
+    orderBy: { reminderAt: "asc" },
+  });
+  await prisma.lead.update({
+    where: { id: reminder.leadId },
+    data: { nextFollowUpAt: pending?.reminderAt ?? null },
+  });
+  await logEvent(reminder.leadId, "follow_up_cancelled", { reminderId }, session.user.id);
+  revalidatePath(`/leads/${reminder.leadId}`);
+  revalidatePath("/leads");
+}
+
 export async function getMyPendingFollowUps() {
   const session = await auth();
   if (!session) return [];

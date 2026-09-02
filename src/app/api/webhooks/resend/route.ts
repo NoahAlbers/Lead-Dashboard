@@ -24,6 +24,48 @@ export async function POST(req: NextRequest) {
 
   const type = body.type ?? "";
   const data = body.data ?? {};
+
+  // Inbound reply (Resend inbound routing): attach it to the lead who wrote
+  // it, notify the owner, and make sure the lead is flagged for a follow-up.
+  if (type === "email.received") {
+    const fromRaw = data.from;
+    const fromStr = Array.isArray(fromRaw) ? String(fromRaw[0] ?? "") : String(fromRaw ?? "");
+    const fromEmail = (fromStr.match(/<([^>]+)>/)?.[1] ?? fromStr).trim().toLowerCase();
+    if (!fromEmail) return NextResponse.json({ ok: true });
+    const lead = await prisma.lead.findFirst({
+      where: { email: { equals: fromEmail, mode: "insensitive" }, status: { notIn: ["ARCHIVED", "MERGED"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!lead) {
+      logger.info("RESEND_WEBHOOK", "Inbound reply from unknown address", { fromEmail });
+      return NextResponse.json({ ok: true });
+    }
+    const subject = (data.subject as string) ?? "";
+    const snippet = typeof data.text === "string" ? data.text.slice(0, 600) : null;
+    await prisma.leadEvent.create({
+      data: {
+        leadId: lead.id,
+        eventType: "email_reply_received",
+        eventDataJson: { subject, snippet, emailId: (data.email_id as string) ?? null, from: fromEmail },
+      },
+    });
+    const needsFollowUp = ["NEW", "REVIEWED", "CONTACTED"].includes(lead.status);
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { lastActivityAt: new Date(), ...(needsFollowUp ? { status: "FOLLOW_UP_NEEDED" } : {}) },
+    });
+    const { stopRecaptureForLead } = await import("@/services/recapture.service");
+    await stopRecaptureForLead(lead.id, "replied").catch(() => {});
+    const { createNotification, createNotificationsForRole } = await import("@/services/notification.service");
+    const label = lead.companyName || lead.fullName || fromEmail;
+    if (lead.assignedUserId) {
+      await createNotification(lead.assignedUserId, "lead_updated", `${label} replied by email`, subject || "New reply on the lead timeline", lead.id, "HIGH").catch(() => {});
+    } else {
+      await createNotificationsForRole("INTAKE", "lead_updated", `${label} replied by email`, subject || "New reply on the lead timeline", lead.id, "HIGH").catch(() => {});
+    }
+    logger.info("RESEND_WEBHOOK", "Inbound reply attached", { leadId: lead.id });
+    return NextResponse.json({ ok: true });
+  }
   const toRaw = data.to;
   const to = Array.isArray(toRaw) ? String(toRaw[0] ?? "") : String(toRaw ?? "");
   const email = to.trim().toLowerCase();

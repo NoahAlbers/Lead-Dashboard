@@ -178,3 +178,13 @@ export async function suppressEmail(
     create: { email: e, reason, source },
   });
 }
+
+
+/** Reply-To for lead-facing emails: Noah's inbox, plus the capture mailbox
+ * when one is configured so replies also land on the lead timeline. */
+export async function leadReplyTo(): Promise<string> {
+  const primary = "nalbers@advancedcb.com";
+  const row = await prisma.systemConfig.findUnique({ where: { key: "reply_capture_address" } });
+  const capture = typeof row?.value === "string" ? row.value.trim() : "";
+  return capture && capture !== primary ? `${primary}, ${capture}` : primary;
+}

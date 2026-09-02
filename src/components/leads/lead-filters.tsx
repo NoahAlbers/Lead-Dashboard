@@ -112,7 +112,7 @@ export function LeadFilters({
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Search leads..."
+            placeholder="Search leads (press / )"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="flex h-9 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

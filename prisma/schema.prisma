@@ -536,6 +536,7 @@ model FollowUpReminder {
   note        String?
   completed   Boolean  @default(false)
   completedAt DateTime? @map("completed_at")
+  notifiedAt  DateTime? @map("notified_at")
 
   @@index([leadId])
   @@index([userId, completed])
