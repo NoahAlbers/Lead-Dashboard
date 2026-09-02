@@ -4,6 +4,10 @@ import { processIngestionItem } from "@/services/ingestion-pipeline.service";
 import { createNotificationsForRole } from "@/services/notification.service";
 import { enrollAbandonedLead } from "@/services/recapture.service";
 
+// Vercel Pro allows up to 300s; the loop below stops early to stay inside it.
+export const maxDuration = 300;
+const TIME_BUDGET_MS = 240_000;
+
 async function processAbandonedPartials() {
   // 1. Read timeout from SystemConfig (default 60 minutes)
   const config = await prisma.systemConfig.findUnique({
@@ -26,9 +30,10 @@ async function processAbandonedPartials() {
       receivedAt: { lt: cutoff },
     },
     orderBy: { receivedAt: "asc" },
-    take: 100,
+    take: 1500,
   });
 
+  const startedAt = Date.now();
   let processed = 0;
   let failed = 0;
   // Rows with no email or phone can never become leads; they're skipped, not failed.
@@ -36,6 +41,7 @@ async function processAbandonedPartials() {
   const errors: string[] = [];
 
   for (const item of abandonedPartials) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) break; // the next run picks up the rest
     try {
       // Reset status to "received" so processIngestionItem will pick it up
       // Also remove isPartial flag so it won't be picked up again

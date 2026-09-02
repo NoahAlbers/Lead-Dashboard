@@ -354,7 +354,7 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     }
     if (!lead) {
       // Call existing ingestLead — it handles mapping, scoring, duplicates, referrals, notifications
-      lead = await ingestLead(formData, metadata);
+      lead = await ingestLead(formData, { ...metadata, abandonedForm: !!item.partialStep });
     }
 
     logger.info("PIPELINE", "Lead ingested successfully", {
@@ -387,8 +387,9 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     }
 
     // Send email notification with full normalized data (skip for
-    // resubmissions — the assigned user gets a targeted notification instead)
-    if (!isResubmission) {
+    // resubmissions, which notify the assigned user instead, and for
+    // abandoned partials, which the partials job summarizes in one alert)
+    if (!isResubmission && !item.partialStep) {
       sendNewLeadEmail({
         receiptId: item.receiptId || "N/A",
         normalized,

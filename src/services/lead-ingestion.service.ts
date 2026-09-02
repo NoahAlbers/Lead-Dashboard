@@ -144,6 +144,8 @@ async function logProspectComment(
 export async function ingestLead(
   formData: WebflowFormData,
   metadata?: {
+    /** True when the lead comes from an abandoned partial: staff get one summary notification from the cron instead of one per lead. */
+    abandonedForm?: boolean;
     source?: string;
     sourcePage?: string;
     utmSource?: string;
@@ -263,7 +265,7 @@ export async function ingestLead(
   const tierLabel = scoreResult.qualityTier ?? "Unscored";
   const isHighPriority = scoreResult.qualityTier === "A Lead" || (scoreResult.score ?? 0) >= 80;
 
-  await createNotificationsForRole(
+  if (!metadata?.abandonedForm) await createNotificationsForRole(
     "INTAKE",
     "new_lead",
     `New ${tierLabel}: ${leadLabel}`,
