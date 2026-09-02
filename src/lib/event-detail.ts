@@ -32,7 +32,22 @@ export const eventLabels: Record<string, string> = {
   follow_up_completed: "Follow-up completed",
   follow_up_cancelled: "Follow-up cancelled",
   follow_up_due: "Follow-up due",
-  lead_data_received: "Submission Data Received",
+  lead_data_received: "Submission data received",
+  lead_edited: "Lead edited",
+  leads_merged: "Leads merged",
+  merge_undone: "Merge undone",
+  recapture_email_sent: "Recapture email sent",
+  recapture_email_failed: "Recapture email failed",
+  recapture_stopped: "Recapture stopped",
+  recapture_link_opened: "Opened their resume link",
+  confirmation_email_sent: "Confirmation email sent",
+  confirmation_email_failed: "Confirmation email failed",
+  edit_link_opened: "Opened their edit link",
+  prospect_updated_details: "Prospect updated their details",
+  sla_warning: "SLA warning",
+  sla_breach: "SLA breached",
+  sla_escalated: "SLA escalated",
+  sla_escalation: "SLA escalated",
 };
 
 export function formatEventDetail(event: EventDetailInput): string | null {

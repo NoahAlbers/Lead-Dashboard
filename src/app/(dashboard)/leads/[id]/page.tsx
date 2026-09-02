@@ -455,7 +455,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
           </CompactCard>
 
           {/* Portfolio Details (intake form only) */}
-          {isIntakeForm && intakeFields && (intakeFields.totalUnits || intakeFields.avgRent || intakeFields.ownershipType || intakeFields.rentalTypes?.length || intakeFields.propertyTypes?.length || intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
+          {isIntakeForm && intakeFields && !!(intakeFields.totalUnits || intakeFields.avgRent || intakeFields.ownershipType || intakeFields.rentalTypes?.length || intakeFields.propertyTypes?.length || intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
             <CompactCard title="Portfolio Details">
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <InfoRow label="Total Units" value={intakeFields.totalUnits} />
@@ -715,6 +715,17 @@ export default async function LeadDetailPage({ params }: PageProps) {
         {/* ===== RIGHT COLUMN (3 cols) — Actions, sticky ===== */}
         <div className="col-span-12 lg:col-span-3">
           <div className="sticky top-6 space-y-3">
+            {/* Onboarding progress (once a portal exists) */}
+            {onboardingCreated && onboardingData?.portalUrl && (
+              <OnboardingPanel
+                portalUrl={onboardingData.portalUrl}
+                emailed={!!onboardingData.emailed}
+                createdAt={onboardingCreated.createdAt.toISOString()}
+                milestones={onboardingMilestones}
+              />
+            )}
+
+
             {/* Scheduled follow-ups */}
             <FollowUpScheduler
               leadId={lead.id}
@@ -757,19 +768,10 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 assignedUserName={session?.user.name ?? "ACB Team"}
                 referralPartners={activePartners}
                 onboardingPortalUrl={onboardingData?.portalUrl ?? null}
+                logoUrl={webDomain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=256` : null}
+                logoDomain={webDomain}
               />
             </div>
-
-            {/* Onboarding progress (once a portal exists) */}
-            {onboardingCreated && onboardingData?.portalUrl && (
-              <OnboardingPanel
-                portalUrl={onboardingData.portalUrl}
-                emailed={!!onboardingData.emailed}
-                createdAt={onboardingCreated.createdAt.toISOString()}
-                milestones={onboardingMilestones}
-              />
-            )}
-
 
             {/* Recapture campaign status (abandoned-form leads) */}
             {recapture && (
