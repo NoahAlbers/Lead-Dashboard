@@ -19,6 +19,8 @@ export interface OnboardingInput {
   mgmtType: MgmtType;
   /** true: the onboarding service sends its welcome email with the portal link. */
   sendEmail: boolean;
+  /** Company logo URL to show on their portal, or null to skip. */
+  logoUrl?: string | null;
 }
 
 export interface OnboardingResult {
@@ -55,6 +57,7 @@ export async function createOnboardingProfile(leadId: string, input: OnboardingI
         contact_phone: input.phone.trim(),
         mgmt_type: input.mgmtType,
         suppress_welcome: !input.sendEmail,
+        logo_url: input.logoUrl ?? null,
         // Lets the onboarding tool report milestones back to this lead.
         lead_id: leadId,
       }),
@@ -81,6 +84,7 @@ export async function createOnboardingProfile(leadId: string, input: OnboardingI
           email,
           phone: input.phone.trim(),
           mgmtType: input.mgmtType,
+          logoUrl: input.logoUrl ?? null,
         },
       },
       session.user.id

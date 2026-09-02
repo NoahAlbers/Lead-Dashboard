@@ -45,6 +45,9 @@ interface ReferralPartnerInfo {
 }
 
 interface LeadActionsProps {
+  /** Company logo pulled from their website, offered to the onboarding portal. */
+  logoUrl?: string | null;
+  logoDomain?: string | null;
   leadId: string;
   email: string | null;
   phone: string | null;
@@ -84,6 +87,8 @@ export function LeadActions({
   leadData,
   assignedUserName,
   onboardingPortalUrl,
+  logoUrl = null,
+  logoDomain = null,
 }: LeadActionsProps) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -426,6 +431,8 @@ export function LeadActions({
           onClose={() => setShowOnboarding(false)}
           leadId={leadId}
           existingPortalUrl={onboardingPortalUrl ?? null}
+          logoUrl={logoUrl}
+          logoDomain={logoDomain}
           prefill={{
             companyName: leadData?.companyName ?? "",
             contactName: leadData?.fullName ?? "",

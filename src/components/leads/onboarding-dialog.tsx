@@ -15,6 +15,8 @@ import { createOnboardingProfile, type MgmtType } from "@/actions/onboarding.act
 import { toast } from "@/components/ui/use-toast";
 
 interface OnboardingDialogProps {
+  logoUrl?: string | null;
+  logoDomain?: string | null;
   open: boolean;
   onClose: () => void;
   leadId: string;
@@ -31,13 +33,15 @@ interface OnboardingDialogProps {
 
 const inputCls = "h-9 w-full rounded-md border border-input bg-card px-3 text-sm";
 
-export function OnboardingDialog({ open, onClose, leadId, prefill, existingPortalUrl }: OnboardingDialogProps) {
+export function OnboardingDialog({ open, onClose, leadId, prefill, existingPortalUrl, logoUrl = null, logoDomain = null }: OnboardingDialogProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [form, setForm] = useState(prefill);
   const [result, setResult] = useState<{ portalUrl: string; emailed: boolean } | null>(null);
   const [showExisting, setShowExisting] = useState(!!existingPortalUrl);
   const [copied, setCopied] = useState(false);
+  const [sendLogo, setSendLogo] = useState(!!logoUrl);
+  const [logoBroken, setLogoBroken] = useState(false);
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -45,7 +49,7 @@ export function OnboardingDialog({ open, onClose, leadId, prefill, existingPorta
 
   function create(sendEmail: boolean) {
     startTransition(async () => {
-      const res = await createOnboardingProfile(leadId, { ...form, sendEmail });
+      const res = await createOnboardingProfile(leadId, { ...form, sendEmail, logoUrl: sendLogo && logoUrl && !logoBroken ? logoUrl : null });
       if (res.success && res.portalUrl) {
         setResult({ portalUrl: res.portalUrl, emailed: !!res.emailed });
         toast({
@@ -146,6 +150,18 @@ export function OnboardingDialog({ open, onClose, leadId, prefill, existingPorta
                 <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} />
               </label>
             </div>
+
+            {logoUrl && !logoBroken && (
+              <label className="flex items-center gap-3 rounded-md border p-3 text-sm">
+                <input type="checkbox" checked={sendLogo} onChange={(e) => setSendLogo(e.target.checked)} className="h-4 w-4" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoUrl} alt="" width={36} height={36} className="h-9 w-9 rounded-md border bg-white object-contain p-0.5" onError={() => setLogoBroken(true)} />
+                <span>
+                  Put their logo on the onboarding portal
+                  <span className="block text-xs text-muted-foreground">Pulled from {logoDomain ?? "their website"}. Uncheck if it looks wrong.</span>
+                </span>
+              </label>
+            )}
 
             <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">
               <span className="font-medium">Create &amp; Email</span> sends <b>{form.email.trim() || "their email"}</b> a message with their onboarding link right away.
