@@ -4,16 +4,30 @@ import { NextResponse } from "next/server";
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
+  // Allow static assets in /public (logo, favicons, sounds) without auth —
+  // the login page itself needs them.
+  if (/\.(svg|png|webp|jpg|jpeg|gif|ico|mp3|wav|woff2?)$/i.test(pathname)) {
+    return NextResponse.next();
+  }
+
   // Allow webhook endpoints without auth
   if (pathname.startsWith("/api/webhooks")) {
     return NextResponse.next();
   }
 
-  // Allow public API endpoints (lead ingestion + health)
+  // Allow public API endpoints. Each carries its own auth: ingestion checks
+  // the form key, crons check CRON_SECRET, resume validates its token, and
+  // unsubscribe validates its HMAC.
   if (
+    pathname.startsWith("/set-password") ||
     pathname.startsWith("/api/leads/ingest") ||
     pathname.startsWith("/api/leads/partial") ||
     pathname.startsWith("/api/leads/heartbeat") ||
+    pathname.startsWith("/api/leads/resume") ||
+    pathname.startsWith("/api/leads/report-failure") ||
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/form") ||
+    pathname.startsWith("/api/email/unsubscribe") ||
     pathname.startsWith("/api/health")
   ) {
     return NextResponse.next();

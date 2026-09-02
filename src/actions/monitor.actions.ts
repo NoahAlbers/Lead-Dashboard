@@ -69,13 +69,84 @@ export async function getActiveSessions() {
   });
 }
 
+/** Best-effort device label from a user agent string. */
+function deviceFromUserAgent(ua: string | null): string | null {
+  if (!ua) return null;
+  if (/iPad|Tablet/i.test(ua)) return "Tablet";
+  if (/iPhone|Android.*Mobile|Mobile/i.test(ua)) return "Mobile";
+  if (/Windows|Macintosh|Linux|CrOS/i.test(ua)) return "Desktop";
+  return null;
+}
+
+/**
+ * The last 10 partial form sessions regardless of status. Shown on the Live
+ * Monitor when nothing is active so the panel is never just an empty box.
+ */
+export async function getRecentSessions() {
+  const session = await auth();
+  if (!session || !["ADMIN", "MANAGER"].includes(session.user.role))
+    throw new Error("Unauthorized");
+
+  const rows = await prisma.ingestionQueue.findMany({
+    where: { isPartial: true },
+    orderBy: { receivedAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      sessionId: true,
+      status: true,
+      partialStep: true,
+      rawPayload: true,
+      receivedAt: true,
+      lastHeartbeatAt: true,
+      userAgent: true,
+      leadId: true,
+    },
+  });
+
+  // A partial can become a lead either on its own row or through a later
+  // completed submission that shares its session id.
+  const sessionIds = rows
+    .map((r) => r.sessionId)
+    .filter((s): s is string => !!s);
+  const linked = sessionIds.length
+    ? await prisma.ingestionQueue.findMany({
+        where: { sessionId: { in: sessionIds }, leadId: { not: null } },
+        select: { sessionId: true, leadId: true },
+      })
+    : [];
+  const leadBySession = new Map<string, string>();
+  for (const l of linked) {
+    if (l.sessionId && l.leadId && !leadBySession.has(l.sessionId)) {
+      leadBySession.set(l.sessionId, l.leadId);
+    }
+  }
+
+  return rows.map((r) => {
+    const raw = r.rawPayload as Record<string, unknown>;
+    const fields = (raw?.fields ?? raw) as Record<string, unknown>;
+    const lastActive = r.lastHeartbeatAt ?? r.receivedAt;
+    return {
+      id: r.id,
+      sessionId: r.sessionId?.slice(0, 8) ?? "unknown",
+      status: r.status,
+      name: String(fields?.fullName ?? fields?.full_name ?? fields?.name ?? "") || null,
+      email: String(fields?.email ?? "") || null,
+      step: r.partialStep ?? "unknown",
+      lastActiveAt: new Date(lastActive).toISOString(),
+      device: deviceFromUserAgent(r.userAgent),
+      leadId: r.leadId ?? (r.sessionId ? leadBySession.get(r.sessionId) ?? null : null),
+    };
+  });
+}
+
 export async function getRecentCompletions() {
   const session = await auth();
   if (!session || !["ADMIN", "MANAGER"].includes(session.user.role))
     throw new Error("Unauthorized");
 
   return prisma.ingestionQueue.findMany({
-    where: { status: "completed", isPartial: false },
+    where: { status: "completed", isPartial: false, partialStep: null },
     orderBy: { processedAt: "desc" },
     take: 20,
     include: {

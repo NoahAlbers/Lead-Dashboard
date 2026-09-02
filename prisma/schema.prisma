@@ -48,6 +48,11 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  // Admin polish: sign-in tracking + invite flow
+  lastActiveAt    DateTime? @map("last_active_at")
+  inviteToken     String?   @unique @map("invite_token")
+  inviteExpiresAt DateTime? @map("invite_expires_at")
+
   assignedLeads  Lead[]          @relation("AssignedUser")
   leadEvents     LeadEvent[]
   leadNotes      LeadNote[]
@@ -125,6 +130,10 @@ model Lead {
 
   // Read/Unread
   isRead Boolean @default(false) @map("is_read")
+  // Lead was created from an abandoned (incomplete) form session
+  fromAbandonedForm Boolean @default(false) @map("from_abandoned_form")
+  // Experiment variants the prospect saw in the intake form ({experiment_key: variant_key})
+  formVariants      Json?   @map("form_variants")
 
   // CRM
   crmStatus     String? @map("crm_status")
@@ -167,6 +176,7 @@ model Lead {
   mergeHistoryDuplicate MergeHistory[] @relation("MergeDuplicate")
   outcome               LeadOutcome?
   ingestionQueue        IngestionQueue[]
+  recaptureEnrollment   RecaptureEnrollment?
 
   @@index([status])
   @@index([qualityTier])
@@ -533,6 +543,7 @@ model FollowUpReminder {
   note        String?
   completed   Boolean  @default(false)
   completedAt DateTime? @map("completed_at")
+  notifiedAt  DateTime? @map("notified_at")
 
   @@index([leadId])
   @@index([userId, completed])
@@ -574,6 +585,42 @@ model SystemConfig {
   @@map("system_config")
 }
 
+// Automated win-back sequence for leads created from abandoned form sessions.
+// One enrollment per lead; the recapture cron advances currentStep until a
+// stop condition fires (completion, reply/contact, unsubscribe, 3 sends).
+model RecaptureEnrollment {
+  id              String    @id @default(cuid())
+  leadId          String    @unique @map("lead_id")
+  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sessionId       String?   @map("session_id")
+  email           String
+  resumeToken     String    @unique @map("resume_token")
+  status          String    @default("active") // active, converted, stopped, exhausted
+  stopReason      String?   @map("stop_reason")
+  currentStep     Int       @default(0) @map("current_step") // emails sent so far
+  nextSendAt      DateTime? @map("next_send_at")
+  lastSentAt      DateTime? @map("last_sent_at")
+  abandonedStep   String?   @map("abandoned_step")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, nextSendAt])
+  @@index([email])
+  @@map("recapture_enrollments")
+}
+
+// Addresses we must never email again (unsubscribes, bounces, complaints).
+// Checked before every lead-facing automated send.
+model EmailSuppression {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  reason    String   // unsubscribed, bounced, complained, manual
+  source    String?  // what triggered it (confirmation, recapture, resend_webhook)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("email_suppressions")
+}
+
 // ===== Phase 2: Win/Loss Analysis =====
 
 model LeadOutcome {
@@ -584,7 +631,8 @@ model LeadOutcome {
   lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   outcomeType    String  @map("outcome_type") // won, lost, disqualified, referred_out
-  reason         String
+  reason         String   // kept for backward compat: first selected reason
+  reasons        String[] @default([]) // all selected reasons (multi-select)
   reasonDetail   String? @map("reason_detail") @db.Text
   competitor     String?
   couldHaveWon   String? @map("could_have_won") // yes, maybe, no
@@ -669,4 +717,72 @@ model ReconciliationLog {
   details             Json?
 
   @@map("reconciliation_logs")
+}
+
+
+// ===== Intake form flow tracking + experiments =====
+
+// One row per visitor session in the intake form (same session id the form
+// uses for partials/heartbeats). Updated by every event batch.
+model FormSession {
+  id            String   @id @default(cuid())
+  sessionId     String   @unique @map("session_id")
+  startedAt     DateTime @default(now()) @map("started_at")
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+  formVersion   String?  @map("form_version")
+  variantsJson  Json?    @map("variants_json")
+  utmSource     String?  @map("utm_source")
+  utmMedium     String?  @map("utm_medium")
+  utmCampaign   String?  @map("utm_campaign")
+  referrer      String?
+  sourcePage    String?  @map("source_page")
+  device        String?
+  timezone      String?
+  geoCity       String?  @map("geo_city")
+  geoRegion     String?  @map("geo_region")
+  geoCountry    String?  @map("geo_country")
+  ip            String?
+  furthestStep  String?  @map("furthest_step")
+  furthestIndex Int      @default(0) @map("furthest_index")
+  reachedContact Boolean @default(false) @map("reached_contact")
+  outcome       String   @default("open") // open | completed | abandoned
+  leadId        String?  @map("lead_id")
+  eventCount    Int      @default(0) @map("event_count")
+
+  @@index([startedAt])
+  @@index([outcome])
+  @@index([leadId])
+  @@map("form_sessions")
+}
+
+// Append-only stream of what happened in a form session.
+model FormEvent {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  at        DateTime
+  type      String   // view | step_enter | step_exit | pitch_view | submit | abandon | resume | validation_error
+  step      String?
+  elapsedMs Int?     @map("elapsed_ms")
+  metaJson  Json?    @map("meta_json")
+
+  @@index([sessionId, at])
+  @@index([type, at])
+  @@map("form_events")
+}
+
+// A/B experiments the form reads from /api/form/config.
+model Experiment {
+  id           String    @id @default(cuid())
+  key          String    @unique
+  name         String
+  hypothesis   String?
+  status       String    @default("draft") // draft | running | paused | ended
+  primaryGoal  String    @default("completed") @map("primary_goal") // completed | contact_reached | hot_lead
+  variantsJson Json      @map("variants_json") // [{key, weight, description, flags}]
+  startedAt    DateTime? @map("started_at")
+  endedAt      DateTime? @map("ended_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@map("experiments")
 }

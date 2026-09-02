@@ -425,6 +425,86 @@ export async function getDailyLeadCounts(range: DateRange | null) {
   return Object.entries(daily).map(([date, count]) => ({ date, count }));
 }
 
+/**
+ * Daily series for the Trends widget: new inquiries, abandons, and outcomes.
+ * The client aggregates into weekly or monthly buckets.
+ */
+export async function getTrendSeries(days: number = 180) {
+  const start = new Date(Date.now() - days * 86400000);
+  const [leads, outcomes] = await Promise.all([
+    prisma.lead.findMany({
+      where: { createdAt: { gte: start }, status: { notIn: ["ARCHIVED", "MERGED"] } },
+      select: { createdAt: true, fromAbandonedForm: true },
+    }),
+    prisma.leadOutcome.findMany({
+      where: { outcomeDate: { gte: start } },
+      select: { outcomeDate: true, outcomeType: true },
+    }),
+  ]);
+
+  const buckets: Record<string, { date: string; leads: number; abandoned: number; won: number; lost: number; referred: number }> = {};
+  const ensure = (d: Date) => {
+    const key = toEstDateString(d);
+    if (!buckets[key]) buckets[key] = { date: key, leads: 0, abandoned: 0, won: 0, lost: 0, referred: 0 };
+    return buckets[key];
+  };
+
+  for (const l of leads) {
+    const b = ensure(l.createdAt);
+    if (l.fromAbandonedForm) b.abandoned++;
+    else b.leads++;
+  }
+  for (const o of outcomes) {
+    const b = ensure(o.outcomeDate);
+    if (o.outcomeType === "won") b.won++;
+    else if (o.outcomeType === "lost") b.lost++;
+    else if (o.outcomeType === "referred_out") b.referred++;
+  }
+
+  return Object.values(buckets).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Abandoned-form funnel: where visitors drop off, and how recapture performs. */
+export async function getRecaptureFunnel() {
+  const [partialRows, enrollmentGroups, enrollments] = await Promise.all([
+    prisma.ingestionQueue.findMany({
+      where: { partialStep: { not: null } },
+      select: { partialStep: true },
+    }),
+    prisma.recaptureEnrollment.groupBy({ by: ["status"], _count: { id: true } }),
+    prisma.recaptureEnrollment.aggregate({ _sum: { currentStep: true }, _count: { id: true } }),
+  ]);
+
+  const stepCounts: Record<string, number> = {};
+  for (const r of partialRows) {
+    const raw = r.partialStep ?? "unknown";
+    const step = raw.replace(/^abandoned_at_/, "");
+    stepCounts[step] = (stepCounts[step] || 0) + 1;
+  }
+  const steps = Object.entries(stepCounts)
+    .map(([step, count]) => ({ step, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const byStatus: Record<string, number> = {};
+  for (const g of enrollmentGroups) byStatus[g.status] = g._count.id;
+  const total = enrollments._count.id;
+  const converted = byStatus.converted ?? 0;
+
+  return {
+    steps,
+    enrollments: {
+      total,
+      active: byStatus.active ?? 0,
+      converted,
+      stopped: byStatus.stopped ?? 0,
+      exhausted: byStatus.exhausted ?? 0,
+      recoveryRate: total > 0 ? Math.round((converted / total) * 100) : 0,
+      emailsSent: enrollments._sum.currentStep ?? 0,
+    },
+  };
+}
+
 // Multi-select fields that are stored in rawPayloadJson._rawIntakeForm as arrays
 const MULTI_SELECT_FIELDS = new Set([
   "states", "pmSoftware", "listingSites", "rentalTypes", "propertyTypes", "debtTypes",

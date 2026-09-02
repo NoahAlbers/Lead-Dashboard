@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { getLeads, getLeadStats, getWidgetMetrics } from "@/actions/lead.actions";
+import { getLeads, getLeadStats, getWidgetMetrics, getAbandonedLeadCount, getWidgetSeries } from "@/actions/lead.actions";
+import Link from "next/link";
 import { getSystemConfig } from "@/actions/config.actions";
 import { getStateClassificationMap } from "@/actions/state-classification.actions";
 import { getTierColorMap } from "@/actions/status.actions";
@@ -52,6 +53,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     debtType: params.debtType as string | undefined,
     businessType: params.businessType as string | undefined,
     software: params.software as string | undefined,
+    view: params.view as string | undefined,
     dateFrom: params.dateFrom as string | undefined,
     dateTo: params.dateTo as string | undefined,
     isRead: params.isRead as string | undefined,
@@ -68,12 +70,15 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     "a_leads", "b_leads", "c_leads", "poor_leads", "follow_up", "referred",
     "contacted", "disqualified", "duplicates", "avg_score", "good_states",
     "bad_states", "total_value", "total_units", "sla_breached", "sla_at_risk",
-    "aging_stale",
+    "aging_stale", "abandons_today", "abandons_week", "recapture_active",
+    "recapture_recovered_month", "live_sessions", "hot_week", "unassigned",
+    "won_month", "lost_month", "contact_rate_7d", "avg_response_hrs", "top_state_week",
+    "followups_due_today", "followups_overdue",
   ];
 
   const session = await auth();
 
-  const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners, agingThresholds, savedViews] = await Promise.all([
+  const [result, stats, emailTemplates, stateClassifications, widgetMetrics, tierColorMap, activePartners, agingThresholds, savedViews, widgetSeries] = await Promise.all([
     getLeads(filters),
     getLeadStats(),
     prisma.emailTemplate.findMany({
@@ -87,6 +92,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     getActivePartners(),
     getSystemConfig("aging_thresholds"),
     getSavedViews(),
+    getWidgetSeries().catch(() => ({} as Record<string, number[]>)),
   ]);
 
   const serializedLeads = result.leads.map((l) => ({
@@ -94,6 +100,7 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     lastActivityAt: l.lastActivityAt?.toISOString() ?? null,
+    nextFollowUpAt: l.nextFollowUpAt?.toISOString() ?? null,
   }));
 
   const serializedTemplates = emailTemplates.map((t) => ({
@@ -123,34 +130,73 @@ export default async function LeadsPage({ searchParams }: PageProps) {
     label: name,
   }));
 
-  return (
-    <div className="space-y-6">
-      <AutoRefreshBar variant="inbox" />
+  // Inquiries / Abandoned tabs — keep filters, drop page + view
+  const abandonedCount = await getAbandonedLeadCount();
+  const currentView = (params.view as string) === "abandoned" ? "abandoned" : "inquiries";
+  const tabQs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (k === "view" || k === "page" || v == null) continue;
+    tabQs.set(k, Array.isArray(v) ? v[0] : v);
+  }
+  const baseQs = tabQs.toString();
+  const inquiriesHref = `/leads${baseQs ? `?${baseQs}` : ""}`;
+  tabQs.set("view", "abandoned");
+  const abandonedHref = `/leads?${tabQs.toString()}`;
+  const tabCls = (active: boolean) =>
+    `inline-flex items-center gap-2 border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
+      active
+        ? "border-primary text-foreground"
+        : "border-transparent text-muted-foreground hover:text-foreground"
+    }`;
 
-      {/* Title + Quick Stats — configurable */}
+  return (
+    <div className="space-y-5">
+      {/* Title row: name + count + Start Working on the left; refresh controls + Customize on the right */}
       <InboxWidgets
         metrics={widgetMetrics}
+        series={widgetSeries}
         titleRow={
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-2xl font-bold">Lead Inbox</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <h1 className="text-2xl font-bold leading-tight">Lead Inbox</h1>
+              <p className="text-sm text-muted-foreground">
                 {result.total} total leads
               </p>
             </div>
             <StartWorkingButton />
           </div>
         }
+        controls={<AutoRefreshBar variant="inbox" />}
       />
 
-      {/* Pinned saved views */}
-      {session?.user?.id && (
-        <PinnedViewsBar
-          views={mappedViews}
-          currentUserId={session.user.id}
-          userRole={session.user.role}
-        />
-      )}
+      {/* Inquiries / Abandoned tabs, with pinned views on the same row */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b">
+        <div className="flex items-center gap-6">
+          <Link href={inquiriesHref} className={tabCls(currentView === "inquiries")}>
+            Inquiries
+          </Link>
+          <Link href={abandonedHref} className={tabCls(currentView === "abandoned")}>
+            Abandoned
+            {abandonedCount > 0 && (
+              <span
+                className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
+                title={`${abandonedCount} unhandled abandon${abandonedCount === 1 ? "" : "s"}`}
+              >
+                {abandonedCount}
+              </span>
+            )}
+          </Link>
+        </div>
+        {session?.user?.id && (
+          <div className="pb-1.5">
+            <PinnedViewsBar
+              views={mappedViews}
+              currentUserId={session.user.id}
+              userRole={session.user.role}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Lead Table with integrated filters */}
       <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Loading leads...</div>}>

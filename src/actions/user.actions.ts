@@ -7,7 +7,7 @@ import { hashSync } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
 export async function getUsers() {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     select: {
       id: true,
       name: true,
@@ -15,9 +15,16 @@ export async function getUsers() {
       role: true,
       active: true,
       createdAt: true,
+      lastActiveAt: true,
+      inviteExpiresAt: true,
     },
     orderBy: { name: "asc" },
   });
+  return users.map((u) => ({
+    ...u,
+    lastActiveAt: u.lastActiveAt?.toISOString() ?? null,
+    inviteExpiresAt: u.inviteExpiresAt?.toISOString() ?? null,
+  }));
 }
 
 export async function createUser(data: unknown) {

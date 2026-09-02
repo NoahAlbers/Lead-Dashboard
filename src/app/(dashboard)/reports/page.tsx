@@ -14,6 +14,8 @@ import { StatusBreakdown } from "@/components/reports/status-breakdown";
 import { GeoHeatmap } from "@/components/reports/geo-heatmap";
 import { ScoringInsights } from "@/components/reports/scoring-insights";
 import { AvgScoreChart } from "@/components/reports/avg-score-chart";
+import { TrendsWidget } from "@/components/reports/trends-widget";
+import { RecaptureFunnel } from "@/components/reports/recapture-funnel";
 import { RecentLeadsTable } from "@/components/reports/recent-leads-table";
 import { TopLeads } from "@/components/reports/top-leads";
 import { FollowUpTable } from "@/components/reports/follow-up-table";
@@ -52,7 +54,11 @@ import {
   getWinRateTrend as getWinRateTrendData,
   getCouldHaveWonBreakdown,
   getPartnerLeaderboard,
+  getTrendSeries,
+  getRecaptureFunnel,
 } from "@/actions/report.actions";
+import { getFormFunnel } from "@/actions/form-funnel.actions";
+import { FormFunnel } from "@/components/reports/form-funnel";
 
 function getRangeDate(range: TimeRange): { from: Date; to: Date } | null {
   const to = new Date();
@@ -73,6 +79,9 @@ const DEFAULT_LAYOUT = [
   { i: "geo", w: 1 },
   { i: "rules", w: 1 },
   { i: "avg-score", w: 1 },
+  { i: "trends", w: 2 },
+  { i: "recapture", w: 1 },
+  { i: "form-funnel", w: 1 },
   { i: "recent", w: 2 },
   { i: "top-leads", w: 1 },
   { i: "follow-ups", w: 1 },
@@ -112,7 +121,7 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     funnel, avgScoreTime, ruleStats, recentLeads, topLeads, followUps,
     responseTime, unitDist, rentDist, activity, sparkline, stateClassifications,
     tierColorMap, winLossStats, lossReasons, winRateTrend, couldHaveWon,
-    partnerLeaderboard,
+    partnerLeaderboard, trendSeries, recaptureFunnel, formFunnel,
   ] = await Promise.all([
     getReportKPIs(dateRange),
     getLeadVolumeByDay(dateRange),
@@ -137,6 +146,9 @@ export default async function ReportsPage({ searchParams }: PageProps) {
     getWinRateTrendData(dateRange),
     getCouldHaveWonBreakdown(dateRange),
     getPartnerLeaderboard(dateRange),
+    getTrendSeries(180),
+    getRecaptureFunnel(),
+    getFormFunnel(30).catch(() => ({ days: 30, sessions: 0, reachedContact: 0, completed: 0, abandoned: 0, steps: [], devices: [], pitchSkipRate: null })),
   ]);
 
   const ruleInsights = await generateScoringInsights(ruleStats);
@@ -197,6 +209,18 @@ export default async function ReportsPage({ searchParams }: PageProps) {
         </DashboardWidget>
         <DashboardWidget title="Avg Score Over Time" subtitle="Lead quality trend">
           <AvgScoreChart data={avgScoreTime} />
+        </DashboardWidget>
+
+        <DashboardWidget title="Trends Over Time" subtitle="Weekly and monthly patterns (last 180 days)">
+          <TrendsWidget data={trendSeries} />
+        </DashboardWidget>
+
+        <DashboardWidget title="Abandoned Form Recapture" subtitle="Drop-off points and win-back results">
+          <RecaptureFunnel data={recaptureFunnel} />
+        </DashboardWidget>
+
+        <DashboardWidget title="Intake Form Funnel" subtitle="Where visitors get to and where they leave (last 30 days)">
+          <FormFunnel data={formFunnel} />
         </DashboardWidget>
 
         {/* Tables */}

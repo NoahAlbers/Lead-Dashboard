@@ -22,8 +22,14 @@ export type EventType =
   | "leads_merged"
   | "merge_undone"
   | "follow_up_scheduled"
+  | "follow_up_cancelled"
+  | "follow_up_due"
+  | "onboarding_profile_created"
+  | "onboarding_milestone"
   | "follow_up_completed"
-  | "lead_data_received";
+  | "lead_data_received"
+  | "lead_edited"
+  | "onboarding_profile_created";
 
 export async function logEvent(
   leadId: string,

@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, ExternalLink, ChevronRight, ArrowLeft, Info, FileDown, Copy, Check } from "lucide-react";
+import { ExternalLink, ChevronRight, ArrowLeft, Info, FileDown, Copy, Check } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+} from "@/components/ui/dialog";
 import { logQuickAction } from "@/actions/note.actions";
 import { renderTemplate, type EmailLeadData } from "@/lib/email-template-render";
 import {
@@ -20,7 +28,7 @@ interface EmailTemplate {
   type: string;
   subjectTemplate: string;
   bodyTemplate: string;
-  emailType?: { color: string; isReferral: boolean } | null;
+  emailType?: { name?: string; color: string; isReferral: boolean } | null;
 }
 
 type LeadData = EmailLeadData;
@@ -29,6 +37,7 @@ interface ReferralPartner {
   id: string;
   name: string;
   contactName: string | null;
+  defaultEmailTemplate?: EmailTemplate | null;
   email: string | null;
   emails: string[] | null;
   phone: string | null;
@@ -144,6 +153,17 @@ function buildMailto(to: string, subject: string, body: string): string {
   return mailto;
 }
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** One badge per template: the category label when it has an email type, else the type slug capitalized. */
+function templateBadgeLabel(t: EmailTemplate): string {
+  const slug = capitalize(t.type.replace(/_/g, " "));
+  if (!t.emailType) return slug;
+  return t.emailType.name ?? (t.emailType.isReferral ? "Referral" : slug);
+}
+
 const TYPE_COLORS: Record<string, string> = {
   intro: "bg-blue-100 text-blue-700",
   referral: "bg-orange-100 text-orange-700",
@@ -179,7 +199,7 @@ export function EmailDialog({
     type: "referral",
     subjectTemplate: BUILTIN_REFERRAL_TEMPLATE.subjectTemplate,
     bodyTemplate: BUILTIN_REFERRAL_TEMPLATE.bodyTemplate,
-    emailType: { color: "#F59E0B", isReferral: true },
+    emailType: { name: "Referral", color: "#F59E0B", isReferral: true },
   };
   // Offer the built-in table template until one of the user's own referral
   // templates adopts {{lead_data_table}} — then theirs takes over and the
@@ -194,8 +214,10 @@ export function EmailDialog({
     if (!open || !autoReferralPartnerId) return;
     if (autoHandledRef.current === autoReferralPartnerId) return;
     const partner = referralPartners.find((p) => p.id === autoReferralPartnerId);
-    // Prefer a referral template with the formatted data table.
+    // The partner's own template wins; else prefer a referral template with
+    // the formatted data table.
     const tmpl =
+      partner?.defaultEmailTemplate ??
       allTemplates.find((t) => isReferralTemplate(t) && t.bodyTemplate.includes("{{lead_data_table}}")) ??
       allTemplates.find(isReferralTemplate);
     if (!partner || !tmpl) return;
@@ -208,8 +230,6 @@ export function EmailDialog({
   useEffect(() => {
     if (!open) autoHandledRef.current = null;
   }, [open]);
-
-  if (!open) return null;
 
   // Render any template (referral or not) to a formatted, paste-ready email.
   function composeEmail(template: EmailTemplate, partner: ReferralPartner | null) {
@@ -239,7 +259,9 @@ export function EmailDialog({
 
   function handleSelectPartner(partner: ReferralPartner) {
     setSelectedPartner(partner);
-    if (selectedTemplate) composeEmail(selectedTemplate, partner);
+    // A partner's own template wins over the generic referral template.
+    const tmpl = partner.defaultEmailTemplate ?? selectedTemplate;
+    if (tmpl) composeEmail(tmpl, partner);
   }
 
   function doCopy(): boolean {
@@ -313,30 +335,39 @@ export function EmailDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={resetAndClose}>
-      <div
-        className="bg-card rounded-xl border shadow-lg w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          {step !== "templates" && (
-            <button onClick={() => { setStep("templates"); setDetailPartner(null); }} className="rounded-md p-1 hover:bg-muted mr-2">
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-          )}
-          <h3 className="font-semibold flex-1">
-            {step === "templates" && `Email ${lead.fullName || lead.companyName || "Lead"}`}
-            {step === "partners" && "Select Referral Partner"}
-            {step === "partner-detail" && detailPartner?.name}
-            {step === "compose" && (selectedTemplate?.name ?? "Compose Email")}
-          </h3>
-          <button onClick={resetAndClose} className="rounded-md p-1 hover:bg-muted">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        // Keep the dialog up while the activity log write is in flight.
+        if (!v && !isPending) resetAndClose();
+      }}
+    >
+      <DialogContent size={step === "compose" ? "2xl" : "lg"} scrollable closeDisabled={isPending}>
+        <DialogHeader>
+          <div className="flex items-center gap-2 pr-6">
+            {step !== "templates" && (
+              <button
+                type="button"
+                onClick={() => { setStep("templates"); setDetailPartner(null); }}
+                className="rounded-md p-1 hover:bg-muted"
+                aria-label="Back to templates"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
+            <DialogTitle className="flex-1 truncate">
+              {step === "templates" && `Email ${lead.fullName || lead.companyName || "Lead"}`}
+              {step === "partners" && "Select referral partner"}
+              {step === "partner-detail" && detailPartner?.name}
+              {step === "compose" && (selectedTemplate?.name ?? "Compose email")}
+            </DialogTitle>
+          </div>
+          <DialogDescription className="sr-only">
+            Choose a template, pick a referral partner if needed, then copy the email into Outlook.
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="p-4 space-y-3">
+        <DialogBody className="space-y-3">
           {/* Step 1: Template Selection */}
           {step === "templates" && (
             <>
@@ -345,7 +376,6 @@ export function EmailDialog({
                   <p className="text-sm text-muted-foreground">Choose a template:</p>
                   {allTemplates.map((tmpl) => {
                     const typeColor = tmpl.emailType?.color;
-                    const isReferral = tmpl.emailType?.isReferral || tmpl.type === "referral";
                     const badgeStyle = typeColor
                       ? { backgroundColor: typeColor + "30", color: typeColor }
                       : undefined;
@@ -364,11 +394,8 @@ export function EmailDialog({
                             className={`rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}
                             style={badgeStyle}
                           >
-                            {tmpl.type.replace(/_/g, " ")}
+                            {templateBadgeLabel(tmpl)}
                           </span>
-                          {isReferral && (
-                            <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">Referral</span>
-                          )}
                         </div>
                         <p className="text-xs text-muted-foreground truncate">
                           Subject: {tmpl.subjectTemplate}
@@ -389,7 +416,7 @@ export function EmailDialog({
                 className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed p-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-50"
               >
                 <ExternalLink className="h-4 w-4" />
-                Email Directly (no template)
+                Email directly (no template)
               </button>
             </>
           )}
@@ -460,10 +487,10 @@ export function EmailDialog({
                 {detailPartner.website && <div><p className="text-muted-foreground text-xs">Website</p><a href={detailPartner.website} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline text-sm">{detailPartner.website}</a></div>}
               </div>
               {detailPartner.emails && detailPartner.emails.length > 1 && (
-                <div><p className="text-muted-foreground text-xs mb-1">All Emails</p>{detailPartner.emails.map((e, i) => <p key={i} className="text-sm">{e}</p>)}</div>
+                <div><p className="text-muted-foreground text-xs mb-1">All emails</p>{detailPartner.emails.map((e, i) => <p key={i} className="text-sm">{e}</p>)}</div>
               )}
               {detailPartner.statesServed && detailPartner.statesServed.length > 0 && (
-                <div><p className="text-muted-foreground text-xs mb-1">States Served</p><div className="flex flex-wrap gap-1">{detailPartner.statesServed.map((s) => <span key={s} className="rounded bg-muted px-1.5 py-0.5 text-xs">{s}</span>)}</div></div>
+                <div><p className="text-muted-foreground text-xs mb-1">States served</p><div className="flex flex-wrap gap-1">{detailPartner.statesServed.map((s) => <span key={s} className="rounded bg-muted px-1.5 py-0.5 text-xs">{s}</span>)}</div></div>
               )}
               {detailPartner.industries && detailPartner.industries.length > 0 && (
                 <div><p className="text-muted-foreground text-xs mb-1">Industries</p><p className="text-sm">{detailPartner.industries.join(", ")}</p></div>
@@ -471,11 +498,11 @@ export function EmailDialog({
               {/* Financial Terms */}
               {(detailPartner.contingencyRate || detailPartner.upfrontCosts || detailPartner.paymentTerms || detailPartner.commissionStructure) && (
                 <div>
-                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Financial Terms</p>
+                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Financial terms</p>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {detailPartner.contingencyRate && <div><p className="text-muted-foreground text-xs">Contingency Rate</p><p className="font-medium">{detailPartner.contingencyRate}</p></div>}
-                    {detailPartner.upfrontCosts && <div><p className="text-muted-foreground text-xs">Upfront Costs</p><p className="font-medium">{detailPartner.upfrontCosts}</p></div>}
-                    {detailPartner.paymentTerms && <div><p className="text-muted-foreground text-xs">Payment Terms</p><p className="font-medium">{detailPartner.paymentTerms}</p></div>}
+                    {detailPartner.contingencyRate && <div><p className="text-muted-foreground text-xs">Contingency rate</p><p className="font-medium">{detailPartner.contingencyRate}</p></div>}
+                    {detailPartner.upfrontCosts && <div><p className="text-muted-foreground text-xs">Upfront costs</p><p className="font-medium">{detailPartner.upfrontCosts}</p></div>}
+                    {detailPartner.paymentTerms && <div><p className="text-muted-foreground text-xs">Payment terms</p><p className="font-medium">{detailPartner.paymentTerms}</p></div>}
                     {detailPartner.commissionStructure && <div><p className="text-muted-foreground text-xs">Commission</p><p className="font-medium">{detailPartner.commissionStructure}</p></div>}
                   </div>
                 </div>
@@ -483,22 +510,22 @@ export function EmailDialog({
               {/* Account Requirements */}
               {(detailPartner.minimumAccounts || detailPartner.minimumTotalBalance || detailPartner.avgAccountAgePref || detailPartner.accountTypesAccepted) && (
                 <div>
-                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Account Requirements</p>
+                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Account requirements</p>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {detailPartner.minimumAccounts != null && <div><p className="text-muted-foreground text-xs">Min Accounts</p><p className="font-medium">{detailPartner.minimumAccounts}</p></div>}
-                    {detailPartner.minimumTotalBalance != null && <div><p className="text-muted-foreground text-xs">Min Total Balance</p><p className="font-medium">${detailPartner.minimumTotalBalance.toLocaleString()}</p></div>}
-                    {detailPartner.avgAccountAgePref && <div><p className="text-muted-foreground text-xs">Preferred Age</p><p className="font-medium">{detailPartner.avgAccountAgePref}</p></div>}
-                    {detailPartner.accountTypesAccepted && <div><p className="text-muted-foreground text-xs">Types Accepted</p><p className="font-medium">{detailPartner.accountTypesAccepted}</p></div>}
+                    {detailPartner.minimumAccounts != null && <div><p className="text-muted-foreground text-xs">Min accounts</p><p className="font-medium">{detailPartner.minimumAccounts}</p></div>}
+                    {detailPartner.minimumTotalBalance != null && <div><p className="text-muted-foreground text-xs">Min total balance</p><p className="font-medium">${detailPartner.minimumTotalBalance.toLocaleString()}</p></div>}
+                    {detailPartner.avgAccountAgePref && <div><p className="text-muted-foreground text-xs">Preferred age</p><p className="font-medium">{detailPartner.avgAccountAgePref}</p></div>}
+                    {detailPartner.accountTypesAccepted && <div><p className="text-muted-foreground text-xs">Types accepted</p><p className="font-medium">{detailPartner.accountTypesAccepted}</p></div>}
                   </div>
                 </div>
               )}
               {/* Service Details */}
               {(detailPartner.collectionMethods || detailPartner.insuranceInfo || detailPartner.yearsInBusiness || detailPartner.complianceNotes) && (
                 <div>
-                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Service Details</p>
+                  <p className="text-muted-foreground text-xs font-semibold mb-1 uppercase tracking-wider">Service details</p>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {detailPartner.collectionMethods && <div><p className="text-muted-foreground text-xs">Collection Methods</p><p className="font-medium">{detailPartner.collectionMethods}</p></div>}
-                    {detailPartner.yearsInBusiness != null && <div><p className="text-muted-foreground text-xs">Years in Business</p><p className="font-medium">{detailPartner.yearsInBusiness}</p></div>}
+                    {detailPartner.collectionMethods && <div><p className="text-muted-foreground text-xs">Collection methods</p><p className="font-medium">{detailPartner.collectionMethods}</p></div>}
+                    {detailPartner.yearsInBusiness != null && <div><p className="text-muted-foreground text-xs">Years in business</p><p className="font-medium">{detailPartner.yearsInBusiness}</p></div>}
                     {detailPartner.insuranceInfo && <div className="col-span-2"><p className="text-muted-foreground text-xs">Insurance</p><p className="font-medium">{detailPartner.insuranceInfo}</p></div>}
                     {detailPartner.complianceNotes && <div className="col-span-2"><p className="text-muted-foreground text-xs">Compliance</p><p className="font-medium">{detailPartner.complianceNotes}</p></div>}
                   </div>
@@ -562,16 +589,16 @@ export function EmailDialog({
               </div>
               <p className="text-xs text-muted-foreground">
                 {composed
-                  ? "Email copied. In the Outlook message that opened, click in the body and paste (Ctrl+V) — the formatting and table come through."
-                  : "'Copy email & open Outlook' copies the formatted email and opens a new message — paste (Ctrl+V) into the body. 'Download .eml' opens a ready-made draft in classic Outlook desktop."}
+                  ? "Email copied. In the Outlook message that opened, click in the body and paste (Ctrl+V). The formatting and table come through."
+                  : "'Copy email & open Outlook' copies the formatted email and opens a new message. Paste (Ctrl+V) into the body. 'Download .eml' opens a ready-made draft in classic Outlook desktop."}
                 {composed && (
                   <button onClick={resetAndClose} className="ml-1 text-primary hover:underline">Done</button>
                 )}
               </p>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

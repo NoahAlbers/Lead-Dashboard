@@ -5,6 +5,7 @@ import { format, toZonedTime } from "date-fns-tz";
 import { addNote } from "@/actions/note.actions";
 import { toast } from "@/components/ui/use-toast";
 import { SubmissionDataTable } from "./submission-data-table";
+import { eventLabels, formatEventDetail } from "@/lib/event-detail";
 
 interface TimelineEvent {
   id: string;
@@ -21,53 +22,54 @@ interface NoteItem {
   user: { id: string; name: string };
 }
 
-const eventLabels: Record<string, string> = {
-  lead_created: "Lead created",
-  score_calculated: "Score calculated",
-  status_changed: "Status changed",
-  note_added: "Note added",
-  email_action_opened: "Email action opened",
-  call_action_opened: "Call action opened",
-  referral_action_opened: "Referral action opened",
-  referral_marked_sent: "Referral marked as sent",
-  crm_exported: "Exported for CRM",
-  crm_imported: "Imported to CRM",
-  duplicate_flagged: "Duplicate flagged",
-  assigned_user_changed: "Assignment changed",
-  quick_log: "Quick log action",
-  research_completed: "Research completed",
-  lead_data_received: "Submission Data Received",
-};
-
-function formatEventDetail(event: TimelineEvent): string | null {
-  const data = event.eventDataJson as Record<string, unknown> | null;
-  if (!data) return null;
-
-  if (event.eventType === "status_changed") {
-    return `${String(data.from ?? "").replace(/_/g, " ")} → ${String(data.to ?? "").replace(/_/g, " ")}`;
-  }
-  if (event.eventType === "score_calculated") {
-    return `Score: ${data.score} (${data.qualityTier} Lead)`;
-  }
-  if (event.eventType === "quick_log") {
-    return String(data.actionType ?? "").replace(/_/g, " ");
-  }
-  if (event.eventType === "duplicate_flagged" && Array.isArray(data.matches)) {
-    return `${data.matches.length} potential duplicate(s) found`;
-  }
-  if (event.eventType === "research_completed") {
-    const d = data as { recommendation?: string; sources?: string[] };
-    return d.recommendation ? `Recommendation: ${d.recommendation}` : null;
-  }
-  return null;
-}
-
 const EST_TZ = "America/New_York";
 
 function formatEST(date: Date): string {
   const zoned = toZonedTime(date, EST_TZ);
   return format(zoned, "MMM d, yyyy h:mm a", { timeZone: EST_TZ }) + " EST";
 }
+
+// Preset filter categories. "Prospect" is anything the lead themselves did.
+type FilterKey = "all" | "notes" | "emails" | "prospect" | "status" | "team" | "system";
+
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "notes", label: "Notes" },
+  { key: "emails", label: "Emails" },
+  { key: "prospect", label: "Prospect" },
+  { key: "status", label: "Status" },
+  { key: "team", label: "Team" },
+  { key: "system", label: "System" },
+];
+
+const PROSPECT_EVENTS = new Set([
+  "lead_data_received",
+  "email_reply_received",
+  "recapture_link_opened",
+  "edit_link_opened",
+  "prospect_updated_details",
+  "prospect_comment",
+  "onboarding_milestone",
+]);
+const SYSTEM_EVENTS = new Set(["lead_created", "score_calculated", "duplicate_flagged"]);
+
+function eventCategory(eventType: string): Exclude<FilterKey, "all" | "notes"> {
+  if (eventType === "note_added") return "team";
+  if (eventType.includes("email")) return "emails";
+  if (PROSPECT_EVENTS.has(eventType)) return "prospect";
+  if (eventType === "status_changed") return "status";
+  if (SYSTEM_EVENTS.has(eventType)) return "system";
+  return "team";
+}
+
+const CATEGORY_DOT: Record<string, string> = {
+  notes: "bg-purple-400",
+  emails: "bg-blue-400",
+  prospect: "bg-emerald-500",
+  status: "bg-amber-400",
+  team: "bg-slate-400",
+  system: "bg-muted-foreground/40",
+};
 
 interface ActivityTimelineProps {
   events: TimelineEvent[];
@@ -78,13 +80,35 @@ interface ActivityTimelineProps {
 
 export function ActivityTimeline({ events, notes = [], leadId, stateClassMap }: ActivityTimelineProps) {
   const [noteText, setNoteText] = useState("");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [isPending, startTransition] = useTransition();
 
   // Merge events and notes into a single timeline, newest first
-  const merged = [
-    ...events.map((e) => ({ type: "event" as const, id: e.id, date: new Date(e.createdAt), data: e })),
-    ...notes.map((n) => ({ type: "note" as const, id: n.id, date: new Date(n.createdAt), data: n })),
+  // note_added events are bookkeeping; the note itself is rendered below.
+  const visibleEvents = events.filter((e) => e.eventType !== "note_added");
+  const allItems = [
+    ...visibleEvents.map((e) => ({
+      type: "event" as const,
+      id: e.id,
+      date: new Date(e.createdAt),
+      category: eventCategory(e.eventType),
+      data: e,
+    })),
+    ...notes.map((n) => ({
+      type: "note" as const,
+      id: n.id,
+      date: new Date(n.createdAt),
+      category: "notes" as const,
+      data: n,
+    })),
   ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  const counts: Record<string, number> = { all: allItems.length };
+  for (const item of allItems) {
+    counts[item.category] = (counts[item.category] || 0) + 1;
+  }
+
+  const merged = filter === "all" ? allItems : allItems.filter((i) => i.category === filter);
 
   function handleAddNote() {
     if (!noteText.trim() || !leadId) return;
@@ -119,10 +143,33 @@ export function ActivityTimeline({ events, notes = [], leadId, stateClassMap }: 
         </div>
       )}
 
+      {/* Filter chips */}
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {FILTERS.map((f) => {
+          const count = counts[f.key] ?? 0;
+          if (f.key !== "all" && count === 0) return null;
+          const active = filter === f.key;
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                active
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {f.label}
+              <span className={`ml-1 ${active ? "text-primary/70" : "text-muted-foreground/60"}`}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Scrollable timeline */}
-      <div className="max-h-[500px] overflow-y-auto">
+      <div className="max-h-[70vh] overflow-y-auto">
         {merged.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">No activity yet</p>
+          <p className="text-sm text-muted-foreground py-4">No activity in this view</p>
         ) : (
           <div className="space-y-0">
             {merged.map((item) => {
@@ -151,7 +198,7 @@ export function ActivityTimeline({ events, notes = [], leadId, stateClassMap }: 
               return (
                 <div key={`evt-${item.id}`} className="flex gap-3 text-sm">
                   <div className="flex flex-col items-center">
-                    <div className="h-2 w-2 rounded-full bg-muted-foreground/40 mt-1.5" />
+                    <div className={`h-2 w-2 rounded-full mt-1.5 ${CATEGORY_DOT[item.category] ?? "bg-muted-foreground/40"}`} />
                     <div className="w-px flex-1 bg-border" />
                   </div>
                   <div className="pb-3">

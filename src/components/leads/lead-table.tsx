@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
-import { useTransition, useState, useEffect, useRef, useCallback, useMemo, cloneElement, isValidElement } from "react";
+import { useTransition, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -27,7 +27,7 @@ import {
   Star,
   XCircle,
   Archive,
-  Settings2,
+  MoreHorizontal,
   X,
   GripVertical,
   EyeOff,
@@ -88,6 +88,7 @@ interface LeadRow {
   recommendedAction: string | null;
   status: LeadStatus;
   lastActivityAt: string | null;
+  nextFollowUpAt?: string | null;
   isRead: boolean;
   assignedUser: { id: string; name: string } | null;
   recommendedReferral: { id: string; name: string } | null;
@@ -161,24 +162,33 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { id: "urgency", label: "Urgency", sortField: "urgency" },
   { id: "businessType", label: "Business Type", sortField: "businessType" },
   { id: "lastActivityAt", label: "Last Activity", sortField: "lastActivityAt" },
+  { id: "nextFollowUpAt", label: "Follow-Up", sortField: "nextFollowUpAt" },
   { id: "sla", label: "SLA", sortField: "slaStatus" },
   { id: "actions", label: "Quick Actions" },
 ];
 
 const DEFAULT_VISIBLE = new Set([
-  "readIndicator", "createdAt", "age", "companyName", "fullName", "email", "state",
-  "score", "qualityTier", "status", "sla", "actions",
+  "readIndicator", "createdAt", "age", "companyName", "accountVolume", "fullName", "email", "state",
+  "score", "status", "actions",
 ]);
-const DEFAULT_ORDER = ALL_COLUMNS.map((c) => c.id);
+// Default order: the visible set in reading order, then everything else (hidden)
+const DEFAULT_ORDER = [
+  "readIndicator", "createdAt", "age", "companyName", "accountVolume", "fullName", "email", "state",
+  "score", "status", "actions",
+  ...ALL_COLUMNS.map((c) => c.id).filter((id) => ![
+    "readIndicator", "createdAt", "age", "companyName", "accountVolume", "fullName", "email", "state",
+    "score", "status", "actions",
+  ].includes(id)),
+];
 
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
-  readIndicator: 40, createdAt: 140, age: 60, companyName: 200, fullName: 140,
+  readIndicator: 40, createdAt: 160, age: 92, companyName: 200, fullName: 140,
   email: 200, phone: 120, state: 80, score: 70, qualityTier: 70,
   status: 110, recommendedAction: 120, industry: 120, debtType: 120,
-  accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, sla: 110, actions: 220,
+  accountVolume: 80, urgency: 80, businessType: 120, lastActivityAt: 100, nextFollowUpAt: 120, sla: 110, actions: 220,
 };
 
-const STORAGE_KEY = "lead-table-config";
+const STORAGE_KEY = "lead-table-config-v2";
 
 function loadConfig(): { visible: Set<string>; order: string[]; widths: Record<string, number> } {
   if (typeof window === "undefined") return { visible: DEFAULT_VISIBLE, order: DEFAULT_ORDER, widths: DEFAULT_COLUMN_WIDTHS };
@@ -219,6 +229,7 @@ function SortableColumnRow({ id, label, checked, onToggle }: { id: string; label
 // --- Quick Actions ---
 function RowQuickActions({ lead, onEmailClick, onReferClick }: { lead: LeadRow; onEmailClick: (lead: LeadRow) => void; onReferClick: (lead: LeadRow) => void }) {
   const [isPending, startTransition] = useTransition();
+  const [moreOpen, setMoreOpen] = useState(false);
   const { bind, tipEl } = useActionTip();
 
   function handleStatusChange(e: React.MouseEvent, newStatus: LeadStatus, label: string) {
@@ -254,11 +265,34 @@ function RowQuickActions({ lead, onEmailClick, onReferClick }: { lead: LeadRow; 
       <button onClick={handleEmail} disabled={!lead.email || isPending} className={`${b} hover:bg-blue-50 text-blue-500`} {...bind("Email")}><Mail className="h-4 w-4" /></button>
       <button onClick={handleCall} disabled={!lead.phone || isPending} className={`${b} hover:bg-sky-50 text-sky-500`} {...bind("Call")}><Phone className="h-4 w-4" /></button>
       <button onClick={(e) => handleStatusChange(e, "CONTACTED", "Contacted")} disabled={isPending} className={`${b} hover:bg-green-50 text-green-600`} {...bind("Mark Contacted")}><CheckCircle className="h-4 w-4" /></button>
-      <button onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED", "Follow-Up")} disabled={isPending} className={`${b} hover:bg-amber-50 text-amber-600`} {...bind("Follow-Up Needed")}><Clock className="h-4 w-4" /></button>
-      <button onClick={(e) => handleStatusChange(e, "QUALIFIED", "Qualified")} disabled={isPending} className={`${b} hover:bg-yellow-50 text-yellow-600`} {...bind("Mark Qualified")}><Star className="h-4 w-4" /></button>
       <button onClick={(e) => { e.stopPropagation(); onReferClick(lead); }} disabled={isPending} className={`${b} hover:bg-purple-50 text-purple-600`} {...bind("Refer Out")}><Share2 className="h-4 w-4" /></button>
-      <button onClick={(e) => handleStatusChange(e, "DISQUALIFIED", "Disqualified")} disabled={isPending} className={`${b} hover:bg-red-50 text-red-500`} {...bind("Disqualify")}><XCircle className="h-4 w-4" /></button>
-      <button onClick={handleArchive} disabled={isPending} className={`${b} hover:bg-muted text-muted-foreground`} {...bind("Archive")}><Archive className="h-4 w-4" /></button>
+      {/* Secondary actions: inline on wide screens, behind a "more" menu below xl */}
+      <span className="hidden xl:contents">
+        <button onClick={(e) => handleStatusChange(e, "FOLLOW_UP_NEEDED", "Follow-Up")} disabled={isPending} className={`${b} hover:bg-amber-50 text-amber-600`} {...bind("Follow-Up Needed")}><Clock className="h-4 w-4" /></button>
+        <button onClick={(e) => handleStatusChange(e, "QUALIFIED", "Qualified")} disabled={isPending} className={`${b} hover:bg-yellow-50 text-yellow-600`} {...bind("Mark Qualified")}><Star className="h-4 w-4" /></button>
+        <button onClick={(e) => handleStatusChange(e, "DISQUALIFIED", "Disqualified")} disabled={isPending} className={`${b} hover:bg-red-50 text-red-500`} {...bind("Disqualify")}><XCircle className="h-4 w-4" /></button>
+        <button onClick={handleArchive} disabled={isPending} className={`${b} hover:bg-muted text-muted-foreground`} {...bind("Archive")}><Archive className="h-4 w-4" /></button>
+      </span>
+      <span className="relative xl:hidden" onClick={(e) => e.stopPropagation()}>
+        <button onClick={() => setMoreOpen((o) => !o)} disabled={isPending} className={`${b} hover:bg-muted text-muted-foreground`} title="More actions"><MoreHorizontal className="h-4 w-4" /></button>
+        {moreOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} />
+            <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-md border bg-card p-1 shadow-lg text-left">
+              {[
+                { label: "Follow-Up Needed", icon: <Clock className="h-3.5 w-3.5 text-amber-600" />, run: (e: React.MouseEvent) => handleStatusChange(e, "FOLLOW_UP_NEEDED", "Follow-Up") },
+                { label: "Mark Qualified", icon: <Star className="h-3.5 w-3.5 text-yellow-600" />, run: (e: React.MouseEvent) => handleStatusChange(e, "QUALIFIED", "Qualified") },
+                { label: "Disqualify", icon: <XCircle className="h-3.5 w-3.5 text-red-500" />, run: (e: React.MouseEvent) => handleStatusChange(e, "DISQUALIFIED", "Disqualified") },
+                { label: "Archive", icon: <Archive className="h-3.5 w-3.5 text-muted-foreground" />, run: handleArchive },
+              ].map((item) => (
+                <button key={item.label} onClick={(e) => { setMoreOpen(false); item.run(e); }} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted">
+                  {item.icon}{item.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </span>
       <span onClick={(e) => e.stopPropagation()}>
         <AssignDropdown leadId={lead.id} currentAssigneeId={lead.assignedUser?.id} leadLabel={lead.companyName || lead.fullName || "Lead"} compact />
       </span>
@@ -294,6 +328,14 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       sessionStorage.setItem("leadsInboxQuery", searchParams.toString());
     } catch {}
   }, [searchParams]);
+
+  // The Columns button lives in the filter bar (a separate component tree);
+  // it signals us with a custom event, same pattern as focus-search.
+  useEffect(() => {
+    const open = () => setShowPicker(true);
+    window.addEventListener("open-column-picker", open);
+    return () => window.removeEventListener("open-column-picker", open);
+  }, []);
 
   // Refer Out from the row quick actions: record the outcome, set the status,
   // then hand off to the email dialog pre-targeted at the chosen partner.
@@ -451,11 +493,13 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       case "createdAt":
         return format(toZonedTime(new Date(row.createdAt), "America/New_York"), "MM/dd/yy h:mm a", { timeZone: "America/New_York" });
       case "companyName":
-        return <Link href={`/leads/${row.id}`} className="font-medium text-primary hover:underline" onClick={(e) => e.stopPropagation()}>{row.companyName || "—"}</Link>;
+        return row.companyName
+          ? <Link href={`/leads/${row.id}`} className="font-medium text-primary hover:underline" onClick={(e) => e.stopPropagation()}>{row.companyName}</Link>
+          : <Link href={`/leads/${row.id}`} className="text-xs italic text-muted-foreground hover:underline" onClick={(e) => e.stopPropagation()} title="No company given; likely an individual owner">Individual</Link>;
       case "fullName":
         return row.fullName || "—";
       case "email":
-        return <span className="text-xs">{row.email || "—"}</span>;
+        return <span className="text-xs" title={row.email ?? undefined}>{row.email || "—"}</span>;
       case "phone":
         return <span className="text-xs">{row.phone || "—"}</span>;
       case "state": {
@@ -465,7 +509,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
         if (statesArr.length === 1) {
           const cls = stateClassifications[statesArr[0].toUpperCase()] ?? "unknown";
           const colors = getStateColor(cls);
-          return <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colors.bg} ${colors.text}`}>{statesArr[0]}</span>;
+          return <span title={statesArr[0]} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colors.bg} ${colors.text}`}>{statesArr[0]}</span>;
         }
         return (
           <div className="flex flex-wrap gap-0.5">
@@ -498,6 +542,12 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
         return <span className="text-xs">{row.businessType || "—"}</span>;
       case "lastActivityAt":
         return row.lastActivityAt ? format(toZonedTime(new Date(row.lastActivityAt), "America/New_York"), "MM/dd/yy", { timeZone: "America/New_York" }) : "—";
+      case "nextFollowUpAt": {
+        if (!row.nextFollowUpAt) return "—";
+        const d = new Date(row.nextFollowUpAt);
+        const overdue = d.getTime() < Date.now();
+        return <span className={`text-xs ${overdue ? "font-medium text-red-600" : ""}`}>{format(toZonedTime(d, "America/New_York"), "MM/dd h:mm a", { timeZone: "America/New_York" })}</span>;
+      }
       case "sla":
         return <SlaBadge slaStatus={row.slaStatus} remainingMinutes={row.slaRemainingMinutes ?? undefined} compact />;
       case "age":
@@ -542,33 +592,12 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   }
 
   return (
-    <div className="space-y-4">
+    <div className="w-full min-w-0 max-w-full space-y-4">
       {/* Bulk Action Bar */}
       <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} userRole={userRole} />
 
-      {/* Filter bar (Columns button injected into its control row) */}
-      {(() => {
-        const columnsButton = (
-          <button
-            onClick={() => setShowPicker(true)}
-            className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-            Columns
-          </button>
-        );
-        return isValidElement(filterBar)
-          ? cloneElement(
-              filterBar as React.ReactElement<{ trailing?: React.ReactNode }>,
-              { trailing: columnsButton }
-            )
-          : (
-            <div className="flex flex-wrap items-center gap-3">
-              {filterBar}
-              {columnsButton}
-            </div>
-          );
-      })()}
+      {/* Filter bar (its Columns button opens our picker via a custom event) */}
+      {filterBar}
 
       {/* Column Picker Modal */}
       {showPicker && (
@@ -655,8 +684,8 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       )}
 
       {/* Table */}
-      <div className="rounded-lg border bg-card">
-        <div className="overflow-x-auto">
+      <div className="w-full min-w-0 max-w-full rounded-lg border bg-card">
+        <div className="w-full overflow-x-auto">
           <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: totalTableWidth }}>
             <thead>
               <tr className="border-b bg-muted/50">

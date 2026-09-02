@@ -122,9 +122,13 @@ export function SubmissionDataTable({ data, stateClassMap }: SubmissionDataTable
   const comments = findField(fields, "comments", "notes_from_form", "notesFromForm");
 
   const ipAddress = findField(metadata, "ip_address", "location") ?? findField(fields, "location");
-  const userAgent = findField(metadata, "user_agent") ?? findField(fields, "device");
+  const deviceFriendly = findField(metadata, "device") ?? findField(fields, "device");
+  const userAgent = findField(metadata, "user_agent");
+  const timezone = findField(metadata, "timezone");
   const referrer = findField(metadata, "referrer");
-  const claritySessionId = findField(metadata, "claritySessionId", "clarity_session_id") ?? findField(fields, "claritySessionId", "clarity_session_id");
+  const claritySessionId =
+    findField(metadata, "claritySessionId", "clarity_session_id", "clarity_url") ??
+    findField(fields, "claritySessionId", "clarity_session_id");
   const submittedAt = findField(metadata, "created_at", "submitted_at", "form_completed_at") ?? findField(fields, "submittedAt", "submitted_at", "form_completed_at");
 
   const rows: RowDef[] = [];
@@ -175,7 +179,9 @@ export function SubmissionDataTable({ data, stateClassMap }: SubmissionDataTable
     ),
   });
   if (ipAddress) rows.push({ label: "Location / IP", value: String(ipAddress) });
-  if (userAgent) rows.push({ label: "Device", value: parseUA(String(userAgent)) });
+  if (deviceFriendly) rows.push({ label: "Device", value: String(deviceFriendly) });
+  else if (userAgent) rows.push({ label: "Device", value: parseUA(String(userAgent)) });
+  if (timezone) rows.push({ label: "Timezone", value: String(timezone) });
   if (referrer != null) {
     const ref = String(referrer);
     rows.push({

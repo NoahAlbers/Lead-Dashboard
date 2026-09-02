@@ -6,9 +6,10 @@ import { logEvent } from "@/services/activity-log.service";
 import { scoreAndUpdateLead } from "@/services/scoring.service";
 import { Prisma, type LeadStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
-import { estStartOfDay, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
+import { estStartOfDay, estStartOfDayDaysAgo, estDateStringToUtcStart, estDateStringToUtcEnd } from "@/lib/timezone";
 import { hasAnyStates, buildStateClassWhere, numericRange } from "@/lib/lead-state-filter";
 import { getStateClassifications } from "@/actions/state-classification.actions";
+import { stopRecaptureForLead } from "@/services/recapture.service";
 
 export async function getLeads(params: {
   search?: string;
@@ -30,6 +31,8 @@ export async function getLeads(params: {
   debtType?: string;
   businessType?: string;
   software?: string;
+  /** "abandoned" shows abandoned-form leads; default shows completed inquiries. */
+  view?: string;
   dateFrom?: string;
   dateTo?: string;
   isRead?: string;
@@ -140,6 +143,9 @@ export async function getLeads(params: {
   if (rentR) where.avgRentNum = rentR;
 
   // Free-text categorical filters.
+  // Abandoned-form leads live in their own tab; the main inbox excludes them.
+  where.fromAbandonedForm = params.view === "abandoned";
+
   if (params.industry) where.industry = { contains: params.industry, mode: "insensitive" };
   if (params.debtType) where.debtType = { contains: params.debtType, mode: "insensitive" };
   if (params.businessType) where.businessType = { contains: params.businessType, mode: "insensitive" };
@@ -163,7 +169,8 @@ export async function getLeads(params: {
   }
 
   if (params.ageMin && params.ageMin > 0) {
-    const cutoff = new Date(Date.now() - params.ageMin * 86400000);
+    // "At least N days old" by Eastern calendar day: N=1 means created before today.
+    const cutoff = estStartOfDayDaysAgo(params.ageMin - 1);
     where.createdAt = {
       ...(where.createdAt as Record<string, Date> | undefined),
       lte: cutoff,
@@ -182,6 +189,7 @@ export async function getLeads(params: {
     "qualityTier",
     "recommendedAction",
     "lastActivityAt",
+    "nextFollowUpAt",
     "balanceAmount",
     "industry",
     "debtType",
@@ -272,6 +280,11 @@ export async function updateLeadStatus(leadId: string, newStatus: LeadStatus) {
     where: { id: leadId },
     data: updateData,
   });
+
+  // Any real status movement means the team is on it; stop chasing by email.
+  if (!["NEW", "REVIEWED"].includes(newStatus)) {
+    stopRecaptureForLead(leadId, `status_${newStatus.toLowerCase()}`).catch(() => {});
+  }
 
   if (newStatus === "CONTACTED" && !lead.firstContactAt) {
     await logEvent(leadId, "first_contact_recorded", {}, session.user.id);
@@ -582,7 +595,62 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
     },
     sla_breached: () => prisma.lead.count({ where: { slaStatus: { in: ["breached", "escalated"] }, ...notArchived } }),
     sla_at_risk: () => prisma.lead.count({ where: { slaStatus: { in: ["warning", "breached", "escalated"] }, ...notArchived } }),
-    aging_stale: () => prisma.lead.count({ where: { createdAt: { lte: new Date(Date.now() - 7 * 86400000) }, ...notArchived } }),
+    aging_stale: () => prisma.lead.count({ where: { createdAt: { lt: estStartOfDayDaysAgo(6) }, ...notArchived } }),
+    // Follow-ups
+    followups_due_today: () =>
+      prisma.followUpReminder.count({ where: { completed: false, reminderAt: { gte: today, lt: estStartOfDayDaysAgo(-1) } } }),
+    followups_overdue: () =>
+      prisma.followUpReminder.count({ where: { completed: false, reminderAt: { lt: today } } }),
+    // Abandoned forms + recapture
+    abandons_today: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: today } } }),
+    abandons_week: () => prisma.lead.count({ where: { fromAbandonedForm: true, createdAt: { gte: weekAgo } } }),
+    recapture_active: () => prisma.recaptureEnrollment.count({ where: { status: "active" } }),
+    recapture_recovered_month: () =>
+      prisma.recaptureEnrollment.count({ where: { status: "converted", updatedAt: { gte: monthAgo } } }),
+    live_sessions: () =>
+      prisma.ingestionQueue.count({
+        where: { isPartial: true, status: "partial", receivedAt: { gte: new Date(Date.now() - 60 * 60000) } },
+      }),
+    // Quality + pipeline health
+    hot_week: async () => {
+      const { getTierRanges } = await import("@/actions/status.actions");
+      const tiers = await getTierRanges();
+      const top = tiers.slice(0, 2).map((t) => t.name);
+      return prisma.lead.count({ where: { qualityTier: { in: top }, createdAt: { gte: weekAgo }, ...notArchived } });
+    },
+    unassigned: () =>
+      prisma.lead.count({ where: { assignedUserId: null, status: { in: ["NEW", "REVIEWED"] }, fromAbandonedForm: false } }),
+    won_month: () => prisma.leadOutcome.count({ where: { outcomeType: "won", createdAt: { gte: monthAgo } } }),
+    lost_month: () => prisma.leadOutcome.count({ where: { outcomeType: "lost", createdAt: { gte: monthAgo } } }),
+    contact_rate_7d: async () => {
+      const where = { createdAt: { gte: weekAgo }, fromAbandonedForm: false, ...notArchived };
+      const [total, contacted] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.count({ where: { ...where, firstContactAt: { not: null } } }),
+      ]);
+      return total > 0 ? `${Math.round((contacted / total) * 100)}%` : "—";
+    },
+    avg_response_hrs: async () => {
+      const rows = await prisma.lead.findMany({
+        where: { createdAt: { gte: monthAgo }, firstContactAt: { not: null } },
+        select: { createdAt: true, firstContactAt: true },
+      });
+      if (rows.length === 0) return "—";
+      const avgMs = rows.reduce((s, r) => s + (r.firstContactAt!.getTime() - r.createdAt.getTime()), 0) / rows.length;
+      const hrs = avgMs / 3600000;
+      return hrs < 1 ? `${Math.round(hrs * 60)}m` : `${hrs.toFixed(1)}h`;
+    },
+    top_state_week: async () => {
+      const rows = await prisma.lead.groupBy({
+        by: ["state"],
+        where: { createdAt: { gte: weekAgo }, state: { not: null }, ...notArchived },
+        _count: { _all: true },
+        orderBy: { _count: { state: "desc" } },
+        take: 1,
+      });
+      const r = rows[0];
+      return r?.state ? `${r.state} (${r._count._all})` : "—";
+    },
   };
 
   const promises = metricIds.map(async (id) => {
@@ -594,6 +662,53 @@ export async function getWidgetMetrics(metricIds: string[]): Promise<Record<stri
 
   await Promise.all(promises);
   return results;
+}
+
+/** Daily series for the inbox sparklines: last 14 EST days, oldest first. */
+export async function getWidgetSeries(): Promise<Record<string, number[]>> {
+  const DAYS = 14;
+  const start = estStartOfDay();
+  start.setDate(start.getDate() - (DAYS - 1));
+
+  const rows = await prisma.lead.findMany({
+    where: { createdAt: { gte: start }, status: { notIn: ["ARCHIVED", "MERGED"] } },
+    select: { createdAt: true, fromAbandonedForm: true, qualityTier: true, score: true, firstContactAt: true },
+  });
+  const { getTierRanges } = await import("@/actions/status.actions");
+  const tiers = await getTierRanges();
+  const hot = new Set(tiers.slice(0, 2).map((t) => t.name));
+
+  const dayIndex = (d: Date) => {
+    // Index by EST calendar day relative to `start`
+    const est = new Date(d.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const s = new Date(start.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    return Math.floor((est.getTime() - s.getTime()) / 86400000);
+  };
+
+  const created = new Array(DAYS).fill(0);
+  const abandons = new Array(DAYS).fill(0);
+  const hotLeads = new Array(DAYS).fill(0);
+  const contacted = new Array(DAYS).fill(0);
+  const scoreSum = new Array(DAYS).fill(0);
+  const scoreN = new Array(DAYS).fill(0);
+
+  for (const r of rows) {
+    const i = dayIndex(r.createdAt);
+    if (i < 0 || i >= DAYS) continue;
+    if (r.fromAbandonedForm) {
+      abandons[i]++;
+    } else {
+      created[i]++;
+      if (r.qualityTier && hot.has(r.qualityTier)) hotLeads[i]++;
+      if (r.score != null) { scoreSum[i] += r.score; scoreN[i]++; }
+    }
+    if (r.firstContactAt) {
+      const j = dayIndex(r.firstContactAt);
+      if (j >= 0 && j < DAYS) contacted[j]++;
+    }
+  }
+  const avgScore = scoreSum.map((s, i) => (scoreN[i] ? Math.round(s / scoreN[i]) : 0));
+  return { created, abandons, hot: hotLeads, contacted, avgScore };
 }
 
 export async function markLeadAsRead(leadId: string) {
@@ -758,6 +873,65 @@ export async function backfillSubmissionDataEvents() {
 
   revalidatePath("/leads");
   return { created };
+}
+
+// Fields any ACB staff member may edit from the lead page. Every change is
+// diffed and logged to the timeline as a lead_edited event (the edit history).
+const EDITABLE_LEAD_FIELDS = [
+  "fullName", "firstName", "lastName", "companyName", "email", "phone",
+  "alternatePhone", "title", "address1", "city", "state", "zip",
+  "industry", "debtType", "businessType", "accountVolume", "urgency",
+  "notesFromForm",
+] as const;
+
+export async function updateLeadDetails(
+  leadId: string,
+  updates: Record<string, string | null>
+) {
+  const session = await auth();
+  if (!session) throw new Error("Unauthorized");
+
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const leadObj = lead as unknown as Record<string, unknown>;
+
+  const changes: Array<{ field: string; from: string | null; to: string | null }> = [];
+  const data: Record<string, unknown> = {};
+
+  for (const field of EDITABLE_LEAD_FIELDS) {
+    if (!(field in updates)) continue;
+    const next = updates[field]?.trim() || null;
+    const prev = (leadObj[field] as string | null) ?? null;
+    if (next !== prev) {
+      data[field] = next;
+      changes.push({ field, from: prev, to: next });
+    }
+  }
+
+  if (changes.length === 0) return { changed: 0 };
+
+  // Keep the derived numeric copy of units in sync for filters/sorting.
+  if ("accountVolume" in data) {
+    const n = parseInt(String(data.accountVolume ?? "").replace(/[^0-9-]/g, ""), 10);
+    data.accountVolumeNum = Number.isNaN(n) ? null : n;
+  }
+
+  await prisma.lead.update({ where: { id: leadId }, data });
+  await logEvent(leadId, "lead_edited", { changes }, session.user.id);
+
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+  return { changed: changes.length };
+}
+
+/** Abandons still needing attention: unread and not yet worked/dispositioned. */
+export async function getAbandonedLeadCount() {
+  return prisma.lead.count({
+    where: {
+      fromAbandonedForm: true,
+      isRead: false,
+      status: { in: ["NEW", "REVIEWED"] },
+    },
+  });
 }
 
 export async function getArchivedLeads() {

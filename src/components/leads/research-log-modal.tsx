@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogBody,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
@@ -83,19 +84,25 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        // Keep the dialog up while a save is in flight.
+        if (!v && !isPending) onClose();
+      }}
+    >
+      <DialogContent size="lg" scrollable closeDisabled={isPending}>
         <DialogHeader>
-          <DialogTitle>Log Research Findings</DialogTitle>
+          <DialogTitle>Log research findings</DialogTitle>
           <DialogDescription>
             Record the results of your research on this lead.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Sources Checked */}
+        <DialogBody className="space-y-4">
+          {/* Sources checked */}
           <fieldset>
-            <legend className="text-sm font-medium mb-1.5">Sources Checked</legend>
+            <legend className="text-sm font-medium mb-1.5">Sources checked</legend>
             <div className="flex flex-wrap gap-2">
               {SOURCE_OPTIONS.map((src) => (
                 <label key={src} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
@@ -113,7 +120,7 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
 
           {/* Company Verified */}
           <fieldset>
-            <legend className="text-sm font-medium mb-1.5">Company Verified</legend>
+            <legend className="text-sm font-medium mb-1.5">Company verified</legend>
             <div className="flex gap-4">
               {VERIFIED_OPTIONS.map((opt) => (
                 <label key={opt} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
@@ -132,7 +139,7 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
 
           {/* Contact Verified */}
           <fieldset>
-            <legend className="text-sm font-medium mb-1.5">Contact Verified</legend>
+            <legend className="text-sm font-medium mb-1.5">Contact verified</legend>
             <div className="flex gap-4">
               {VERIFIED_OPTIONS.map((opt) => (
                 <label key={opt} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
@@ -151,7 +158,7 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
 
           {/* Estimated Company Size */}
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Estimated Company Size</label>
+            <label className="text-sm font-medium mb-1.5 block">Estimated company size</label>
             <select
               value={companySize}
               onChange={(e) => setCompanySize(e.target.value)}
@@ -165,7 +172,7 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
 
           {/* Red Flags */}
           <fieldset>
-            <legend className="text-sm font-medium mb-1.5">Red Flags</legend>
+            <legend className="text-sm font-medium mb-1.5">Red flags</legend>
             <div className="flex flex-wrap gap-2">
               {RED_FLAG_OPTIONS.map((flag) => (
                 <label key={flag} className="inline-flex items-center gap-1.5 text-sm cursor-pointer">
@@ -197,7 +204,7 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
 
           {/* Key Findings */}
           <div>
-            <label className="text-sm font-medium mb-1.5 block">Key Findings</label>
+            <label className="text-sm font-medium mb-1.5 block">Key findings</label>
             <textarea
               value={findings}
               onChange={(e) => setFindings(e.target.value)}
@@ -206,14 +213,14 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
               className="w-full rounded-md border border-input bg-card px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
             />
           </div>
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <button
             type="button"
             onClick={onClose}
             disabled={isPending}
-            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
+            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -223,7 +230,7 @@ export function ResearchLogModal({ open, onClose, leadId }: ResearchLogModalProp
             disabled={isPending}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            {isPending ? "Saving..." : "Save Research"}
+            {isPending ? "Saving..." : "Save research"}
           </button>
         </DialogFooter>
       </DialogContent>

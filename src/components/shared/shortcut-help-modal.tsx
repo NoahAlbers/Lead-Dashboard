@@ -25,7 +25,10 @@ function ShortcutGroup({ title, shortcuts }: { title: string; shortcuts: Shortcu
 export function ShortcutHelpModal() {
   const { showHelp, setShowHelp } = useKeyboardShortcuts();
 
-  const globalShortcuts = SHORTCUTS.filter((s) => s.scope === "global");
+  const globalShortcuts: ShortcutDef[] = [
+    { keys: "Ctrl K / \u2318 K", description: "Open command palette", scope: "global" },
+    ...SHORTCUTS.filter((s) => s.scope === "global"),
+  ];
   const inboxShortcuts = SHORTCUTS.filter((s) => s.scope === "inbox");
   const detailShortcuts = SHORTCUTS.filter((s) => s.scope === "detail");
 

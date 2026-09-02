@@ -18,9 +18,19 @@ import { WorkingModeBarWrapper, DispositionPanelWrapper, SessionSummaryWrapper }
 import { MarkReadOnView } from "@/components/leads/mark-read-on-view";
 import { LeadActions } from "@/components/leads/lead-actions";
 import { BackToInboxLink } from "@/components/leads/back-to-inbox-link";
-import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
+import { LeadEditDialog } from "@/components/leads/lead-edit-dialog";
+import { RecapturePanel } from "@/components/leads/recapture-panel";
+import { ResearchPanel } from "@/components/leads/research-panel";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { ScoreCircle } from "@/components/leads/score-circle";
+import { WonLostButtons } from "@/components/leads/won-lost-buttons";
+import { leadWebDomain } from "@/lib/lead-domain";
+import { phoneAreaLocation } from "@/lib/area-codes";
+import { CopyButton } from "@/components/shared/copy-button";
+import { FollowUpScheduler } from "@/components/leads/follow-up-scheduler";
+import { OnboardingPanel } from "@/components/leads/onboarding-panel";
+import { getLeadFollowUps } from "@/actions/follow-up.actions";
+import { AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 
@@ -30,12 +40,50 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
   return (
     <div className="flex justify-between py-1 text-[13px]">
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="font-medium text-right max-w-[60%]">{value}</span>
+    </div>
+  );
+}
+
+/** "45 min", "3h 20m", "2d 4h" for SLA labels. */
+function fmtMinutes(min: number): string {
+  if (min < 60) return `${Math.round(min)} min`;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (h < 24) return m ? `${h}h ${m}m` : `${h}h`;
+  const d = Math.floor(h / 24);
+  const hh = h % 24;
+  return hh ? `${d}d ${hh}h` : `${d}d`;
+}
+
+/** Label above, value below: long emails/URLs wrap instead of truncating. */
+function ContactRow({
+  label,
+  value,
+  sub,
+  muted,
+  children,
+}: {
+  label: string;
+  value?: string | null;
+  sub?: string;
+  muted?: boolean;
+  children?: React.ReactNode;
+}) {
+  if (!children && !value) return null;
+  return (
+    <div className="py-1.5 text-[13px]">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className={`mt-0.5 break-words leading-snug ${muted ? "text-muted-foreground italic" : "font-medium"}`}>
+        {children ?? value}
+      </div>
+      {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -125,7 +173,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome] = await Promise.all([
+  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome, recapture, followUps] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
@@ -133,6 +181,8 @@ export default async function LeadDetailPage({ params }: PageProps) {
     getTierColorMap(),
     getLeadSlaInfo(id),
     getOutcome(id),
+    prisma.recaptureEnrollment.findUnique({ where: { leadId: id } }),
+    getLeadFollowUps(id),
   ]);
 
   if (!lead) {
@@ -192,6 +242,55 @@ export default async function LeadDetailPage({ params }: PageProps) {
     : lead.state;
 
   const tierHex = lead.qualityTier ? tierColorMap[lead.qualityTier] : undefined;
+  const webDomain = leadWebDomain(intakeFields?.companyWebsite, lead.email);
+
+  // Quiet duplicate check: same email, same phone digits, or same business
+  // email domain on another open lead.
+  const phoneDigits = lead.phone?.replace(/\D/g, "").slice(-10);
+  const emailDomain = lead.email?.split("@")[1]?.toLowerCase();
+  const businessDomain = emailDomain && leadWebDomain(null, lead.email) ? emailDomain : null;
+  const possibleDuplicates = (lead.duplicateOfLead || lead.duplicateLeads.length > 0)
+    ? []
+    : await prisma.lead.findMany({
+        where: {
+          id: { not: lead.id },
+          status: { notIn: ["ARCHIVED", "MERGED", "DUPLICATE"] },
+          OR: [
+            ...(lead.email ? [{ email: { equals: lead.email, mode: "insensitive" as const } }] : []),
+            ...(phoneDigits && phoneDigits.length === 10 ? [{ phone: { contains: phoneDigits.slice(0, 3) + "-" + phoneDigits.slice(3, 6) } }, { phone: { contains: phoneDigits } }] : []),
+            ...(businessDomain ? [{ email: { endsWith: `@${businessDomain}`, mode: "insensitive" as const } }] : []),
+          ],
+        },
+        select: { id: true, fullName: true, companyName: true, email: true, status: true, createdAt: true },
+        take: 3,
+      });
+
+  // Onboarding handoff: the latest portal created for this lead plus the
+  // milestones the onboarding tool has reported back since.
+  const onboardingCreated = events.find((e) => e.eventType === "onboarding_profile_created");
+  const onboardingData = onboardingCreated?.eventDataJson as { portalUrl?: string; emailed?: boolean } | null | undefined;
+  const onboardingMilestones = onboardingCreated
+    ? events
+        .filter((e) => e.eventType === "onboarding_milestone" && e.createdAt >= onboardingCreated.createdAt)
+        .map((e) => {
+          const d = e.eventDataJson as { milestone?: string; label?: string; at?: string } | null;
+          return { milestone: d?.milestone ?? "", label: d?.label ?? "", at: d?.at ?? e.createdAt.toISOString() };
+        })
+    : [];
+
+  // Most recent auto-research findings, so the panel shows them on load.
+  const latestAutoResearch = (() => {
+    const evt = events.find((e) => e.eventType === "auto_research");
+    if (!evt) return null;
+    const d = evt.eventDataJson as {
+      domain?: string;
+      siteTitle?: string | null;
+      siteDescription?: string | null;
+      profiles?: Array<{ kind: string; url: string }>;
+      fetchedAt?: string;
+    } | null;
+    return d ?? null;
+  })();
 
   return (
     <div className="space-y-3">
@@ -201,20 +300,38 @@ export default async function LeadDetailPage({ params }: PageProps) {
       <SessionSummaryWrapper />
 
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
           <BackToInboxLink />
-          <h1 className="text-xl font-bold leading-tight">
-            {lead.fullName || "Unknown"}{lead.companyName ? ` | ${lead.companyName}` : ""}
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Created {format(toZonedTime(new Date(lead.createdAt), EST_TZ), "MMMM d, yyyy 'at' h:mm a", { timeZone: EST_TZ })} EST
-            {lead.assignedUser && (
-              <> &middot; Assigned to {lead.assignedUser.name}</>
+          <div className="flex items-center gap-3 mt-1">
+            {webDomain ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=128`}
+                alt=""
+                title={webDomain}
+                className="h-14 w-14 rounded-xl border bg-card p-1.5 shadow-sm shrink-0"
+              />
+            ) : (
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border bg-muted text-xl font-bold text-muted-foreground">
+                {(lead.companyName || lead.fullName || "?").charAt(0).toUpperCase()}
+              </span>
             )}
-          </p>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold leading-tight truncate">
+                {lead.fullName || "Unknown"}{lead.companyName ? ` | ${lead.companyName}` : ""}
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Created {format(toZonedTime(new Date(lead.createdAt), EST_TZ), "MMMM d, yyyy 'at' h:mm a", { timeZone: EST_TZ })} EST
+                {lead.assignedUser && (
+                  <> &middot; Assigned to {lead.assignedUser.name}</>
+                )}
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3 lg:shrink-0 lg:flex-nowrap">
+          {/* Info first: score, tier, status, SLA */}
           <ScoreCircle score={lead.score} tierColor={tierHex} />
           <div className="flex flex-col items-end gap-1">
             <TierBadge tier={lead.qualityTier} colorMap={tierColorMap} />
@@ -223,8 +340,53 @@ export default async function LeadDetailPage({ params }: PageProps) {
               <SlaBadge slaStatus={slaInfo.slaStatus} remainingMinutes={slaInfo.remainingMinutes} compact />
             )}
           </div>
+          <div className="h-10 w-px bg-border" />
+          <LeadEditDialog
+            lead={{
+              id: lead.id,
+              fullName: lead.fullName,
+              firstName: lead.firstName,
+              lastName: lead.lastName,
+              companyName: lead.companyName,
+              email: lead.email,
+              phone: lead.phone,
+              alternatePhone: lead.alternatePhone,
+              title: lead.title,
+              address1: lead.address1,
+              city: lead.city,
+              state: lead.state,
+              zip: lead.zip,
+              industry: lead.industry,
+              debtType: lead.debtType,
+              businessType: lead.businessType,
+              accountVolume: lead.accountVolume,
+              urgency: lead.urgency,
+              notesFromForm: lead.notesFromForm,
+            }}
+          />
+          <WonLostButtons
+            leadId={lead.id}
+            currentStatus={lead.status}
+            referralPartners={activePartners.map((p) => ({ id: p.id, name: p.name }))}
+          />
         </div>
       </div>
+
+      {possibleDuplicates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="font-medium">Possibly the same person as</span>
+          {possibleDuplicates.map((d) => (
+            <Link key={d.id} href={`/leads/${d.id}`} className="underline underline-offset-2 hover:text-amber-700">
+              {d.companyName || d.fullName || d.email || d.id}
+              <span className="ml-1 text-xs text-amber-700/80">({d.status.replace(/_/g, " ").toLowerCase()})</span>
+            </Link>
+          ))}
+          <Link href={`/leads/merge?leadA=${lead.id}&leadB=${possibleDuplicates[0].id}`} className="ml-auto rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium hover:bg-amber-100">
+            Compare and merge
+          </Link>
+        </div>
+      )}
 
       {/* 3-Column Grid */}
       <div className="grid grid-cols-12 gap-3">
@@ -234,46 +396,58 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Contact Information */}
           <CompactCard title="Contact Information">
-            <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-              <InfoRow label="Contact Name" value={lead.fullName} />
-              <InfoRow label="Company" value={lead.companyName} />
-              {intakeFields?.noCompany && <InfoRow label="" value="(Independent Owner)" />}
+            <div className="divide-y divide-border/60">
+              <ContactRow label="Name" value={lead.fullName} />
+              <ContactRow
+                label="Company"
+                value={lead.companyName ?? (intakeFields?.noCompany ? "Independent owner" : null)}
+                sub={lead.companyName && intakeFields?.noCompany ? "Independent owner" : undefined}
+              />
               {lead.email && (
-                <div className="flex justify-between py-1 text-[13px]">
-                  <span className="text-muted-foreground text-xs">Email</span>
-                  <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline text-right max-w-[60%] truncate">
-                    {lead.email}
-                  </a>
-                </div>
+                <ContactRow label="Email">
+                  <span className="group inline-flex items-center max-w-full">
+                    <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline break-all">
+                      {lead.email}
+                    </a>
+                    <CopyButton value={lead.email} label="email" />
+                  </span>
+                </ContactRow>
               )}
               {lead.phone && (
-                <div className="flex justify-between py-1 text-[13px]">
-                  <span className="text-muted-foreground text-xs">Phone</span>
-                  <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
-                    {lead.phone}
-                  </a>
-                </div>
+                <ContactRow label="Phone" sub={phoneAreaLocation(lead.phone) ?? undefined}>
+                  <span className="group inline-flex items-center">
+                    <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
+                      {lead.phone}
+                    </a>
+                    <CopyButton value={lead.phone} label="phone" />
+                  </span>
+                </ContactRow>
               )}
-              <InfoRow label="Alt. Phone" value={lead.alternatePhone} />
+              {lead.alternatePhone && (
+                <ContactRow label="Alt. Phone" sub={phoneAreaLocation(lead.alternatePhone) ?? undefined}>
+                  <a href={`tel:${lead.alternatePhone}`} className="font-medium text-primary hover:underline">
+                    {lead.alternatePhone}
+                  </a>
+                </ContactRow>
+              )}
               {intakeFields?.companyWebsite && !intakeFields?.noWebsite ? (
-                <div className="flex justify-between py-1 text-[13px]">
-                  <span className="text-muted-foreground text-xs">Website</span>
+                <ContactRow label="Website">
                   <a
                     href={intakeFields.companyWebsite.startsWith("http") ? intakeFields.companyWebsite : `https://${intakeFields.companyWebsite}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-primary hover:underline text-right max-w-[60%] truncate inline-flex items-center gap-1"
+                    className="font-medium text-primary hover:underline break-all inline-flex items-center gap-1"
                   >
-                    {intakeFields.companyWebsite}
+                    {intakeFields.companyWebsite.replace(/^https?:\/\/(www\.)?/, "")}
                     <ExternalLink className="h-3 w-3 shrink-0" />
                   </a>
-                </div>
+                </ContactRow>
               ) : intakeFields?.noWebsite ? (
-                <InfoRow label="Website" value="(No website)" />
+                <ContactRow label="Website" value="No website" muted />
               ) : null}
               {displayStates && (
-                <div className="py-1 sm:col-span-2">
-                  <p className="text-xs text-muted-foreground mb-1">States</p>
+                <div className="py-2">
+                  <p className="text-xs text-muted-foreground mb-1.5">States</p>
                   <TagList items={displayStates} stateClassMap={stateClassMap} />
                 </div>
               )}
@@ -371,38 +545,35 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Tracking & Source */}
           <CompactCard title="Tracking & Source" defaultOpen={true}>
-            <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-              <InfoRow label="Source" value={lead.source ?? lead.leadSource} />
-              <InfoRow label="Source Page" value={lead.sourcePage} />
-              <InfoRow label="Urgency" value={lead.urgency} />
-              {intakeFields?.location && <InfoRow label="Location / IP" value={intakeFields.location} />}
-              {intakeFields?.device && <InfoRow label="Device" value={intakeFields.device} />}
-              {lead.utmSource && <InfoRow label="UTM Source" value={lead.utmSource} />}
-              {lead.utmMedium && <InfoRow label="UTM Medium" value={lead.utmMedium} />}
-              {lead.utmCampaign && <InfoRow label="UTM Campaign" value={lead.utmCampaign} />}
-              {lead.referrer && <InfoRow label="Referrer" value={lead.referrer} />}
-              {intakeFields?.timezone && <InfoRow label="Timezone" value={intakeFields.timezone} />}
-              {intakeFields?.submittedAt && <InfoRow label="Submitted (EST)" value={intakeFields.submittedAt} />}
+            <div className="divide-y divide-border/60">
+              <ContactRow label="Source" value={lead.source ?? lead.leadSource} />
+              {lead.formVariants && Object.keys(lead.formVariants as object).length > 0 && (
+                <ContactRow label="Form variant" value={Object.entries(lead.formVariants as Record<string, string>).map(([k, v]) => `${k}: ${v}`).join(", ")} />
+              )}
+              <ContactRow label="Urgency" value={lead.urgency} />
+              <ContactRow label="Location / IP" value={intakeFields?.location ?? "Not captured"} muted={!intakeFields?.location} />
+              <ContactRow label="Timezone" value={intakeFields?.timezone ?? "Not captured"} muted={!intakeFields?.timezone} />
+              <ContactRow label="Device" value={intakeFields?.device} />
+              <ContactRow label="Referrer" value={lead.referrer} />
+              <ContactRow label="UTM Source" value={lead.utmSource} />
+              <ContactRow label="UTM Medium" value={lead.utmMedium} />
+              <ContactRow label="UTM Campaign" value={lead.utmCampaign} />
+              <ContactRow label="Submitted (EST)" value={intakeFields?.submittedAt} />
               {intakeFields?.clarityRecording && (
-                <div className="flex justify-between py-1 text-[13px] sm:col-span-2">
-                  <span className="text-muted-foreground text-xs">Clarity Recording</span>
+                <ContactRow label="Clarity Recording">
                   <a
                     href={intakeFields.clarityRecording}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-primary hover:underline inline-flex items-center gap-1 text-xs"
+                    className="font-medium text-primary hover:underline inline-flex items-center gap-1"
                   >
                     View Recording
                     <ExternalLink className="h-3 w-3" />
                   </a>
-                </div>
+                </ContactRow>
               )}
             </div>
           </CompactCard>
-        </div>
-
-        {/* ===== CENTER COLUMN (5 cols) — Qualification + Timeline ===== */}
-        <div className="col-span-12 lg:col-span-5 space-y-2">
 
           {/* Qualification */}
           <CompactCard title="Qualification">
@@ -445,6 +616,29 @@ export default async function LeadDetailPage({ params }: PageProps) {
               </div>
             )}
           </CompactCard>
+        </div>
+
+        {/* ===== CENTER COLUMN (5 cols) — Timeline + SLA ===== */}
+        <div className="col-span-12 lg:col-span-5 space-y-2">
+
+          {/* Activity Timeline (merged events + notes) */}
+          <CompactCard title="Activity Timeline">
+            <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
+          </CompactCard>
+
+          {/* Research: auto findings + quick links */}
+          <ResearchPanel
+            leadId={lead.id}
+            companyName={lead.companyName}
+            fullName={lead.fullName}
+            firstName={lead.firstName}
+            lastName={lead.lastName}
+            state={lead.state}
+            city={lead.city}
+            companyWebsite={intakeFields?.companyWebsite}
+            hasResearchLog={events.some((e) => e.eventType === "research_completed")}
+            initialAutoResearch={latestAutoResearch}
+          />
 
           {/* SLA Tracking */}
           {slaInfo && (
@@ -460,8 +654,8 @@ export default async function LeadDetailPage({ params }: PageProps) {
                   <div className="flex-1">
                     <SlaProgressBar percentElapsed={slaInfo.percentElapsed} slaStatus={slaInfo.slaStatus} />
                     <div className="flex justify-between mt-0.5">
-                      <span className="text-[10px] text-muted-foreground">{slaInfo.elapsedMinutes}m elapsed</span>
-                      <span className="text-[10px] text-muted-foreground">{slaInfo.thresholdMinutes}m threshold</span>
+                      <span className="text-[10px] text-muted-foreground">{fmtMinutes(slaInfo.elapsedMinutes)} elapsed</span>
+                      <span className="text-[10px] text-muted-foreground">{fmtMinutes(slaInfo.thresholdMinutes)} threshold</span>
                     </div>
                   </div>
                 </div>
@@ -511,11 +705,6 @@ export default async function LeadDetailPage({ params }: PageProps) {
             </CompactCard>
           )}
 
-          {/* Activity Timeline (merged events + notes) */}
-          <CompactCard title="Activity Timeline">
-            <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
-          </CompactCard>
-
           {/* Disposition Panel (Working Mode) */}
           <DispositionPanelWrapper
             leadId={lead.id}
@@ -554,28 +743,47 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 }}
                 assignedUserName={session?.user.name ?? "ACB Team"}
                 referralPartners={activePartners}
+                onboardingPortalUrl={onboardingData?.portalUrl ?? null}
               />
             </div>
 
-            {/* Research */}
-            <div className="rounded-lg border bg-card p-3">
-              <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">Research</h3>
-              <EnrichmentButtons
-                leadId={lead.id}
-                companyName={lead.companyName}
-                fullName={lead.fullName}
-                firstName={lead.firstName}
-                lastName={lead.lastName}
-                state={lead.state}
-                city={lead.city}
-                companyWebsite={intakeFields?.companyWebsite}
+            {/* Onboarding progress (once a portal exists) */}
+            {onboardingCreated && onboardingData?.portalUrl && (
+              <OnboardingPanel
+                portalUrl={onboardingData.portalUrl}
+                emailed={!!onboardingData.emailed}
+                createdAt={onboardingCreated.createdAt.toISOString()}
+                milestones={onboardingMilestones}
               />
-              {events.some((e) => e.eventType === "research_completed") ? (
-                <p className="text-xs text-emerald-600 mt-2">Research completed</p>
-              ) : (
-                <p className="text-xs text-muted-foreground mt-2">Not yet researched</p>
-              )}
-            </div>
+            )}
+
+            {/* Scheduled follow-ups */}
+            <FollowUpScheduler
+              leadId={lead.id}
+              reminders={followUps.map((r) => ({
+                id: r.id,
+                reminderAt: r.reminderAt.toISOString(),
+                note: r.note,
+                completed: r.completed,
+                notifiedAt: r.notifiedAt?.toISOString() ?? null,
+                user: r.user,
+              }))}
+            />
+
+            {/* Recapture campaign status (abandoned-form leads) */}
+            {recapture && (
+              <RecapturePanel
+                leadId={lead.id}
+                enrollment={{
+                  status: recapture.status,
+                  stopReason: recapture.stopReason,
+                  currentStep: recapture.currentStep,
+                  nextSendAt: recapture.nextSendAt?.toISOString() ?? null,
+                  lastSentAt: recapture.lastSentAt?.toISOString() ?? null,
+                  abandonedStep: recapture.abandonedStep,
+                }}
+              />
+            )}
 
             {/* Assignment */}
             <div className="rounded-lg border bg-card p-3">

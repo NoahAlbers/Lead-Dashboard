@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Save } from "lucide-react";
 import { updateSystemConfig } from "@/actions/config.actions";
 import { toast } from "@/components/ui/use-toast";
+import { SettingsSaveBar } from "@/components/admin/settings-save-bar";
 
 interface AgingThresholdSettingsProps {
   initialThresholds: { green: number; yellow: number; orange: number; red: number };
@@ -89,7 +90,7 @@ export function AgingThresholdSettings({ initialThresholds }: AgingThresholdSett
         </div>
       </div>
 
-      <div className="mt-4">
+      <SettingsSaveBar unsaved={JSON.stringify(thresholds) !== JSON.stringify(initialThresholds)}>
         <button
           onClick={handleSave}
           disabled={isPending}
@@ -98,7 +99,7 @@ export function AgingThresholdSettings({ initialThresholds }: AgingThresholdSett
           <Save className="h-3.5 w-3.5" />
           Save Thresholds
         </button>
-      </div>
+      </SettingsSaveBar>
     </div>
   );
 }

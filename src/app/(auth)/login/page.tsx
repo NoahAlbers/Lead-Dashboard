@@ -34,7 +34,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="w-full max-w-sm rounded-lg border bg-card p-8 shadow-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <img src="/acb-logo.webp" alt="Advanced Collection Bureau" className="h-12 mb-4" />
+          <img src="/brand/acb-mark-black.svg" alt="Advanced Collection Bureau" className="h-16 w-16 mb-3" />
+          <p className="text-sm font-semibold tracking-wide text-foreground">Advanced Collection Bureau</p>
           <h1 className="text-xl font-bold text-foreground">Lead Operations Console</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Sign in to your account

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/cron/partials", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/recapture", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/sla", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/reconciliation", "schedule": "0 6 * * *" }
+  ]
+}

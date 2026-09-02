@@ -249,21 +249,38 @@ function determineAction(
   return "refer_or_disqualify";
 }
 
-export async function scoreLead(lead: Lead): Promise<{
+export interface ScoreResult {
   score: number;
   qualityTier: string | null;
   recommendedAction: string;
   appliedRules: AppliedRule[];
-}> {
-  const [rules, tierRanges, stateClassMap] = await Promise.all([
-    prisma.scoringRule.findMany({
-      where: { enabled: true },
-      orderBy: { priority: "asc" },
-    }),
+}
+
+/** Minimal rule shape needed to evaluate scoring. Matches ScoringRule but also accepts unsaved rules. */
+export interface ScoringRuleLike {
+  name: string;
+  enabled?: boolean;
+  priority?: number;
+  conditionsJson: unknown;
+  outcomesJson: unknown;
+}
+
+export interface ScoringContext {
+  tierRanges: TierRange[];
+  stateClassMap: Record<string, string>;
+}
+
+/** Loads tier ranges and the state classification map used by the rules engine. */
+export async function getScoringContext(): Promise<ScoringContext> {
+  const [tierRanges, stateClassMap] = await Promise.all([
     getTierRangesFromDB(),
     getStateClassificationMap(),
   ]);
+  return { tierRanges, stateClassMap };
+}
 
+/** Converts a DB lead into the plain object the rules engine evaluates against. */
+export function toScoringLeadData(lead: Lead): Record<string, unknown> {
   const leadData = lead as unknown as Record<string, unknown>;
   // Convert Decimal fields to numbers for comparison
   if (lead.balanceAmount) {
@@ -272,16 +289,34 @@ export async function scoreLead(lead: Lead): Promise<{
   if (lead.estimatedClaimValue) {
     leadData.estimatedClaimValue = Number(lead.estimatedClaimValue);
   }
+  return leadData;
+}
+
+/**
+ * Pure rules evaluation: scores a lead-like object against the given rules.
+ * Rules are filtered to enabled ones and sorted by priority (ascending) here,
+ * so callers may pass the full list. No DB access, nothing persisted.
+ */
+export function evaluateRulesForLead(
+  leadData: Record<string, unknown>,
+  rules: ScoringRuleLike[],
+  ctx: ScoringContext
+): ScoreResult {
+  const activeRules = rules
+    .filter((r) => r.enabled !== false)
+    .slice()
+    .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
   let score = 50; // Base score
   const appliedRules: AppliedRule[] = [];
+  const leadId = typeof leadData.id === "string" ? leadData.id : "simulated";
 
-  for (const rule of rules) {
+  for (const rule of activeRules) {
     try {
       const conditions = rule.conditionsJson as unknown as RuleCondition[];
       const outcomes = rule.outcomesJson as unknown as RuleOutcome;
 
-      if (evaluateRule(leadData, conditions, stateClassMap)) {
+      if (evaluateRule(leadData, conditions, ctx.stateClassMap)) {
         score += outcomes.scoreAdjustment;
         appliedRules.push({
           ruleName: rule.name,
@@ -292,7 +327,7 @@ export async function scoreLead(lead: Lead): Promise<{
         });
       }
     } catch (err) {
-      console.error(`[Scoring] Rule "${rule.name}" failed for lead ${lead.id}:`, err);
+      console.error(`[Scoring] Rule "${rule.name}" failed for lead ${leadId}:`, err);
       // Skip this rule, continue scoring with remaining rules
       continue;
     }
@@ -301,10 +336,22 @@ export async function scoreLead(lead: Lead): Promise<{
   // Clamp score
   score = Math.max(0, Math.min(100, score));
 
-  const qualityTier = mapScoreToTierWithRanges(score, tierRanges);
+  const qualityTier = mapScoreToTierWithRanges(score, ctx.tierRanges);
   const recommendedAction = determineAction(score, qualityTier, appliedRules);
 
   return { score, qualityTier, recommendedAction, appliedRules };
+}
+
+export async function scoreLead(lead: Lead): Promise<ScoreResult> {
+  const [rules, ctx] = await Promise.all([
+    prisma.scoringRule.findMany({
+      where: { enabled: true },
+      orderBy: { priority: "asc" },
+    }),
+    getScoringContext(),
+  ]);
+
+  return evaluateRulesForLead(toScoringLeadData(lead), rules, ctx);
 }
 
 export async function scoreAndUpdateLead(leadId: string) {

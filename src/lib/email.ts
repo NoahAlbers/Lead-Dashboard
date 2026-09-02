@@ -23,6 +23,9 @@ export async function sendEmail(params: {
   subject: string;
   html: string;
   replyTo?: string;
+  /** Override the sender (e.g. configurable lead-facing identity). */
+  from?: string;
+  headers?: Record<string, string>;
 }): Promise<{ success: boolean; error?: string }> {
   const client = getResend();
   if (!client) {
@@ -31,11 +34,12 @@ export async function sendEmail(params: {
   }
   try {
     await client.emails.send({
-      from: FROM_EMAIL,
+      from: params.from ?? FROM_EMAIL,
       to: Array.isArray(params.to) ? params.to : [params.to],
       subject: params.subject,
       html: params.html,
       replyTo: params.replyTo,
+      headers: params.headers,
     });
     return { success: true };
   } catch (err) {

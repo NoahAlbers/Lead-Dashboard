@@ -4,6 +4,7 @@ import { getLead } from "@/actions/lead.actions";
 import { getLeadNotes } from "@/actions/note.actions";
 import { getLeadEvents } from "@/services/activity-log.service";
 import { PrintTrigger } from "@/components/leads/print-trigger";
+import { eventLabels, formatEventDetail } from "@/lib/event-detail";
 
 const EST_TZ = "America/New_York";
 
@@ -265,20 +266,13 @@ export default async function LeadPrintPage({ params }: PageProps) {
               <tbody>
                 {recentEvents.map((evt) => {
                   const data = evt.eventDataJson as Record<string, unknown> | null;
-                  let detail = "";
-                  if (data) {
-                    if (data.from && data.to) {
-                      detail = `${String(data.from)} \u2192 ${String(data.to)}`;
-                    } else if (data.actionType) {
-                      detail = String(data.actionType).replace(/_/g, " ");
-                    } else if (data.reason) {
-                      detail = String(data.reason);
-                    }
-                  }
+                  const detail =
+                    formatEventDetail(evt) ??
+                    (data && typeof data.reason === "string" ? data.reason : "");
                   return (
                     <tr key={evt.id}>
                       <td className="whitespace-nowrap">{fmtDateShort(evt.createdAt)}</td>
-                      <td>{evt.eventType.replace(/_/g, " ")}</td>
+                      <td>{eventLabels[evt.eventType] ?? evt.eventType.replace(/_/g, " ")}</td>
                       <td>{detail || "\u2014"}</td>
                       <td>{evt.user?.name ?? "System"}</td>
                     </tr>

@@ -89,3 +89,26 @@ export async function toggleRule(id: string, enabled: boolean) {
   revalidatePath("/admin/rules");
   return { recalculatedCount: count };
 }
+
+/**
+ * Persists a new rule order. Each rule's priority becomes its index in `orderedIds`.
+ * Leads are recalculated because priority order affects which hard stop wins.
+ */
+export async function reorderRules(orderedIds: string[]) {
+  const session = await auth();
+  assertRole(session, "ADMIN");
+
+  const ids = Array.from(new Set(orderedIds.filter((id) => typeof id === "string" && id.length > 0)));
+  if (ids.length === 0) return { recalculatedCount: 0 };
+
+  await prisma.$transaction(
+    ids.map((id, index) =>
+      prisma.scoringRule.update({ where: { id }, data: { priority: index } })
+    )
+  );
+
+  const count = await recalculateAllLeads();
+
+  revalidatePath("/admin/rules");
+  return { recalculatedCount: count };
+}

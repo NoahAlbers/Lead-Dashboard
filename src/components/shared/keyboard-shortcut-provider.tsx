@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { isInputFocused } from "@/lib/keyboard-shortcuts";
+import { CommandPalette, OPEN_COMMAND_PALETTE_EVENT } from "@/components/shared/command-palette";
 
 interface KeyboardShortcutContextValue {
   registerHandler: (scope: string, handler: (key: string) => boolean) => () => void;
@@ -34,10 +35,17 @@ export function KeyboardShortcutProvider({ children }: { children: React.ReactNo
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Don't handle shortcuts when typing in inputs
-      if (isInputFocused()) return;
-
       const key = e.key;
+
+      // Ctrl/Cmd+K - open command palette (works even while typing in inputs)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && key.toLowerCase() === "k") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent(OPEN_COMMAND_PALETTE_EVENT));
+        return;
+      }
+
+      // Don't handle other shortcuts when typing in inputs
+      if (isInputFocused()) return;
 
       // Handle G-prefix combos
       if (gPending) {
@@ -49,7 +57,7 @@ export function KeyboardShortcutProvider({ children }: { children: React.ReactNo
         const lower = key.toLowerCase();
         if (lower === "i") { e.preventDefault(); router.push("/leads"); return; }
         if (lower === "r") { e.preventDefault(); router.push("/reports"); return; }
-        if (lower === "a") { e.preventDefault(); router.push("/assignments"); return; }
+        if (lower === "a") { e.preventDefault(); router.push("/leads/assignments"); return; }
         if (lower === "s") { e.preventDefault(); router.push("/admin/settings"); return; }
         // If not a valid G combo, fall through
       }
@@ -109,6 +117,7 @@ export function KeyboardShortcutProvider({ children }: { children: React.ReactNo
   return (
     <KeyboardShortcutContext.Provider value={{ registerHandler, showHelp, setShowHelp }}>
       {children}
+      <CommandPalette />
     </KeyboardShortcutContext.Provider>
   );
 }

@@ -1,11 +1,16 @@
 import { prisma } from "@/lib/db";
-import { ingestLead } from "@/services/lead-ingestion.service";
+import { Prisma } from "@prisma/client";
+import { ingestLead, updateLeadFromResubmission } from "@/services/lead-ingestion.service";
 import { normalizeState } from "@/lib/us-states";
 import {
   sendFailureAlertEmail,
   sendNewLeadEmail,
 } from "@/services/email-notification.service";
+import { sendLeadConfirmationEmail } from "@/services/lead-emails.service";
+import { markRecaptureConverted } from "@/services/recapture.service";
 import { logger } from "@/lib/logger";
+import { runAutoResearch } from "@/services/research.service";
+import { formatServerGeo, type ServerGeo } from "@/lib/request-geo";
 
 // --- Helpers (mirrored from intake-form route for consistency) ---
 
@@ -213,7 +218,14 @@ function buildIngestArgs(body: Record<string, unknown>) {
     utmSource: (body.utm_source ?? undefined) as string | undefined,
     utmMedium: (body.utm_medium ?? undefined) as string | undefined,
     utmCampaign: (body.utm_campaign ?? undefined) as string | undefined,
-    referrer: p.referrer ?? undefined,
+    referrer: p.referrer ?? ((body.referrer ?? undefined) as string | undefined),
+    // Visitor context for internal eyes only (shown on the lead page's
+    // submission data; never included in any outbound email).
+    location: (body.location ?? undefined) as string | undefined,
+    device: (body.device ?? undefined) as string | undefined,
+    timezone: (body.timezone ?? undefined) as string | undefined,
+    user_agent: (body.user_agent ?? undefined) as string | undefined,
+    clarity_url: (body.clarity_url ?? undefined) as string | undefined,
   };
 
   return { formData, metadata, normalized: p };
@@ -249,6 +261,23 @@ export async function processIngestionItem(queueId: string): Promise<void> {
     if (payloadMetadata.utm_campaign) body.utm_campaign = payloadMetadata.utm_campaign;
     if (payloadMetadata.source_page) body.sourcePage = payloadMetadata.source_page;
     if (payloadMetadata.referrer && !body.referrer) body.referrer = payloadMetadata.referrer;
+    // Visitor context lives in payload.metadata for completed submissions;
+    // pull it into the body so normalizePayload and buildIngestArgs see it.
+    for (const k of ["location", "device", "timezone", "user_agent", "clarity_url"] as const) {
+      if (payloadMetadata[k] && !body[k]) body[k] = payloadMetadata[k];
+    }
+    // Server-side geo (Vercel edge headers) fills in whenever the form's own
+    // IP lookup didn't finish ("Loading...") or was blocked.
+    const serverGeo = payloadMetadata.server_geo as ServerGeo | undefined;
+    const clientLocation = typeof body.location === "string" ? body.location : "";
+    const locationUsable =
+      clientLocation && !/^\(?(Loading|Could not|Unknown)/i.test(clientLocation);
+    if (serverGeo) {
+      const formatted = formatServerGeo(serverGeo);
+      if (!locationUsable && formatted) body.location = formatted;
+      if (!body.timezone && serverGeo.timezone) body.timezone = serverGeo.timezone;
+    }
+    if (!locationUsable && !body.location && item.sourceIp) body.location = `(IP: ${item.sourceIp})`;
 
     // Check for partial records with same sessionId — merge fields
     if (item.sessionId) {
@@ -299,8 +328,34 @@ export async function processIngestionItem(queueId: string): Promise<void> {
       metadata.source = payloadMetadata.source;
     }
 
-    // Call existing ingestLead — it handles mapping, scoring, duplicates, referrals, notifications
-    const lead = await ingestLead(formData, metadata);
+    // Fill visitor context from what the queue captured server-side (partials
+    // don't always carry it in the payload).
+    const meta = metadata as Record<string, unknown>;
+    if (item.userAgent && !meta.user_agent) meta.user_agent = item.userAgent;
+
+    // Same-session resubmission: the prospect used their edit link, or came
+    // back through a recapture resume link and finished a previously abandoned
+    // session. Update the existing lead instead of creating a duplicate.
+    let lead: Awaited<ReturnType<typeof ingestLead>> | null = null;
+    let isResubmission = false;
+    if (item.sessionId) {
+      const priorRow = await prisma.ingestionQueue.findFirst({
+        where: { sessionId: item.sessionId, leadId: { not: null }, id: { not: item.id } },
+        orderBy: { receivedAt: "desc" },
+      });
+      if (priorRow?.leadId) {
+        lead = await updateLeadFromResubmission(priorRow.leadId, formData, metadata);
+        isResubmission = true;
+        logger.info("PIPELINE", "Same-session resubmission merged into existing lead", {
+          queueId,
+          leadId: lead.id,
+        });
+      }
+    }
+    if (!lead) {
+      // Call existing ingestLead — it handles mapping, scoring, duplicates, referrals, notifications
+      lead = await ingestLead(formData, metadata);
+    }
 
     logger.info("PIPELINE", "Lead ingested successfully", {
       queueId,
@@ -308,19 +363,59 @@ export async function processIngestionItem(queueId: string): Promise<void> {
       submissionId: item.submissionId,
     });
 
-    // Send email notification with full normalized data
-    sendNewLeadEmail({
-      receiptId: item.receiptId || "N/A",
-      normalized,
-      score: lead.score ?? undefined,
-      qualityTier: lead.qualityTier ?? undefined,
-      recommendedAction: lead.recommendedAction ?? undefined,
-      leadId: lead.id,
-    }).catch((err) => {
-      logger.error("PIPELINE", "Email notification failed (non-blocking)", {
-        error: err instanceof Error ? err.message : String(err),
+    // Tie the tracked form session to the lead and remember which experiment
+    // variants this person saw, so experiments can be judged on outcomes.
+    const variants = payloadMetadata.experiment_variants;
+    if (item.sessionId) {
+      prisma.formSession.updateMany({
+        where: { sessionId: item.sessionId },
+        data: { leadId: lead.id, ...(item.partialStep ? { outcome: "abandoned" } : { outcome: "completed" }) },
+      }).catch(() => {});
+    }
+    if (variants && typeof variants === "object" && Object.keys(variants as object).length > 0) {
+      prisma.lead.update({ where: { id: lead.id }, data: { formVariants: variants as Prisma.InputJsonValue } }).catch(() => {});
+    }
+
+    // They gave us a website: read it right away so the profile links are
+    // waiting on the lead page before anyone opens it.
+    if (normalized.companyWebsite && !normalized.noWebsite) {
+      runAutoResearch(lead.id, null).catch((err) => {
+        logger.warn("PIPELINE", "Auto research failed (non-blocking)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
+    }
+
+    // Send email notification with full normalized data (skip for
+    // resubmissions — the assigned user gets a targeted notification instead)
+    if (!isResubmission) {
+      sendNewLeadEmail({
+        receiptId: item.receiptId || "N/A",
+        normalized,
+        score: lead.score ?? undefined,
+        qualityTier: lead.qualityTier ?? undefined,
+        recommendedAction: lead.recommendedAction ?? undefined,
+        leadId: lead.id,
+      }).catch((err) => {
+        logger.error("PIPELINE", "Email notification failed (non-blocking)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+
+    // Confirmation email to the lead — completed submissions only. Items that
+    // came from an abandoned partial (partialStep set) get the recapture
+    // sequence instead of a confirmation.
+    if (!item.partialStep) {
+      sendLeadConfirmationEmail(lead.id, item.sessionId).catch((err) => {
+        logger.error("PIPELINE", "Lead confirmation email failed (non-blocking)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      // A completed submission ends any active recapture sequence for this
+      // person (matched by email or by the resumed session).
+      markRecaptureConverted(normalized.email ?? null, item.sessionId).catch(() => {});
+    }
 
     // Update queue with success
     await prisma.ingestionQueue.update({

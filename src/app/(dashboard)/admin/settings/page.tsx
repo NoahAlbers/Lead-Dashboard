@@ -14,10 +14,13 @@ import { OutcomeReasonSettings } from "@/components/admin/outcome-reason-setting
 import { IngestionHealthDashboard } from "@/components/admin/ingestion-health";
 import { FieldMappingSettings } from "@/components/admin/field-mapping-settings";
 import { RecalculateScoresButton } from "@/components/admin/recalculate-scores-button";
+import { EmailSettings } from "@/components/admin/email-settings";
+import { AbandonSettings } from "@/components/admin/abandon-settings";
+import { parseHotLeadConditions } from "@/lib/hot-lead";
 import { BackfillSubmissionDataButton } from "@/components/admin/backfill-submission-data-button";
 
 export default async function SettingsPage() {
-  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session] = await Promise.all([
+  const [statuses, archivedLeads, tierRanges, emailTypes, stateClassifications, slaConfigs, officeHours, holidays, agingThresholdsRaw, outcomeReasonConfigs, ingestionStats, fieldMapping, session, senderDefault, senderHighValue, confirmationEnabledRaw, hotConditionsRaw, intakeFormUrlRaw, recaptureEnabledRaw, partialTimeoutRaw, maxAgeDaysRaw, email2DelayRaw, email3DelayRaw, ignoreBeforeRaw, replyCaptureRaw] = await Promise.all([
     getCustomStatuses("status"),
     getArchivedLeads(),
     getTierRanges(),
@@ -31,9 +34,22 @@ export default async function SettingsPage() {
     getIngestionStats().catch(() => null),
     getSystemConfig("field_mapping"),
     auth(),
+    getSystemConfig("email_sender_default"),
+    getSystemConfig("email_sender_high_value"),
+    getSystemConfig("lead_confirmation_enabled"),
+    getSystemConfig("hot_lead_conditions"),
+    getSystemConfig("intake_form_url"),
+    getSystemConfig("recapture_enabled"),
+    getSystemConfig("partial_lead_timeout_minutes"),
+    getSystemConfig("recapture_max_abandon_age_days"),
+    getSystemConfig("recapture_email2_delay_hours"),
+    getSystemConfig("recapture_email3_delay_hours"),
+    getSystemConfig("recapture_ignore_before"),
+    getSystemConfig("reply_capture_address"),
   ]);
 
   const agingThresholds = (agingThresholdsRaw as { green: number; yellow: number; orange: number; red: number } | null) ?? { green: 2, yellow: 4, orange: 6, red: 7 };
+  const hotConditions = parseHotLeadConditions(hotConditionsRaw);
 
   return (
     <div className="space-y-6">
@@ -44,6 +60,7 @@ export default async function SettingsPage() {
         </p>
       </div>
 
+      <section id="general" className="scroll-mt-20">
       <SettingsClient
         statuses={statuses.map((s) => ({
           id: s.id,
@@ -76,9 +93,10 @@ export default async function SettingsPage() {
           active: sc.active,
         }))}
       />
+      </section>
 
       {/* SLA Configuration */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="sla" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <SlaSettings
           initialConfigs={slaConfigs.map((c) => ({
             id: c.id,
@@ -100,15 +118,39 @@ export default async function SettingsPage() {
           }))}
           tierNames={tierRanges.map((t) => t.name)}
         />
-      </div>
+      </section>
 
       {/* Lead Aging Thresholds */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="aging" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <AgingThresholdSettings initialThresholds={agingThresholds} />
-      </div>
+      </section>
+
+      {/* Lead Emails (senders, confirmation, high-value rules) */}
+      <section id="emails" className="scroll-mt-20">
+        <EmailSettings
+          initialDefaultSender={(senderDefault as string) ?? "Advanced Collection Bureau <noreply@advancedcb.com>"}
+          initialHighValueSender={(senderHighValue as string) ?? "Noah Albers <nalbers@advancedcb.com>"}
+          initialConfirmationEnabled={confirmationEnabledRaw !== false}
+          initialHotConditions={hotConditions}
+          initialIntakeFormUrl={(intakeFormUrlRaw as string) ?? "https://www.advancedcb.com/"}
+          initialReplyCaptureAddress={typeof replyCaptureRaw === "string" ? replyCaptureRaw : ""}
+        />
+      </section>
+
+      {/* Abandoned Forms (timeout + recapture sequence) */}
+      <section id="abandons" className="scroll-mt-20">
+        <AbandonSettings
+          initialRecaptureEnabled={recaptureEnabledRaw !== false}
+          initialTimeoutMinutes={Number(partialTimeoutRaw) > 0 ? Number(partialTimeoutRaw) : 60}
+          initialMaxAgeDays={Number(maxAgeDaysRaw) > 0 ? Number(maxAgeDaysRaw) : 7}
+          initialEmail2DelayHours={Number(email2DelayRaw) > 0 ? Number(email2DelayRaw) : 23}
+          initialEmail3DelayHours={Number(email3DelayRaw) > 0 ? Number(email3DelayRaw) : 48}
+          initialIgnoreBefore={typeof ignoreBeforeRaw === "string" ? ignoreBeforeRaw : null}
+        />
+      </section>
 
       {/* Outcome Reasons */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="outcomes" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <OutcomeReasonSettings
           initialConfigs={outcomeReasonConfigs.map((c) => ({
             id: c.id,
@@ -118,34 +160,34 @@ export default async function SettingsPage() {
             active: c.active,
           }))}
         />
-      </div>
+      </section>
 
       {/* Ingestion Field Mapping */}
-      <div className="rounded-lg border bg-card p-5">
+      <section id="field-mapping" className="scroll-mt-20 rounded-lg border bg-card p-5">
         <FieldMappingSettings initialMapping={fieldMapping as Record<string, string> ?? {}} />
-      </div>
+      </section>
 
       {/* Ingestion Health Monitoring */}
       {ingestionStats && (
-        <div className="rounded-lg border bg-card p-5">
+        <section id="ingestion" className="scroll-mt-20 rounded-lg border bg-card p-5">
           <IngestionHealthDashboard
             initialStats={ingestionStats}
             isAdmin={session?.user.role === "ADMIN"}
           />
-        </div>
+        </section>
       )}
 
-      {/* Recalculate Scores */}
-      <div className="rounded-lg border bg-card p-5">
-        <RecalculateScoresButton />
-      </div>
+      {/* Data tools */}
+      <section id="data-tools" className="scroll-mt-20 space-y-6">
+        <div className="rounded-lg border bg-card p-5">
+          <RecalculateScoresButton />
+        </div>
+        <div className="rounded-lg border bg-card p-5">
+          <BackfillSubmissionDataButton />
+        </div>
+      </section>
 
-      {/* Backfill Submission Data */}
-      <div className="rounded-lg border bg-card p-5">
-        <BackfillSubmissionDataButton />
-      </div>
-
-      <div className="rounded-lg border bg-card p-5 space-y-6">
+      <section id="integrations" className="scroll-mt-20 rounded-lg border bg-card p-5 space-y-6">
         {/* CRM Field Mapping */}
         <div>
           <h2 className="font-semibold mb-2">Act! CRM Field Mapping</h2>
@@ -199,7 +241,7 @@ export default async function SettingsPage() {
             Include header: <code>x-webhook-secret: [your secret]</code>
           </p>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

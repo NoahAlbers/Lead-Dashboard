@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   Mail,
   Phone,
   Handshake,
   CheckCircle,
-  Clock,
   ThumbsUp,
   ThumbsDown,
   Download,
@@ -15,8 +13,11 @@ import {
   Copy,
   Merge,
   Printer,
+  FileSignature,
 } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
+import { OnboardingDialog } from "@/components/leads/onboarding-dialog";
+import type { MgmtType } from "@/actions/onboarding.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
 import { EmailDialog } from "@/components/leads/email-dialog";
@@ -81,6 +82,8 @@ interface LeadActionsProps {
     rawIntakeForm?: Record<string, unknown> | null;
   };
   assignedUserName?: string;
+  /** Existing onboarding portal link, if one was created before. */
+  onboardingPortalUrl?: string | null;
 }
 
 export function LeadActions({
@@ -93,12 +96,12 @@ export function LeadActions({
   referralPartners = [],
   leadData,
   assignedUserName,
+  onboardingPortalUrl,
 }: LeadActionsProps) {
-  const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState("");
-  const [showStatusSelect, setShowStatusSelect] = useState(false);
   const [showMergeSearch, setShowMergeSearch] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [referralEmailPartnerId, setReferralEmailPartnerId] = useState<string | null>(null);
@@ -141,15 +144,25 @@ export function LeadActions({
     const outcomeType = TERMINAL_STATUSES[newStatus];
     if (outcomeType) {
       setOutcomeModal({ outcomeType, targetStatus: newStatus });
-      setShowStatusSelect(false);
       return;
     }
     startTransition(async () => {
       await updateLeadStatus(leadId, newStatus);
-      setShowStatusSelect(false);
       toast({ title: `Status changed to ${newStatus.replace(/_/g, " ")}`, variant: "success" });
     });
   }
+
+  function handleCreateOnboarding() {
+    setShowOnboarding(true);
+  }
+
+  // Derive the onboarding management type from the intake answer.
+  const ownershipRaw = String(leadData?.rawIntakeForm?.ownershipType ?? "").toLowerCase();
+  const mgmtType: MgmtType = ownershipRaw.includes("for others") || ownershipRaw.includes("third")
+    ? "third_party"
+    : ownershipRaw.includes("own")
+      ? "owner_operator"
+      : "";
 
   function handleOutcomeConfirm(result?: { referralPartnerId?: string }) {
     if (!outcomeModal) return;
@@ -234,12 +247,12 @@ export function LeadActions({
           Mark Contacted
         </button>
         <button
-          onClick={() => handleQuickLog("follow_up_scheduled", "Marked for Follow-Up")}
+          onClick={() => handleStatusChange("REFERRED_OUT" as LeadStatus)}
           disabled={isPending}
           className={actionBtn}
         >
-          <Clock className="h-4 w-4 text-amber-500" />
-          Follow-Up
+          <Handshake className="h-4 w-4 text-orange-500" />
+          Refer Out
         </button>
         <button
           onClick={() => handleStatusChange("QUALIFIED")}
@@ -264,12 +277,13 @@ export function LeadActions({
       {/* Other Actions */}
       <div className="space-y-1.5">
         <button
-          onClick={() => handleStatusChange("REFERRED_OUT" as LeadStatus)}
+          onClick={handleCreateOnboarding}
           disabled={isPending}
           className={actionBtn}
+          title="Pre-create their profile in the onboarding tool and get the portal link"
         >
-          <Handshake className="h-4 w-4 text-orange-500" />
-          Refer Out
+          <FileSignature className="h-4 w-4 text-blue-500" />
+          Start Onboarding
         </button>
         <button
           onClick={() => handleQuickLog("duplicate_found", "Marked as Duplicate")}
@@ -310,42 +324,41 @@ export function LeadActions({
         </button>
       </div>
 
-      {/* Status Change */}
+      <div className="border-t" />
+
+      {/* Status Change — always visible, shows the current status */}
       <div>
-        <button
-          onClick={() => setShowStatusSelect(!showStatusSelect)}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+          Lead Status
+        </label>
+        <select
+          className="w-full rounded-md border border-input bg-card p-2 text-sm font-medium"
+          value={currentStatus}
+          disabled={isPending}
+          onChange={(e) => handleStatusChange(e.target.value as LeadStatus)}
         >
-          Change Status...
-        </button>
-        {showStatusSelect && (
-          <select
-            className="mt-2 w-full rounded-md border border-input bg-card p-2 text-sm"
-            value={currentStatus}
-            onChange={(e) =>
-              handleStatusChange(e.target.value as LeadStatus)
-            }
-          >
-            {[
-              "NEW",
-              "REVIEWED",
-              "QUALIFIED",
-              "CONTACTED",
-              "FOLLOW_UP_NEEDED",
-              "REFERRED_OUT",
-              "IMPORTED_TO_CRM",
-              "WON",
-              "LOST",
-              "DISQUALIFIED",
-              "DUPLICATE",
-              "ARCHIVED",
-            ].map((s) => (
-              <option key={s} value={s}>
-                {s.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-        )}
+          {[
+            "NEW",
+            "REVIEWED",
+            "QUALIFIED",
+            "CONTACTED",
+            "FOLLOW_UP_NEEDED",
+            "REFERRED_OUT",
+            "IMPORTED_TO_CRM",
+            "WON",
+            "LOST",
+            "DISQUALIFIED",
+            "DUPLICATE",
+            "ARCHIVED",
+          ].map((s) => (
+            <option key={s} value={s}>
+              {s.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Changing to Won, Lost, Disqualified, or Referred Out asks for the outcome details first.
+        </p>
       </div>
 
       {/* Note Form */}
@@ -405,6 +418,22 @@ export function LeadActions({
           referralPartners={referralPartners}
           rawIntakeForm={leadData?.rawIntakeForm ?? null}
           autoReferralPartnerId={referralEmailPartnerId}
+        />
+      )}
+
+      {showOnboarding && (
+        <OnboardingDialog
+          open={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          leadId={leadId}
+          existingPortalUrl={onboardingPortalUrl ?? null}
+          prefill={{
+            companyName: leadData?.companyName ?? "",
+            contactName: leadData?.fullName ?? "",
+            email: email ?? "",
+            phone: leadData?.phone ?? phone ?? "",
+            mgmtType,
+          }}
         />
       )}
 

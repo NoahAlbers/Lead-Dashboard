@@ -2,15 +2,35 @@
 
 import { useRouter } from "next/navigation";
 import { CheckCircle, Clock, XCircle, ArrowRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useWorkingMode } from "./working-mode-provider";
+
+const LABELS: Record<string, { label: string; icon: typeof CheckCircle }> = {
+  contacted_will_follow_up: { label: "Contacted, will follow up", icon: CheckCircle },
+  contacted_qualified: { label: "Contacted, qualified", icon: CheckCircle },
+  emailed_awaiting: { label: "Emailed", icon: ArrowRight },
+  called_voicemail: { label: "Called, voicemail", icon: Clock },
+  called_spoke: { label: "Called, spoke", icon: CheckCircle },
+  needs_follow_up: { label: "Follow-up needed", icon: Clock },
+  referred_out: { label: "Referred out", icon: ArrowRight },
+  not_a_fit: { label: "Disqualified", icon: XCircle },
+  duplicate: { label: "Duplicate", icon: XCircle },
+  note_only: { label: "Note only", icon: ArrowRight },
+};
 
 export function SessionSummaryModal() {
   const router = useRouter();
-  const { isWorkingMode, dispositions, sessionStartTime, exitWorkingMode, queue } = useWorkingMode();
+  const { dispositions, sessionStartTime, exitWorkingMode } = useWorkingMode();
 
-  // Only show when exiting (isWorkingMode just turned false but we have data)
-  // Actually, we'll control this from the exit flow — show as inline component
-  if (dispositions.length === 0) return null;
+  // Shown once the session has produced dispositions; the exit flow mounts this component.
+  const open = dispositions.length > 0;
 
   const totalTime = sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 60000) : 0;
 
@@ -20,33 +40,22 @@ export function SessionSummaryModal() {
     breakdown[d.disposition] = (breakdown[d.disposition] ?? 0) + 1;
   }
 
-  const LABELS: Record<string, { label: string; icon: typeof CheckCircle }> = {
-    contacted_will_follow_up: { label: "Contacted — Will Follow Up", icon: CheckCircle },
-    contacted_qualified: { label: "Contacted — Qualified", icon: CheckCircle },
-    emailed_awaiting: { label: "Emailed", icon: ArrowRight },
-    called_voicemail: { label: "Called — Voicemail", icon: Clock },
-    called_spoke: { label: "Called — Spoke", icon: CheckCircle },
-    needs_follow_up: { label: "Follow-Up Needed", icon: Clock },
-    referred_out: { label: "Referred Out", icon: ArrowRight },
-    not_a_fit: { label: "Disqualified", icon: XCircle },
-    duplicate: { label: "Duplicate", icon: XCircle },
-    note_only: { label: "Note Only", icon: ArrowRight },
-  };
-
   function handleClose() {
     exitWorkingMode();
     router.push("/leads");
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-card rounded-xl border shadow-lg w-full max-w-md mx-4 p-6">
-        <h2 className="text-lg font-bold mb-1">Session Complete</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          {dispositions.length} lead{dispositions.length !== 1 ? "s" : ""} processed in {totalTime} minute{totalTime !== 1 ? "s" : ""}
-        </p>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle className="font-bold">Session complete</DialogTitle>
+          <DialogDescription>
+            {dispositions.length} lead{dispositions.length !== 1 ? "s" : ""} processed in {totalTime} minute{totalTime !== 1 ? "s" : ""}
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="space-y-2 mb-6">
+        <div className="space-y-2">
           {Object.entries(breakdown).map(([type, count]) => {
             const info = LABELS[type] ?? { label: type, icon: ArrowRight };
             const Icon = info.icon;
@@ -62,13 +71,16 @@ export function SessionSummaryModal() {
           })}
         </div>
 
-        <button
-          onClick={handleClose}
-          className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Return to Inbox
-        </button>
-      </div>
-    </div>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Return to inbox
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
