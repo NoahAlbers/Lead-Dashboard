@@ -1,11 +1,29 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createRule, updateRule, deleteRule, toggleRule } from "@/actions/rule.actions";
-import { Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { createRule, updateRule, deleteRule, toggleRule, reorderRules } from "@/actions/rule.actions";
+import { Plus, Pencil, Trash2, RefreshCw, GripVertical, Save, Undo2 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ScoringSimulator } from "@/components/admin/scoring-simulator";
 
 interface RuleCondition {
   field: string;
@@ -52,7 +70,93 @@ const LEAD_FIELD_GROUPS: Array<{ label: string; fields: string[] }> = [
   { label: "Metadata", fields: ["source", "leadSource", "referrer"] },
 ];
 
-const LEAD_FIELDS = LEAD_FIELD_GROUPS.flatMap((g) => g.fields);
+function SortableRuleRow({
+  rule,
+  disabled,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  rule: Rule;
+  disabled: boolean;
+  onToggle: (enabled: boolean) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: rule.id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  const outcomes = rule.outcomesJson as RuleOutcome;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-lg border bg-card p-4 ${!rule.enabled ? "opacity-60" : ""} ${isDragging ? "shadow-lg relative z-10" : ""}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            {...attributes}
+            {...listeners}
+            aria-label="Drag to reorder"
+            className="cursor-grab text-muted-foreground hover:text-foreground touch-none"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={rule.enabled}
+              onChange={(e) => onToggle(e.target.checked)}
+              disabled={disabled}
+              className="rounded border-gray-300"
+            />
+          </label>
+          <div className="min-w-0">
+            <p className="font-medium truncate">{rule.name}</p>
+            {rule.description && (
+              <p className="text-sm text-muted-foreground truncate">
+                {rule.description}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <span
+            className={`text-sm font-semibold ${outcomes.scoreAdjustment >= 0 ? "text-emerald-600" : "text-red-600"}`}
+          >
+            {outcomes.scoreAdjustment >= 0 ? "+" : ""}
+            {outcomes.scoreAdjustment}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Priority: {rule.priority}
+          </span>
+          {outcomes.hardStop && (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">
+              Hard Stop
+            </span>
+          )}
+          <button
+            onClick={onEdit}
+            disabled={disabled}
+            className="p-1 hover:bg-muted rounded"
+            aria-label="Edit rule"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={disabled}
+            className="p-1 hover:bg-muted rounded text-destructive"
+            aria-label="Delete rule"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
   const router = useRouter();
@@ -62,6 +166,54 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
   const [isPending, startTransition] = useTransition();
   const [recalculating, setRecalculating] = useState(false);
   const [confirmState, setConfirmState] = useState<{ action: () => void } | null>(null);
+  const [orderDirty, setOrderDirty] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // Pick up fresh rules from the server after a refresh, unless the user has an unsaved order.
+  useEffect(() => {
+    if (!orderDirty) setRules(initialRules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRules]);
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setRules((prev) => {
+      const oldIdx = prev.findIndex((r) => r.id === active.id);
+      const newIdx = prev.findIndex((r) => r.id === over.id);
+      if (oldIdx < 0 || newIdx < 0) return prev;
+      return arrayMove(prev, oldIdx, newIdx).map((r, i) => ({ ...r, priority: i }));
+    });
+    setOrderDirty(true);
+  }
+
+  function handleSaveOrder() {
+    setSavingOrder(true);
+    setRecalculating(true);
+    startTransition(async () => {
+      try {
+        const result = await reorderRules(rules.map((r) => r.id));
+        setOrderDirty(false);
+        showRecalcToast(result.recalculatedCount);
+        router.refresh();
+      } catch (err) {
+        toast({ title: "Could not save order", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+      } finally {
+        setSavingOrder(false);
+        setRecalculating(false);
+      }
+    });
+  }
+
+  function handleResetOrder() {
+    setRules(initialRules);
+    setOrderDirty(false);
+  }
 
   // Form state
   const [name, setName] = useState("");
@@ -145,7 +297,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
         setRecalculating(true);
         startTransition(async () => {
           const result = await deleteRule(id);
-          setRules(rules.filter((r) => r.id !== id));
+          setRules((prev) => prev.filter((r) => r.id !== id));
           setRecalculating(false);
           showRecalcToast(result.recalculatedCount);
         });
@@ -157,7 +309,7 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
     setRecalculating(true);
     startTransition(async () => {
       const result = await toggleRule(id, enabled);
-      setRules(rules.map((r) => (r.id === id ? { ...r, enabled } : r)));
+      setRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled } : r)));
       setRecalculating(false);
       showRecalcToast(result.recalculatedCount);
     });
@@ -173,70 +325,53 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
         </div>
       )}
 
-      {/* Rules List */}
-      <div className="space-y-2">
-        {rules.map((rule) => {
-          const outcomes = rule.outcomesJson as RuleOutcome;
-          return (
-            <div
-              key={rule.id}
-              className={`rounded-lg border bg-card p-4 ${!rule.enabled ? "opacity-60" : ""}`}
+      {/* Unsaved order bar */}
+      {orderDirty && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          <span>Rule order changed. Save to persist the new priorities and recalculate lead scores.</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleResetOrder}
+              disabled={isPending}
+              className="flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={rule.enabled}
-                      onChange={(e) => handleToggle(rule.id, e.target.checked)}
-                      disabled={isPending}
-                      className="rounded border-gray-300"
-                    />
-                  </label>
-                  <div>
-                    <p className="font-medium">{rule.name}</p>
-                    {rule.description && (
-                      <p className="text-sm text-muted-foreground">
-                        {rule.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`text-sm font-semibold ${outcomes.scoreAdjustment >= 0 ? "text-emerald-600" : "text-red-600"}`}
-                  >
-                    {outcomes.scoreAdjustment >= 0 ? "+" : ""}
-                    {outcomes.scoreAdjustment}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    Priority: {rule.priority}
-                  </span>
-                  {outcomes.hardStop && (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">
-                      Hard Stop
-                    </span>
-                  )}
-                  <button
-                    onClick={() => startEdit(rule)}
-                    disabled={isPending}
-                    className="p-1 hover:bg-muted rounded"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(rule.id)}
-                    disabled={isPending}
-                    className="p-1 hover:bg-muted rounded text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              <Undo2 className="h-3.5 w-3.5" />
+              Reset
+            </button>
+            <button
+              onClick={handleSaveOrder}
+              disabled={isPending || savingOrder}
+              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save order
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Rules List */}
+      {rules.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No scoring rules yet. Every lead starts at a base score of 50.</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">Drag rules to set priority. Rules run top to bottom; the first hard stop wins.</p>
+      )}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={rules.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {rules.map((rule) => (
+              <SortableRuleRow
+                key={rule.id}
+                rule={rule}
+                disabled={isPending}
+                onToggle={(enabled) => handleToggle(rule.id, enabled)}
+                onEdit={() => startEdit(rule)}
+                onDelete={() => handleDelete(rule.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {/* Add/Edit Form */}
       {isCreating ? (
@@ -425,6 +560,17 @@ export function RulesManager({ initialRules }: { initialRules: Rule[] }) {
           Add Scoring Rule
         </button>
       )}
+
+      <ScoringSimulator
+        rules={rules.map((r) => ({
+          name: r.name,
+          enabled: r.enabled,
+          priority: r.priority,
+          conditionsJson: r.conditionsJson as RuleCondition[],
+          outcomesJson: r.outcomesJson as RuleOutcome,
+        }))}
+        orderDirty={orderDirty}
+      />
 
       <ConfirmDialog
         open={!!confirmState}
