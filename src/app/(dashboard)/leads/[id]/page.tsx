@@ -455,7 +455,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
           </CompactCard>
 
           {/* Portfolio Details (intake form only) */}
-          {isIntakeForm && intakeFields && (intakeFields.totalUnits || intakeFields.avgRent || intakeFields.ownershipType || intakeFields.rentalTypes?.length || intakeFields.propertyTypes?.length || intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
+          {isIntakeForm && intakeFields && !!(intakeFields.totalUnits || intakeFields.avgRent || intakeFields.ownershipType || intakeFields.rentalTypes?.length || intakeFields.propertyTypes?.length || intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
             <CompactCard title="Portfolio Details">
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
                 <InfoRow label="Total Units" value={intakeFields.totalUnits} />
