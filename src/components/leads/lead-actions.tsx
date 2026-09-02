@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   Mail,
   Phone,
@@ -17,7 +16,8 @@ import {
   FileSignature,
 } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
-import { createOnboardingProfile } from "@/actions/onboarding.actions";
+import { OnboardingDialog } from "@/components/leads/onboarding-dialog";
+import type { MgmtType } from "@/actions/onboarding.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
 import { EmailDialog } from "@/components/leads/email-dialog";
@@ -82,6 +82,8 @@ interface LeadActionsProps {
     rawIntakeForm?: Record<string, unknown> | null;
   };
   assignedUserName?: string;
+  /** Existing onboarding portal link, if one was created before. */
+  onboardingPortalUrl?: string | null;
 }
 
 export function LeadActions({
@@ -94,8 +96,9 @@ export function LeadActions({
   referralPartners = [],
   leadData,
   assignedUserName,
+  onboardingPortalUrl,
 }: LeadActionsProps) {
-  const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -150,21 +153,16 @@ export function LeadActions({
   }
 
   function handleCreateOnboarding() {
-    startTransition(async () => {
-      try {
-        const res = await createOnboardingProfile(leadId);
-        if (res.success && res.portalUrl) {
-          try { await navigator.clipboard.writeText(res.portalUrl); } catch {}
-          toast({ title: "Onboarding profile created, portal link copied to clipboard", variant: "success" });
-          router.refresh();
-        } else {
-          toast({ title: res.error ?? "Failed to create onboarding profile", variant: "destructive" });
-        }
-      } catch {
-        toast({ title: "Failed to create onboarding profile", variant: "destructive" });
-      }
-    });
+    setShowOnboarding(true);
   }
+
+  // Derive the onboarding management type from the intake answer.
+  const ownershipRaw = String(leadData?.rawIntakeForm?.ownershipType ?? "").toLowerCase();
+  const mgmtType: MgmtType = ownershipRaw.includes("for others") || ownershipRaw.includes("third")
+    ? "third_party"
+    : ownershipRaw.includes("own")
+      ? "owner_operator"
+      : "";
 
   function handleOutcomeConfirm(result?: { referralPartnerId?: string }) {
     if (!outcomeModal) return;
@@ -420,6 +418,22 @@ export function LeadActions({
           referralPartners={referralPartners}
           rawIntakeForm={leadData?.rawIntakeForm ?? null}
           autoReferralPartnerId={referralEmailPartnerId}
+        />
+      )}
+
+      {showOnboarding && (
+        <OnboardingDialog
+          open={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          leadId={leadId}
+          existingPortalUrl={onboardingPortalUrl ?? null}
+          prefill={{
+            companyName: leadData?.companyName ?? "",
+            contactName: leadData?.fullName ?? "",
+            email: email ?? "",
+            phone: leadData?.phone ?? phone ?? "",
+            mgmtType,
+          }}
         />
       )}
 

@@ -35,7 +35,7 @@ export default async function DashboardLayout({
             userName={session.user.name}
             userRole={session.user.role}
           />
-          <main className="flex-1 overflow-y-auto bg-muted/40 p-6">
+          <main className="flex-1 overflow-y-auto bg-muted/40 p-4 lg:p-6">
             {children}
           </main>
           <FaviconManager />

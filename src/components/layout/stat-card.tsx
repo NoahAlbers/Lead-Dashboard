@@ -24,9 +24,14 @@ function Sparkline({ values }: { values: number[] }) {
   const area = `0,${h} ${line} ${w},${h}`;
   const last = pts[pts.length - 1];
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="text-primary shrink-0" aria-hidden="true">
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="block h-7 w-full max-w-[96px] text-primary"
+      aria-hidden="true"
+    >
       <polygon points={area} fill="currentColor" opacity="0.10" />
-      <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       {last && <circle cx={last[0]} cy={last[1]} r="2.5" fill="currentColor" />}
     </svg>
   );
@@ -43,8 +48,12 @@ export function StatCard({ label, value, icon: Icon, className, spark, delta, de
         <Icon className="h-4 w-4 text-muted-foreground/50 shrink-0" />
       </div>
       <div className="flex items-end justify-between gap-2 mt-1">
-        <p className="text-2xl font-bold truncate">{value}</p>
-        {spark && <Sparkline values={spark} />}
+        <p className="text-2xl font-bold shrink-0 whitespace-nowrap">{value}</p>
+        {spark && (
+          <div className="hidden min-w-0 flex-1 justify-end sm:flex">
+            <Sparkline values={spark} />
+          </div>
+        )}
       </div>
       {showDelta && (
         <p className={cn("mt-1.5 text-xs font-medium", flat ? "text-muted-foreground" : up ? "text-emerald-600" : "text-red-600")}>

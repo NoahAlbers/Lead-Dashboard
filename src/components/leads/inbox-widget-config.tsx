@@ -157,8 +157,8 @@ export function InboxWidgets({ metrics, series = {}, titleRow, controls }: Inbox
   );
 
   const cols =
-    widgetIds.length <= 4 ? "grid-cols-2 md:grid-cols-4"
-    : widgetIds.length <= 6 ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
+    widgetIds.length <= 4 ? "grid-cols-2 lg:grid-cols-4"
+    : widgetIds.length <= 6 ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-6"
     : "grid-cols-2 md:grid-cols-4";
 
   return (

@@ -28,6 +28,7 @@ import { leadWebDomain } from "@/lib/lead-domain";
 import { phoneAreaLocation } from "@/lib/area-codes";
 import { CopyButton } from "@/components/shared/copy-button";
 import { FollowUpScheduler } from "@/components/leads/follow-up-scheduler";
+import { OnboardingPanel } from "@/components/leads/onboarding-panel";
 import { getLeadFollowUps } from "@/actions/follow-up.actions";
 import { AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
@@ -264,6 +265,19 @@ export default async function LeadDetailPage({ params }: PageProps) {
         take: 3,
       });
 
+  // Onboarding handoff: the latest portal created for this lead plus the
+  // milestones the onboarding tool has reported back since.
+  const onboardingCreated = events.find((e) => e.eventType === "onboarding_profile_created");
+  const onboardingData = onboardingCreated?.eventDataJson as { portalUrl?: string; emailed?: boolean } | null | undefined;
+  const onboardingMilestones = onboardingCreated
+    ? events
+        .filter((e) => e.eventType === "onboarding_milestone" && e.createdAt >= onboardingCreated.createdAt)
+        .map((e) => {
+          const d = e.eventDataJson as { milestone?: string; label?: string; at?: string } | null;
+          return { milestone: d?.milestone ?? "", label: d?.label ?? "", at: d?.at ?? e.createdAt.toISOString() };
+        })
+    : [];
+
   // Most recent auto-research findings, so the panel shows them on load.
   const latestAutoResearch = (() => {
     const evt = events.find((e) => e.eventType === "auto_research");
@@ -286,8 +300,8 @@ export default async function LeadDetailPage({ params }: PageProps) {
       <SessionSummaryWrapper />
 
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
           <BackToInboxLink />
           <div className="flex items-center gap-3 mt-1">
             {webDomain ? (
@@ -316,7 +330,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 lg:shrink-0 lg:flex-nowrap">
           {/* Info first: score, tier, status, SLA */}
           <ScoreCircle score={lead.score} tierColor={tierHex} />
           <div className="flex flex-col items-end gap-1">
@@ -726,8 +740,19 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 }}
                 assignedUserName={session?.user.name ?? "ACB Team"}
                 referralPartners={activePartners}
+                onboardingPortalUrl={onboardingData?.portalUrl ?? null}
               />
             </div>
+
+            {/* Onboarding progress (once a portal exists) */}
+            {onboardingCreated && onboardingData?.portalUrl && (
+              <OnboardingPanel
+                portalUrl={onboardingData.portalUrl}
+                emailed={!!onboardingData.emailed}
+                createdAt={onboardingCreated.createdAt.toISOString()}
+                milestones={onboardingMilestones}
+              />
+            )}
 
             {/* Scheduled follow-ups */}
             <FollowUpScheduler

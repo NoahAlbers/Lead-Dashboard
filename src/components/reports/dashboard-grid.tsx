@@ -42,7 +42,7 @@ function buildDefaultRGLLayout(items: OldLayoutItem[]): Layout {
   let y = 0;
   for (const item of items) {
     const w = item.w === 2 ? 12 : 6;
-    const h = item.i === "kpi" ? 5 : item.i === "recent" ? 8 : item.i === "custom" ? 8 : item.i === "geo" ? 8 : 7;
+    const h = item.i === "kpi" ? 4 : item.i === "recent" ? 8 : item.i === "custom" ? 8 : item.i === "geo" ? 8 : 7;
     if (x + w > 12) { x = 0; y += h; }
     layout.push({
       i: item.i,
@@ -129,7 +129,7 @@ export function DashboardGrid({ children, widgetKeys, defaultLayout }: Dashboard
 
   return (
     <div ref={containerRef}>
-      <div className="flex justify-end gap-2 mb-3">
+      <div className="flex flex-wrap justify-end gap-2 mb-3">
         <div className="relative">
           <button
             onClick={() => setPickerOpen((o) => !o)}

@@ -592,7 +592,7 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
   }
 
   return (
-    <div className="space-y-4">
+    <div className="w-full min-w-0 max-w-full space-y-4">
       {/* Bulk Action Bar */}
       <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} userRole={userRole} />
 
@@ -684,8 +684,8 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
       )}
 
       {/* Table */}
-      <div className="rounded-lg border bg-card">
-        <div className="overflow-x-auto">
+      <div className="w-full min-w-0 max-w-full rounded-lg border bg-card">
+        <div className="w-full overflow-x-auto">
           <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: totalTableWidth }}>
             <thead>
               <tr className="border-b bg-muted/50">
