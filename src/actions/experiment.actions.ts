@@ -53,6 +53,36 @@ export async function saveExperiment(id: string | null, input: ExperimentInput) 
   return row;
 }
 
+/** The form's built-in 8-way layout test: pitches x speed x grouping, with today's form as the control. */
+const FORM_LAYOUT_PRESET: VariantDef[] = [
+  { key: "classic", weight: 50, description: "The form as it is today", flags: {} },
+  { key: "no_pitch", weight: 7.142857, description: "No selling-point screens", flags: { skipPitchScreens: true } },
+  { key: "fast", weight: 7.142857, description: "Faster transitions", flags: { fastTransitions: true } },
+  { key: "no_pitch_fast", weight: 7.142857, description: "No selling points, faster transitions", flags: { skipPitchScreens: true, fastTransitions: true } },
+  { key: "grouped", weight: 7.142857, description: "2-4 questions per card", flags: { groupedQuestions: true } },
+  { key: "fast_grouped", weight: 7.142857, description: "Faster transitions, 2-4 questions per card", flags: { fastTransitions: true, groupedQuestions: true } },
+  { key: "no_pitch_grouped", weight: 7.142857, description: "No selling points, 2-4 questions per card", flags: { skipPitchScreens: true, groupedQuestions: true } },
+  { key: "no_pitch_fast_grouped", weight: 7.142857, description: "No selling points, faster transitions, 2-4 questions per card", flags: { skipPitchScreens: true, fastTransitions: true, groupedQuestions: true } },
+];
+
+export async function createFormLayoutPreset() {
+  await requireAdmin();
+  const existing = await prisma.experiment.findUnique({ where: { key: "form_layout" } });
+  if (existing) throw new Error("The form layout test already exists; edit it below instead");
+  const row = await prisma.experiment.create({
+    data: {
+      key: "form_layout",
+      name: "Form layout: pitches × speed × grouping",
+      hypothesis: "Fewer pitch screens, faster transitions, and grouped questions each change completion; the full factorial shows which combination wins.",
+      primaryGoal: "completed",
+      status: "draft",
+      variantsJson: FORM_LAYOUT_PRESET as unknown as Prisma.InputJsonValue,
+    },
+  });
+  revalidatePath("/admin/experiments");
+  return row;
+}
+
 export async function setExperimentStatus(id: string, status: "draft" | "running" | "paused" | "ended") {
   await requireAdmin();
   const current = await prisma.experiment.findUniqueOrThrow({ where: { id } });
@@ -87,6 +117,32 @@ export interface VariantResult {
   confidence: number | null; // 0-100, two-proportion z-test vs control
 }
 
+/** One layout flag measured across every variant that has it on versus every variant that has it off. */
+export interface FactorResult {
+  flag: string;
+  label: string;
+  on: { sessions: number; goal: number };
+  off: { sessions: number; goal: number };
+  onRate: number;
+  offRate: number;
+  upliftPct: number | null; // on vs off, null if the off rate is 0
+  confidence: number | null; // 0-100, two-proportion z-test on vs off
+}
+
+const FACTOR_LABELS: Record<string, string> = {
+  skipPitchScreens: "Selling points removed",
+  fastTransitions: "Faster transitions",
+  groupedQuestions: "Questions grouped",
+};
+
+/** Two-proportion z-test confidence (0-100) that two groups differ; null when it cannot be computed. */
+function proportionConfidence(goal1: number, n1: number, goal2: number, n2: number): number | null {
+  if (n1 === 0 || n2 === 0) return null;
+  const pooled = (goal1 + goal2) / (n1 + n2);
+  const se = Math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2));
+  return se > 0 ? zToConfidence((goal2 / n2 - goal1 / n1) / se) : null;
+}
+
 function zToConfidence(z: number): number {
   // Two-sided normal CDF approximation
   const t = 1 / (1 + 0.2316419 * Math.abs(z));
@@ -97,7 +153,7 @@ function zToConfidence(z: number): number {
 }
 
 /** Per-variant funnel and downstream lead outcomes for one experiment. */
-export async function getExperimentResults(experimentId: string): Promise<{ variants: VariantResult[]; since: string | null }> {
+export async function getExperimentResults(experimentId: string): Promise<{ variants: VariantResult[]; factors: FactorResult[]; since: string | null }> {
   await requireAdmin();
   const exp = await prisma.experiment.findUniqueOrThrow({ where: { id: experimentId } });
   const defs = (exp.variantsJson as unknown as VariantDef[]) ?? [];
@@ -120,6 +176,14 @@ export async function getExperimentResults(experimentId: string): Promise<{ vari
     key: v.key, sessions: 0, reachedContact: 0, completed: 0, leads: 0, hotLeads: 0, contacted: 0, won: 0, goalRate: 0, upliftPct: null, confidence: null,
   }));
   const byKey = new Map(results.map((r) => [r.key, r]));
+  const flagsByKey = new Map(defs.map((v) => [v.key, v.flags ?? {}]));
+
+  // Every flag any variant mentions becomes a factor, measured on vs off across all sessions.
+  const factorKeys = Array.from(new Set(defs.flatMap((v) => Object.keys(v.flags ?? {}))));
+  const factors: FactorResult[] = factorKeys.map((flag) => ({
+    flag, label: FACTOR_LABELS[flag] ?? flag, on: { sessions: 0, goal: 0 }, off: { sessions: 0, goal: 0 }, onRate: 0, offRate: 0, upliftPct: null, confidence: null,
+  }));
+
   for (const s of sessions) {
     const vk = (s.variantsJson as Record<string, string> | null)?.[exp.key];
     const r = vk ? byKey.get(vk) : undefined;
@@ -128,23 +192,38 @@ export async function getExperimentResults(experimentId: string): Promise<{ vari
     if (s.reachedContact) r.reachedContact++;
     if (s.outcome === "completed") r.completed++;
     const lead = s.leadId ? leadById.get(s.leadId) : undefined;
+    let isHot = false;
     if (lead) {
       r.leads++;
-      if (lead.qualityTier && hot.has(lead.qualityTier)) r.hotLeads++;
+      if (lead.qualityTier && hot.has(lead.qualityTier)) { r.hotLeads++; isHot = true; }
       if (lead.firstContactAt) r.contacted++;
       if (lead.status === "WON") r.won++;
     }
+    const hitGoal = exp.primaryGoal === "contact_reached" ? !!s.reachedContact : exp.primaryGoal === "hot_lead" ? isHot : s.outcome === "completed";
+    const sessionFlags = flagsByKey.get(r.key) ?? {};
+    for (const f of factors) {
+      const side = sessionFlags[f.flag] ? f.on : f.off;
+      side.sessions++;
+      if (hitGoal) side.goal++;
+    }
   }
+
   const goalOf = (r: VariantResult) => exp.primaryGoal === "contact_reached" ? r.reachedContact : exp.primaryGoal === "hot_lead" ? r.hotLeads : r.completed;
   for (const r of results) r.goalRate = r.sessions ? goalOf(r) / r.sessions : 0;
   const control = results[0];
   for (const r of results.slice(1)) {
     if (!control || control.sessions === 0 || r.sessions === 0) continue;
     r.upliftPct = control.goalRate > 0 ? Math.round(((r.goalRate - control.goalRate) / control.goalRate) * 100) : null;
-    const p1 = control.goalRate, p2 = r.goalRate, n1 = control.sessions, n2 = r.sessions;
-    const pooled = (goalOf(control) + goalOf(r)) / (n1 + n2);
-    const se = Math.sqrt(pooled * (1 - pooled) * (1 / n1 + 1 / n2));
-    r.confidence = se > 0 ? zToConfidence((p2 - p1) / se) : null;
+    r.confidence = proportionConfidence(goalOf(control), control.sessions, goalOf(r), r.sessions);
   }
-  return { variants: results, since: since.toISOString() };
+
+  for (const f of factors) {
+    f.onRate = f.on.sessions ? f.on.goal / f.on.sessions : 0;
+    f.offRate = f.off.sessions ? f.off.goal / f.off.sessions : 0;
+    if (f.on.sessions === 0 || f.off.sessions === 0) continue;
+    f.upliftPct = f.offRate > 0 ? Math.round(((f.onRate - f.offRate) / f.offRate) * 100) : null;
+    f.confidence = proportionConfidence(f.off.goal, f.off.sessions, f.on.goal, f.on.sessions);
+  }
+
+  return { variants: results, factors, since: since.toISOString() };
 }

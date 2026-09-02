@@ -1,16 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { FlaskConical, Pause, Play, Plus, Square, Trash2, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronRight, ExternalLink, FlaskConical, LayoutGrid, Pause, Play, Plus, Square, Trash2, RefreshCw } from "lucide-react";
 import {
   saveExperiment,
   setExperimentStatus,
   deleteExperiment,
   getExperimentResults,
+  createFormLayoutPreset,
   type VariantDef,
   type VariantResult,
+  type FactorResult,
 } from "@/actions/experiment.actions";
 import { toast } from "@/components/ui/use-toast";
+import { CopyButton } from "@/components/shared/copy-button";
 
 interface Experiment {
   id: string;
@@ -24,6 +28,12 @@ interface Experiment {
   endedAt: string | null;
 }
 
+interface Results {
+  variants: VariantResult[];
+  factors: FactorResult[];
+  since: string | null;
+}
+
 const GOALS: Array<{ key: Experiment["primaryGoal"]; label: string }> = [
   { key: "completed", label: "Completed the form" },
   { key: "contact_reached", label: "Gave contact info" },
@@ -31,7 +41,9 @@ const GOALS: Array<{ key: Experiment["primaryGoal"]; label: string }> = [
 ];
 
 const KNOWN_FLAGS: Array<{ key: string; label: string }> = [
-  { key: "skipPitchScreens", label: "Skip the sales pitch screens" },
+  { key: "skipPitchScreens", label: "No selling-point screens" },
+  { key: "fastTransitions", label: "Faster transitions" },
+  { key: "groupedQuestions", label: "2-4 questions per card" },
 ];
 
 const inputCls = "h-9 rounded-md border border-input bg-card px-3 text-sm";
@@ -60,10 +72,91 @@ function blankExperiment(): Experiment {
   };
 }
 
-export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
+function previewUrl(previewBase: string, v: VariantDef): string {
+  const flags = Object.keys(v.flags ?? {}).filter((k) => v.flags?.[k]).join(",");
+  return `${previewBase}?ab=${encodeURIComponent(v.key)}&flags=${flags}`;
+}
+
+function formatShare(weight: number, total: number): string {
+  if (total <= 0) return "0.0";
+  return ((weight / total) * 100).toFixed(1);
+}
+
+function Uplift({ upliftPct, confidence }: { upliftPct: number | null; confidence: number | null }) {
+  if (upliftPct == null) return <>n/a</>;
+  return (
+    <span className={upliftPct > 0 ? "text-emerald-600" : upliftPct < 0 ? "text-red-600" : ""}>
+      {upliftPct > 0 ? "+" : ""}{upliftPct}%{confidence != null ? ` (${confidence}% conf.)` : ""}
+    </span>
+  );
+}
+
+/** Collapsible per-experiment preview: chips that open each variant in a new tab plus an inline frame. */
+function VariantPreview({ variants, previewBase }: { variants: VariantDef[]; previewBase: string }) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState(variants[0]?.key ?? "");
+  const [device, setDevice] = useState<"desktop" | "phone">("desktop");
+  const current = variants.find((v) => v.key === selected) ?? variants[0];
+  const url = current ? previewUrl(previewBase, current) : "";
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
+        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} Preview variants
+      </button>
+      {open && current && (
+        <div className="space-y-3 rounded-md border p-3">
+          <div className="flex flex-wrap gap-1.5">
+            {variants.map((v) => (
+              <a
+                key={v.key}
+                href={previewUrl(previewBase, v)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs hover:bg-muted"
+                title={v.description || v.key}
+              >
+                {v.key} <ExternalLink className="h-3 w-3 text-muted-foreground" />
+              </a>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <label className="inline-flex items-center gap-1.5">
+              <span className="text-muted-foreground">Variant</span>
+              <select value={current.key} onChange={(e) => setSelected(e.target.value)} className={inputCls}>
+                {variants.map((v) => <option key={v.key} value={v.key}>{v.key}{v.description ? ` (${v.description})` : ""}</option>)}
+              </select>
+            </label>
+            <div className="inline-flex rounded-md border">
+              <button type="button" onClick={() => setDevice("desktop")} className={`px-2.5 py-1.5 ${device === "desktop" ? "bg-muted font-medium" : "hover:bg-muted/50"}`}>Desktop</button>
+              <button type="button" onClick={() => setDevice("phone")} className={`border-l px-2.5 py-1.5 ${device === "phone" ? "bg-muted font-medium" : "hover:bg-muted/50"}`}>Phone</button>
+            </div>
+          </div>
+          <div className={device === "phone" ? "flex justify-center" : ""}>
+            <iframe
+              key={`${current.key}-${device}`}
+              src={url}
+              title={`Preview of ${current.key}`}
+              className="rounded-md border bg-white"
+              style={device === "phone" ? { width: 390, height: 760 } : { width: "100%", height: 720 }}
+            />
+          </div>
+          <div className="group flex items-center text-[11px] text-muted-foreground">
+            <code className="truncate">{url}</code>
+            <CopyButton value={url} label="preview link" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ExperimentsManager({ initial, previewBase }: { initial: Experiment[]; previewBase: string }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editing, setEditing] = useState<Experiment | null>(null);
-  const [results, setResults] = useState<Record<string, { variants: VariantResult[]; since: string | null }>>({});
+  const [results, setResults] = useState<Record<string, Results>>({});
+  const hasLayoutTest = initial.some((e) => e.key === "form_layout");
 
   function save() {
     if (!editing) return;
@@ -84,6 +177,18 @@ export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
     });
   }
 
+  function addLayoutPreset() {
+    startTransition(async () => {
+      try {
+        await createFormLayoutPreset();
+        toast({ title: "Form layout test added", description: "It starts as a draft; press Start when you are ready.", variant: "success" });
+        router.refresh();
+      } catch (e) {
+        toast({ title: e instanceof Error ? e.message : "Could not add the test", variant: "destructive" });
+      }
+    });
+  }
+
   function loadResults(id: string) {
     startTransition(async () => {
       const r = await getExperimentResults(id);
@@ -96,11 +201,21 @@ export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
     setEditing({ ...editing, variants: editing.variants.map((v, idx) => (idx === i ? { ...v, ...patch } : v)) });
   }
 
+  function splitRestEvenly() {
+    if (!editing || editing.variants.length < 2) return;
+    const control = Math.max(0, Math.min(100, Number(editing.variants[0].weight) || 0));
+    const others = editing.variants.length - 1;
+    const each = Number(((100 - control) / others).toFixed(6));
+    setEditing({ ...editing, variants: editing.variants.map((v, idx) => (idx === 0 ? { ...v, weight: control } : { ...v, weight: each })) });
+  }
+
+  const totalWeight = editing ? editing.variants.reduce((sum, v) => sum + (Number(v.weight) || 0), 0) : 0;
+
   return (
     <div className="space-y-4">
       {initial.length === 0 && !editing && (
         <div className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
-          No experiments yet. A good first one: the sales pitch screens on vs. off.
+          No experiments yet. A good first one: the 8-way form layout test below, or the sales pitch screens on vs. off.
         </div>
       )}
 
@@ -118,7 +233,7 @@ export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
                 </div>
                 {exp.hypothesis && <p className="mt-1 text-sm text-muted-foreground">{exp.hypothesis}</p>}
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Goal: {GOALS.find((g) => g.key === exp.primaryGoal)?.label} · Variants: {exp.variants.map((v) => `${v.key} ${v.weight}%`).join(", ")}
+                  Goal: {GOALS.find((g) => g.key === exp.primaryGoal)?.label} · Variants: {exp.variants.map((v) => `${v.key} ${Number.isInteger(v.weight) ? v.weight : Number(v.weight).toFixed(1)}%`).join(", ")}
                   {exp.startedAt && ` · started ${new Date(exp.startedAt).toLocaleDateString("en-US", { timeZone: "America/New_York" })}`}
                 </p>
               </div>
@@ -178,11 +293,7 @@ export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
                         <td className="px-2 py-1.5 text-right tabular-nums">{v.won}</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{Math.round(v.goalRate * 100)}%</td>
                         <td className="px-2 py-1.5 text-right tabular-nums">
-                          {i === 0 ? "" : v.upliftPct == null ? "n/a" : (
-                            <span className={v.upliftPct > 0 ? "text-emerald-600" : v.upliftPct < 0 ? "text-red-600" : ""}>
-                              {v.upliftPct > 0 ? "+" : ""}{v.upliftPct}%{v.confidence != null ? ` (${v.confidence}% conf.)` : ""}
-                            </span>
-                          )}
+                          {i === 0 ? "" : <Uplift upliftPct={v.upliftPct} confidence={v.confidence} />}
                         </td>
                       </tr>
                     ))}
@@ -191,8 +302,41 @@ export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
                 <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
                   {r.variants.every((v) => v.sessions < 100) ? "Under 100 sessions per variant; treat any difference as noise for now." : "Confidence is a two-proportion z-test on the primary goal; 95% or more is a real difference."}
                 </p>
+
+                {r.factors.length > 0 && (
+                  <div className="border-t">
+                    <p className="px-2 pt-2 text-xs font-medium">By factor</p>
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 text-muted-foreground">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-medium">Factor</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Sessions on/off</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Goal rate on</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Goal rate off</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Difference</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {r.factors.map((f) => (
+                          <tr key={f.flag} className="border-t">
+                            <td className="px-2 py-1.5 font-medium">{f.label}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{f.on.sessions} / {f.off.sessions}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{Math.round(f.onRate * 100)}%</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{Math.round(f.offRate * 100)}%</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums"><Uplift upliftPct={f.upliftPct} confidence={f.confidence} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                      Each factor is measured across every variant that has it on versus every variant that has it off, so it reaches significance sooner than any single variant.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
+
+            <VariantPreview variants={exp.variants} previewBase={previewBase} />
           </div>
         );
       })}
@@ -222,11 +366,22 @@ export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">Variants <span className="text-xs font-normal text-muted-foreground">(first one is the control)</span></p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium">Variants <span className="text-xs font-normal text-muted-foreground">(first one is the control)</span></p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className={Math.abs(totalWeight - 100) > 0.05 ? "text-amber-600" : ""}>Total {totalWeight.toFixed(1)}%</span>
+                <button type="button" onClick={splitRestEvenly} className="rounded-md border px-2 py-1 hover:bg-muted" title="Keep the control's share and divide what is left equally across the other variants">
+                  Split the rest evenly
+                </button>
+              </div>
+            </div>
             {editing.variants.map((v, i) => (
-              <div key={i} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[120px_80px_1fr_auto]">
+              <div key={i} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[120px_150px_1fr_auto]">
                 <input value={v.key} onChange={(e) => setVariant(i, { key: e.target.value })} className={inputCls} placeholder="key" />
-                <input type="number" min={0} value={v.weight} onChange={(e) => setVariant(i, { weight: Number(e.target.value) })} className={inputCls} title="Weight (share of visitors)" />
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <input type="number" min={0} step={0.01} value={v.weight} onChange={(e) => setVariant(i, { weight: Number(e.target.value) })} className={`${inputCls} w-20`} title="% of visitors" />
+                  <span className="whitespace-nowrap">% of visitors<br /><span className="tabular-nums" title="Actual share once all weights are added up">= {formatShare(Number(v.weight) || 0, totalWeight)}%</span></span>
+                </label>
                 <input value={v.description ?? ""} onChange={(e) => setVariant(i, { description: e.target.value })} className={inputCls} placeholder="What's different" />
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   {KNOWN_FLAGS.map((f) => (
@@ -254,9 +409,16 @@ export function ExperimentsManager({ initial }: { initial: Experiment[] }) {
           </div>
         </div>
       ) : (
-        <button onClick={() => setEditing(blankExperiment())} className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-3 text-sm text-muted-foreground hover:bg-muted/40">
-          <Plus className="h-4 w-4" /> New experiment
-        </button>
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <button onClick={() => setEditing(blankExperiment())} className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-3 text-sm text-muted-foreground hover:bg-muted/40">
+            <Plus className="h-4 w-4" /> New experiment
+          </button>
+          {!hasLayoutTest && (
+            <button onClick={addLayoutPreset} disabled={isPending} className="flex items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground hover:bg-muted/40 disabled:opacity-50" title="Classic keeps half the traffic; the other seven layouts share the rest">
+              <LayoutGrid className="h-4 w-4" /> Add the 8-way form layout test
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

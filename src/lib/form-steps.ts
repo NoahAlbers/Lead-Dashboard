@@ -25,6 +25,7 @@ export const FORM_STEPS: Array<{ key: string; label: string; pitch?: boolean }> 
   { key: "rentalTypes", label: "Rental types" },
   { key: "propertyTypes", label: "Property types" },
   { key: "avgRent", label: "Average rent" },
+  { key: "sellTeamExtension", label: "Pitch: team extension", pitch: true },
   { key: "listings", label: "Listing sites" },
   { key: "pmSoftware", label: "PM software" },
   { key: "sellReporting", label: "Pitch: reporting", pitch: true },

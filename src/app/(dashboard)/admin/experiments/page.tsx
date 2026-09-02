@@ -14,8 +14,12 @@ export default async function ExperimentsPage() {
         <p className="text-sm text-muted-foreground mt-1">
           A/B tests on the intake form. Variants are assigned per visitor and follow the lead through to won or lost.
         </p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Preview links open the form from the acb-form repo&apos;s dev branch on preview deployments and main in production. They never create leads or tracking data.
+        </p>
       </div>
       <ExperimentsManager
+        previewBase="/form-preview/index.html"
         initial={experiments.map((e) => ({
           id: e.id,
           key: e.key,

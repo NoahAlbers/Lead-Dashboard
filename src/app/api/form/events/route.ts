@@ -14,7 +14,7 @@ const STEP_ORDER: Record<string, number> = {};
 [
   "intro","name","company","website","certify","contact","priorAgency","debtTypes","debtsNow","sellAcbPitch",
   "nonResBranch","sellDedicatedTeam","states","nonResStates","sellContingency","ownership","sellSkipTrace","units",
-  "sellRecoverableInsight","sellBigPortfolio","sellUsStaff","rentalTypes","propertyTypes","avgRent","listings",
+  "sellRecoverableInsight","sellBigPortfolio","sellUsStaff","rentalTypes","propertyTypes","avgRent","sellTeamExtension","listings",
   "pmSoftware","sellReporting","sellStrategy","comments","done",
 ].forEach((s, i) => { STEP_ORDER[s] = i; });
 
