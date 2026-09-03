@@ -343,9 +343,22 @@ export default async function LeadDetailPage({ params }: PageProps) {
       lat?: number | null;
       lng?: number | null;
       geoPrecision?: "address" | "area" | null;
+      addressFrom?: string | null;
+      logoUrl?: string | null;
+      logoSource?: string | null;
     } | null;
     return d ?? null;
   })();
+
+  // The mark beside their name. Research finds a real square logo on most
+  // sites, an apple touch icon or a manifest icon rather than the 32 pixel
+  // favicon a lookup service would stretch for us; the service is the fallback
+  // for sites that publish nothing.
+  const companyMark =
+    latestAutoResearch?.logoUrl ??
+    (webDomain
+      ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=128`
+      : null);
 
   return (
     <div className="space-y-3">
@@ -359,13 +372,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
         <div className="min-w-0">
           <BackToInboxLink />
           <div className="flex items-center gap-3 mt-1">
-            {webDomain ? (
+            {companyMark ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
-                src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=128`}
+                src={companyMark}
                 alt=""
-                title={webDomain}
-                className="h-14 w-14 rounded-xl border bg-card p-1.5 shadow-sm shrink-0"
+                title={webDomain ?? undefined}
+                className="h-14 w-14 rounded-xl border bg-card object-contain p-1.5 shadow-sm shrink-0"
               />
             ) : (
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border bg-muted text-xl font-bold text-muted-foreground">
@@ -1010,7 +1023,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 assignedUserName={session?.user.name ?? "ACB Team"}
                 referralPartners={activePartners}
                 onboardingPortalUrl={onboardingData?.portalUrl ?? null}
-                logoUrl={webDomain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(webDomain)}&sz=256` : null}
+                logoUrl={companyMark}
                 logoDomain={webDomain}
               />
             </div>

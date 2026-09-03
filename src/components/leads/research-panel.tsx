@@ -28,6 +28,9 @@ interface ResearchPanelProps {
     lat?: number | null;
     lng?: number | null;
     geoPrecision?: "address" | "area" | null;
+    addressFrom?: string | null;
+    logoUrl?: string | null;
+    logoSource?: string | null;
   } | null;
 }
 
@@ -61,6 +64,9 @@ export function ResearchPanel({
             lat: res.lat,
             lng: res.lng,
             geoPrecision: res.geoPrecision,
+            addressFrom: res.addressFrom,
+            logoUrl: res.logoUrl,
+            logoSource: res.logoSource,
           });
           const found = res.profiles?.length ?? 0;
           toast({
@@ -91,11 +97,30 @@ export function ResearchPanel({
 
       {research && (
         <div className="mb-2 rounded-md border bg-muted/40 p-2 space-y-1.5">
-          {research.siteTitle && (
-            <p className="text-xs font-medium leading-snug">{research.siteTitle}</p>
-          )}
+          <div className="flex items-start gap-2">
+            {research.logoUrl && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={research.logoUrl}
+                alt=""
+                title={research.logoSource ? `Their ${research.logoSource}` : undefined}
+                className="h-9 w-9 shrink-0 rounded border bg-card object-contain p-0.5"
+              />
+            )}
+            {research.siteTitle && (
+              <p className="min-w-0 text-xs font-medium leading-snug">{research.siteTitle}</p>
+            )}
+          </div>
           {research.siteDescription && (
             <p className="text-[11px] text-muted-foreground leading-snug">{research.siteDescription}</p>
+          )}
+          {research.address && (
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              {research.address}
+              {research.addressFrom && research.addressFrom !== "/" && (
+                <span className="text-[10px]"> (from {research.addressFrom})</span>
+              )}
+            </p>
           )}
           {research.domain && (
             <a
