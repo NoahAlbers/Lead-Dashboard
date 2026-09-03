@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition, useCallback } from "react";
+import { Fragment, useEffect, useState, useTransition, useCallback } from "react";
 import Link from "next/link";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   getLiveFormSessions,
   getRecentSessions,
@@ -74,8 +75,43 @@ function HealthCard({
 }
 
 /** One person on the form right now: where they are, who they are, and how to reach them. */
+/** Everything a visitor has typed so far, two columns, contact details first. */
+function AnswersPanel({ answers, answersAt }: { answers: LiveSession["answers"]; answersAt: string | null }) {
+  if (answers.length === 0) {
+    return <p className="text-xs text-muted-foreground">Nothing filled in yet.</p>;
+  }
+  return (
+    <div>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+        {answers.map((a) => (
+          <div key={a.key} className="flex gap-2 border-b border-dashed border-border/60 pb-1 last:border-0">
+            <dt className="w-32 shrink-0 text-muted-foreground">{a.label}</dt>
+            <dd className={`min-w-0 flex-1 break-words ${a.isContact ? "font-medium" : ""}`}>{a.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {answersAt && (
+        <p className="mt-2 text-[11px] text-muted-foreground">Updated {timeAgo(answersAt)}</p>
+      )}
+    </div>
+  );
+}
+
+function ReturnBadge({ count }: { count: number }) {
+  if (count < 1) return null;
+  return (
+    <span
+      className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+      title="They left the form and came back; this is all one visit"
+    >
+      Came back {count === 1 ? "once" : `${count} times`}
+    </span>
+  );
+}
+
 function LiveSessionCard({ s }: { s: LiveSession }) {
   const stale = s.secondsSinceSeen > 45;
+  const [showAnswers, setShowAnswers] = useState(false);
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -86,6 +122,7 @@ function LiveSessionCard({ s }: { s: LiveSession }) {
               {s.name ?? <span className="text-muted-foreground">Anonymous visitor</span>}
             </p>
             {s.company && <span className="truncate text-sm text-muted-foreground">{s.company}</span>}
+            <ReturnBadge count={s.returnCount} />
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
             On the form {s.minutesOnForm} min · seen {s.secondsSinceSeen < 10 ? "just now" : `${s.secondsSinceSeen}s ago`}
@@ -158,6 +195,22 @@ function LiveSessionCard({ s }: { s: LiveSession }) {
         </div>
       )}
 
+      <div className="mt-3 border-t pt-2">
+        <button
+          type="button"
+          onClick={() => setShowAnswers((v) => !v)}
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          {showAnswers ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          {showAnswers ? "Hide what they've typed" : `Show what they've typed${s.answers.length > 0 ? ` (${s.answers.length})` : ""}`}
+        </button>
+        {showAnswers && (
+          <div className="mt-2">
+            <AnswersPanel answers={s.answers} answersAt={s.answersAt} />
+          </div>
+        )}
+      </div>
+
       {!s.phone && !s.email && (
         <p className="mt-2 text-[11px] text-muted-foreground">No contact details yet; they reach the contact step shortly.</p>
       )}
@@ -167,6 +220,11 @@ function LiveSessionCard({ s }: { s: LiveSession }) {
 
 export function LiveMonitor() {
   const [liveSessions, setLiveSessions] = useState<LiveSessions>({ live: [], justLeft: [] });
+  // Which of the "left recently" rows have their answers open.
+  const [openLeft, setOpenLeft] = useState<Record<string, boolean>>({});
+  const toggleLeftRow = useCallback((id: string) => {
+    setOpenLeft((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [completions, setCompletions] = useState<RecentCompletion[]>([]);
   const [abandoned, setAbandoned] = useState<AbandonedSession[]>([]);
@@ -485,6 +543,7 @@ export function LiveMonitor() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+                    <th className="w-8 p-2.5" />
                     <th className="p-2.5 text-left font-medium">Who</th>
                     <th className="p-2.5 text-left font-medium">Reached</th>
                     <th className="p-2.5 text-left font-medium">Device</th>
@@ -495,9 +554,20 @@ export function LiveMonitor() {
                 </thead>
                 <tbody>
                   {liveSessions.justLeft.map((s) => (
-                    <tr key={s.sessionId} className="border-b last:border-0">
+                    <Fragment key={s.sessionId}>
+                    <tr
+                      className={`border-b last:border-0 ${s.answers.length > 0 ? "cursor-pointer hover:bg-muted/40" : ""}`}
+                      onClick={s.answers.length > 0 ? () => toggleLeftRow(s.sessionId) : undefined}
+                    >
+                      <td className="p-2.5 align-top text-muted-foreground">
+                        {s.answers.length > 0 &&
+                          (openLeft[s.sessionId] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
+                      </td>
                       <td className="p-2.5">
-                        <div>{s.name ?? <span className="text-muted-foreground">Anonymous</span>}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{s.name ?? <span className="text-muted-foreground">Anonymous</span>}</span>
+                          <ReturnBadge count={s.returnCount} />
+                        </div>
                         {s.email && <div className="text-xs text-muted-foreground">{s.email}</div>}
                       </td>
                       <td className="p-2.5">
@@ -516,6 +586,15 @@ export function LiveMonitor() {
                         )}
                       </td>
                     </tr>
+                    {openLeft[s.sessionId] && (
+                      <tr className="border-b bg-muted/30 last:border-0">
+                        <td />
+                        <td colSpan={5} className="p-3">
+                          <AnswersPanel answers={s.answers} answersAt={s.answersAt} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
