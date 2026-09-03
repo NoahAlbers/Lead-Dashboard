@@ -268,8 +268,10 @@ export async function getFormAnalytics(filters: AnalyticsFilters): Promise<FormA
   const tiers = await getTierRanges();
   const hotTiers = new Set(tiers.slice(0, 2).map((t) => t.name));
 
+  // Any experiment can have sessions attached, including one still in draft
+  // that was briefly started, so take them all and let the data decide which
+  // breakdowns are worth showing.
   const experiments = await prisma.experiment.findMany({
-    where: { status: { in: ["running", "ended"] } },
     select: { key: true, name: true, variantsJson: true },
     orderBy: { createdAt: "desc" },
   });
