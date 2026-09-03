@@ -4,6 +4,8 @@ import { useState, useTransition, useEffect } from "react";
 import { Mail, Phone, Handshake, CheckCircle, ThumbsUp, ThumbsDown, Download, MessageSquare, Copy, Merge, Printer, FileSignature, ChevronDown, ChevronRight } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { OnboardingDialog } from "@/components/leads/onboarding-dialog";
+import { LogInteractionDialog } from "@/components/leads/log-interaction-dialog";
+import type { InteractionKind } from "@/lib/interactions";
 import { OPEN_ONBOARDING_EMAIL_EVENT } from "@/components/leads/onboarding-panel";
 import type { MgmtType } from "@/actions/onboarding.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
@@ -92,6 +94,8 @@ export function LeadActions({
   logoDomain = null,
 }: LeadActionsProps) {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Writing down a call or email that happened outside the console.
+  const [logKind, setLogKind] = useState<InteractionKind | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [showNoteForm, setShowNoteForm] = useState(false);
@@ -207,6 +211,8 @@ export function LeadActions({
 
   const actionBtn =
     "flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50";
+  const secondaryBtn =
+    "shrink-0 rounded-md border px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50";
   const prominentBtn =
     "flex w-full items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium transition-colors hover:bg-primary/10 disabled:opacity-50";
 
@@ -216,24 +222,44 @@ export function LeadActions({
         Actions
       </h3>
 
-      {/* Communication */}
+      {/* Communication: reach them, or note down that you already did. */}
       <div className="space-y-1.5">
-        <button
-          onClick={handleEmailAction}
-          disabled={!email || isPending}
-          className={prominentBtn}
-        >
-          <Mail className="h-4 w-4 text-blue-500" />
-          Email Lead
-        </button>
-        <button
-          onClick={handleCallAction}
-          disabled={!phone || isPending}
-          className={prominentBtn}
-        >
-          <Phone className="h-4 w-4 text-green-500" />
-          Call Lead
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            onClick={handleEmailAction}
+            disabled={!email || isPending}
+            className={`${prominentBtn} flex-1`}
+          >
+            <Mail className="h-4 w-4 text-blue-500" />
+            Email Lead
+          </button>
+          <button
+            onClick={() => setLogKind("email")}
+            disabled={isPending}
+            className={secondaryBtn}
+            title="Write down an email that already happened"
+          >
+            Log Email
+          </button>
+        </div>
+        <div className="flex gap-1.5">
+          <button
+            onClick={handleCallAction}
+            disabled={!phone || isPending}
+            className={`${prominentBtn} flex-1`}
+          >
+            <Phone className="h-4 w-4 text-green-500" />
+            Call Lead
+          </button>
+          <button
+            onClick={() => setLogKind("call")}
+            disabled={isPending}
+            className={secondaryBtn}
+            title="Write down a call that already happened"
+          >
+            Log Call
+          </button>
+        </div>
       </div>
 
       <div className="border-t" />
@@ -433,6 +459,16 @@ export function LeadActions({
           referralPartners={referralPartners}
           rawIntakeForm={leadData?.rawIntakeForm ?? null}
           autoReferralPartnerId={referralEmailPartnerId}
+        />
+      )}
+
+      {logKind && (
+        <LogInteractionDialog
+          open={!!logKind}
+          onClose={() => setLogKind(null)}
+          leadId={leadId}
+          kind={logKind}
+          leadLabel={leadData?.fullName ?? leadData?.companyName ?? null}
         />
       )}
 

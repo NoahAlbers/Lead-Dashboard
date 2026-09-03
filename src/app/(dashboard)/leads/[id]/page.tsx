@@ -34,6 +34,7 @@ import { AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { LocalTime } from "@/components/shared/local-time";
+import { LocationMap } from "@/components/leads/location-map";
 
 const EST_TZ = "America/New_York";
 
@@ -297,6 +298,10 @@ export default async function LeadDetailPage({ params }: PageProps) {
       siteDescription?: string | null;
       profiles?: Array<{ kind: string; url: string }>;
       fetchedAt?: string;
+      address?: string | null;
+      lat?: number | null;
+      lng?: number | null;
+      geoPrecision?: "address" | "area" | null;
     } | null;
     return d ?? null;
   })();
@@ -462,6 +467,17 @@ export default async function LeadDetailPage({ params }: PageProps) {
               )}
             </div>
           </CompactCard>
+
+          {/* Where they are, once research has found and placed an address. */}
+          {typeof latestAutoResearch?.lat === "number" && typeof latestAutoResearch?.lng === "number" && (
+            <LocationMap
+              lat={latestAutoResearch.lat}
+              lng={latestAutoResearch.lng}
+              address={latestAutoResearch.address ?? null}
+              label={lead.companyName ?? lead.fullName ?? null}
+              precision={latestAutoResearch.geoPrecision ?? "address"}
+            />
+          )}
 
           {/* Portfolio Details (intake form only) */}
           {isIntakeForm && intakeFields && !!(intakeFields.totalUnits || intakeFields.avgRent || intakeFields.ownershipType || intakeFields.rentalTypes?.length || intakeFields.propertyTypes?.length || intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
@@ -645,7 +661,14 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Activity Timeline (merged events + notes) */}
           <CompactCard title="Activity Timeline">
-            <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
+            <ActivityTimeline
+              events={events}
+              notes={notes}
+              leadId={lead.id}
+              stateClassMap={stateClassMap}
+              currentUserId={session?.user.id ?? null}
+              isAdmin={session?.user.role === "ADMIN"}
+            />
           </CompactCard>
 
           {/* Research: auto findings + quick links */}
