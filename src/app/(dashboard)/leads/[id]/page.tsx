@@ -645,7 +645,14 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Activity Timeline (merged events + notes) */}
           <CompactCard title="Activity Timeline">
-            <ActivityTimeline events={events} notes={notes} leadId={lead.id} stateClassMap={stateClassMap} />
+            <ActivityTimeline
+              events={events}
+              notes={notes}
+              leadId={lead.id}
+              stateClassMap={stateClassMap}
+              currentUserId={session?.user.id ?? null}
+              isAdmin={session?.user.role === "ADMIN"}
+            />
           </CompactCard>
 
           {/* Research: auto findings + quick links */}
