@@ -233,6 +233,79 @@ function buildIngestArgs(body: Record<string, unknown>) {
 
 // --- Pipeline entry point ---
 
+/** Empty for merging purposes: nothing worth carrying onto a lead. */
+function isBlank(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "boolean") return value === false;
+  return false;
+}
+
+/**
+ * Everything a visitor gave us during one session, gathered into one field set.
+ *
+ * A session leaves several rows behind: the "form_opened" row holds nothing at
+ * all, later checkpoints hold a slice each, and the live answers snapshot on
+ * form_sessions holds whatever they had typed at the moment they stopped.
+ * Promoting any single row on its own is how a lead ends up with no name, so
+ * both the cron and the manual button merge the lot first. Later, non-blank
+ * values win; blanks never overwrite something we already know.
+ */
+export async function mergeSessionFields(
+  sessionId: string,
+  ownFields: Record<string, unknown>
+): Promise<{ fields: Record<string, unknown>; context: Record<string, unknown> }> {
+  const merged: Record<string, unknown> = {};
+  const put = (source: Record<string, unknown> | null | undefined) => {
+    if (!source) return;
+    for (const [key, value] of Object.entries(source)) {
+      if (isBlank(value)) continue;
+      merged[key] = value;
+    }
+  };
+
+  const [siblings, formSession] = await Promise.all([
+    prisma.ingestionQueue.findMany({
+      where: { sessionId },
+      orderBy: { receivedAt: "asc" },
+      select: { rawPayload: true },
+    }),
+    prisma.formSession.findUnique({
+      where: { sessionId },
+      select: { answersJson: true, device: true, timezone: true, geoCity: true, geoRegion: true, geoCountry: true, ip: true, variantsJson: true, referrer: true, sourcePage: true },
+    }),
+  ]);
+
+  // What they typed comes first, so a checkpoint's normalized values win.
+  put(formSession?.answersJson as Record<string, unknown> | null);
+  for (const sibling of siblings) {
+    const payload = sibling.rawPayload as Record<string, unknown> | null;
+    put((payload?.fields ?? payload) as Record<string, unknown> | null);
+  }
+  // This row last: it is the one being processed.
+  put(ownFields);
+
+  // "I don't work with a company" reads as an independent owner on the lead,
+  // matching what the checkpoint rows record.
+  if (merged.noCompany === true && isBlank(merged.company_name) && isBlank(merged.companyName)) {
+    merged.company_name = "(Independent)";
+  }
+
+  const geo = [formSession?.geoCity, formSession?.geoRegion, formSession?.geoCountry]
+    .filter((p): p is string => !!p && p.trim() !== "")
+    .join(", ");
+  const context: Record<string, unknown> = {};
+  if (formSession?.device) context.device = formSession.device;
+  if (formSession?.timezone) context.timezone = formSession.timezone;
+  if (geo) context.location = formSession?.ip ? `${geo} (IP: ${formSession.ip})` : geo;
+  if (formSession?.referrer) context.referrer = formSession.referrer;
+  if (formSession?.sourcePage) context.source_page = formSession.sourcePage;
+  if (formSession?.variantsJson) context.experiment_variants = formSession.variantsJson;
+
+  return { fields: merged, context };
+}
+
 export async function processIngestionItem(queueId: string): Promise<void> {
   const item = await prisma.ingestionQueue.findUnique({ where: { id: queueId } });
   if (!item || item.status === "completed" || item.status === "duplicate") return;
@@ -252,8 +325,24 @@ export async function processIngestionItem(queueId: string): Promise<void> {
 
     const payload = item.rawPayload as Record<string, unknown>;
     // The rawPayload may have fields nested under "fields" or at top level
-    const body = (payload.fields ?? payload) as Record<string, unknown>;
+    let body = (payload.fields ?? payload) as Record<string, unknown>;
     const payloadMetadata = (payload.metadata ?? {}) as Record<string, unknown>;
+
+    // A row that came from a partial only holds a slice of the answers. Pull in
+    // everything else the session left behind before anything is validated, so
+    // a lead made from an abandoned form carries the whole picture.
+    if (item.partialStep && item.sessionId) {
+      const { fields, context } = await mergeSessionFields(item.sessionId, body);
+      body = fields;
+      for (const [key, value] of Object.entries(context)) {
+        if (payloadMetadata[key] === undefined || payloadMetadata[key] === null) payloadMetadata[key] = value;
+      }
+      logger.info("PIPELINE", "Merged session answers into partial", {
+        queueId,
+        sessionId: item.sessionId,
+        fieldCount: Object.keys(body).length,
+      });
+    }
 
     // Merge any payload-level metadata into body for buildIngestArgs
     if (payloadMetadata.utm_source) body.utm_source = payloadMetadata.utm_source;

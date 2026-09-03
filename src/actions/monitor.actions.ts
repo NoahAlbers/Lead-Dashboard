@@ -401,17 +401,64 @@ export async function processAuthSuspectItem(queueId: string) {
   revalidatePath("/admin/monitor");
 }
 
-export async function promotePartialToLead(queueId: string) {
+/**
+ * Turn an abandoned session into a lead by hand.
+ *
+ * The row being clicked is often the "form opened" checkpoint, which holds no
+ * fields at all. The pipeline merges everything else the session left behind
+ * first, so the lead arrives with the name, contact details and answers the
+ * visitor actually gave. Afterwards this marks it as an abandoned-form lead and
+ * writes the same explanatory note the scheduled job writes, so a lead made by
+ * hand is indistinguishable from one the job made. Recapture emails are not
+ * started: somebody promoting a session by hand is about to work it themselves.
+ */
+export async function promotePartialToLead(
+  queueId: string
+): Promise<{ success: boolean; leadId?: string; error?: string }> {
   const session = await auth();
   if (!session || !["ADMIN", "MANAGER"].includes(session.user.role))
     throw new Error("Unauthorized");
 
-  // Reset the partial to "received" status so the pipeline processes it
+  const item = await prisma.ingestionQueue.findUnique({ where: { id: queueId } });
+  if (!item) return { success: false, error: "That submission is no longer in the queue." };
+
+  // Already a lead: nothing to create, just point at it.
+  if (item.leadId) {
+    return { success: true, leadId: item.leadId };
+  }
+
+  // Reset so the pipeline picks it up. isPartial goes false so the scheduled
+  // job does not process the same row again behind us.
   await prisma.ingestionQueue.update({
     where: { id: queueId },
-    data: { status: "received", isPartial: false },
+    data: { status: "received", isPartial: false, errorMessage: null },
   });
 
   await processIngestionItem(queueId);
+
+  const updated = await prisma.ingestionQueue.findUnique({ where: { id: queueId } });
+  if (!updated || updated.status !== "completed" || !updated.leadId) {
+    const message = updated?.errorMessage ?? "";
+    const reason = /^(Validation failed|Skipped)/.test(message)
+      ? "There is no email or phone anywhere in this session, so there is nobody to contact."
+      : message || "The pipeline could not create a lead from this session.";
+    return { success: false, error: reason };
+  }
+
+  const step = (item.partialStep ?? "unknown").replace(/^abandoned_at_/, "");
+  await prisma.lead.update({
+    where: { id: updated.leadId },
+    data: { fromAbandonedForm: true },
+  });
+  await prisma.leadNote.create({
+    data: {
+      leadId: updated.leadId,
+      userId: session.user.id,
+      noteBody: `Created by hand from an abandoned form session. Last step completed: ${step}`,
+    },
+  });
+
   revalidatePath("/admin/monitor");
+  revalidatePath("/leads");
+  return { success: true, leadId: updated.leadId };
 }

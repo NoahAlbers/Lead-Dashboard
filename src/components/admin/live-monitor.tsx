@@ -286,10 +286,14 @@ export function LiveMonitor() {
   const handlePromote = async (queueId: string) => {
     setPromotingId(queueId);
     try {
-      await promotePartialToLead(queueId);
+      const res = await promotePartialToLead(queueId);
+      if (!res.success) {
+        toast({ title: "No lead created", description: res.error, variant: "destructive" });
+        return;
+      }
       toast({
-        title: "Lead Created",
-        description: "Partial session has been promoted to a lead.",
+        title: "Lead created",
+        description: "Everything the visitor entered has been carried over.",
       });
       fetchAll();
     } catch (err) {
