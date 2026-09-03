@@ -34,6 +34,10 @@ export async function POST(req: NextRequest) {
   }
   const sessionId = typeof body.session_id === "string" ? body.session_id.slice(0, 120) : "";
   const events = Array.isArray(body.events) ? body.events.slice(0, 200) : [];
+  // Pings only say "still here" for the live monitor. They refresh the
+  // session's last-seen stamp and are never stored, so a long visit doesn't
+  // write an event row every fifteen seconds.
+  const storedEvents = events.filter((e) => e.type !== "ping");
   if (!sessionId || events.length === 0) return NextResponse.json({ ok: true, stored: 0 }, { headers });
 
   const formKey = req.headers.get("x-acb-form-key");
@@ -55,6 +59,12 @@ export async function POST(req: NextRequest) {
   let outcome: string | null = null;
   for (const e of events) {
     const step = typeof e.step === "string" ? e.step : null;
+    if (e.type === "ping") {
+      // A ping carries the step the visitor is sitting on; treat it as reach
+      // so the live view keeps up between step changes.
+      if (step && (STEP_ORDER[step] ?? -1) > furthestIndex) { furthestIndex = STEP_ORDER[step]; furthestStep = step; }
+      continue;
+    }
     if (step && (e.type === "step_enter" || e.type === "pitch_view")) {
       const idx = STEP_ORDER[step] ?? -1;
       if (idx > furthestIndex) { furthestIndex = idx; furthestStep = step; }
@@ -75,7 +85,7 @@ export async function POST(req: NextRequest) {
     referrer: typeof ctx.referrer === "string" ? ctx.referrer.slice(0, 500) : existing?.referrer ?? null,
     sourcePage: typeof ctx.source_page === "string" ? ctx.source_page.slice(0, 500) : existing?.sourcePage ?? null,
     device: typeof ctx.device === "string" ? ctx.device.slice(0, 120) : existing?.device ?? null,
-    timezone: geo?.timezone ?? existing?.timezone ?? null,
+    timezone: (typeof ctx.timezone === "string" && ctx.timezone.slice(0, 60)) || geo?.timezone || existing?.timezone || null,
     geoCity: geo?.city ?? existing?.geoCity ?? null,
     geoRegion: geo?.region ?? existing?.geoRegion ?? null,
     geoCountry: geo?.country ?? existing?.geoCountry ?? null,
@@ -84,16 +94,16 @@ export async function POST(req: NextRequest) {
     ...(reachedContact ? { reachedContact: true } : {}),
     // Completed sticks; abandoned only if not already completed.
     ...(outcome === "completed" ? { outcome: "completed" } : outcome === "abandoned" && existing?.outcome !== "completed" ? { outcome: "abandoned" } : {}),
-    eventCount: { increment: events.length },
+    eventCount: { increment: storedEvents.length },
   };
 
   await prisma.formSession.upsert({
     where: { sessionId },
-    create: { sessionId, ...data, eventCount: events.length, furthestStep: furthestStep ?? undefined, furthestIndex: Math.max(0, furthestIndex) },
+    create: { sessionId, ...data, eventCount: storedEvents.length, furthestStep: furthestStep ?? undefined, furthestIndex: Math.max(0, furthestIndex) },
     update: data,
   });
-  await prisma.formEvent.createMany({
-    data: events.map((e) => ({
+  if (storedEvents.length > 0) await prisma.formEvent.createMany({
+    data: storedEvents.map((e) => ({
       sessionId,
       at: e.at && !Number.isNaN(Date.parse(e.at)) ? new Date(e.at) : new Date(),
       type: String(e.type ?? "unknown").slice(0, 40),
@@ -103,5 +113,5 @@ export async function POST(req: NextRequest) {
     })),
   });
 
-  return NextResponse.json({ ok: true, stored: events.length }, { headers });
+  return NextResponse.json({ ok: true, stored: storedEvents.length }, { headers });
 }
