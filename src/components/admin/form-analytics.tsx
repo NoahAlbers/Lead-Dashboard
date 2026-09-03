@@ -389,7 +389,7 @@ function StepFunnel({ data, filters }: { data: AnalyticsData; filters: Analytics
 
   return (
     <div className="space-y-1">
-      <div className="sticky top-0 z-10 hidden bg-card px-2.5 pb-1 text-[10px] font-medium text-muted-foreground sm:flex sm:items-center sm:gap-3">
+      <div className="mb-1 hidden border-b bg-card px-2.5 pb-1.5 text-[10px] font-medium text-muted-foreground sm:flex sm:items-center sm:gap-3">
         <span className="w-48 shrink-0 pl-5">Step</span>
         <span className="min-w-0 flex-1">Share of everyone who started</span>
         <span className="flex shrink-0 items-center gap-3">
@@ -452,7 +452,7 @@ function StepFunnel({ data, filters }: { data: AnalyticsData; filters: Analytics
                   className={`w-16 text-right ${s.dropped > 0 ? "text-red-600" : "text-muted-foreground/50"}`}
                   title="Left here"
                 >
-                  {s.dropped > 0 ? `-${num(s.dropped)}` : "0"}
+                  {num(s.dropped)}
                 </span>
                 <span className="w-16 text-right text-muted-foreground" title="Drop rate">
                   {pct(s.dropRate)}
