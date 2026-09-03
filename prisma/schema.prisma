@@ -37,7 +37,6 @@ enum NotificationPriority {
   CRITICAL
 }
 
-
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -56,6 +55,7 @@ model User {
   assignedLeads  Lead[]          @relation("AssignedUser")
   leadEvents     LeadEvent[]
   leadNotes      LeadNote[]
+  leadContacts   LeadContact[]   @relation("LeadContactCreator")
   savedViews     SavedView[]
   emailTemplates EmailTemplate[] @relation("TemplateCreator")
 
@@ -65,7 +65,7 @@ model User {
   notificationPreferences NotificationPreference[]
   soundPreference         SoundPreference?
   followUpReminders       FollowUpReminder[]
-  recordedOutcomes        LeadOutcome[] @relation("RecordedOutcomes")
+  recordedOutcomes        LeadOutcome[]            @relation("RecordedOutcomes")
 
   @@map("users")
 }
@@ -76,13 +76,13 @@ model Lead {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Source
-  source     String?
-  leadSource String? @map("lead_source")
-  sourcePage String? @map("source_page")
-  utmSource  String? @map("utm_source")
-  utmMedium  String? @map("utm_medium")
+  source      String?
+  leadSource  String? @map("lead_source")
+  sourcePage  String? @map("source_page")
+  utmSource   String? @map("utm_source")
+  utmMedium   String? @map("utm_medium")
   utmCampaign String? @map("utm_campaign")
-  referrer   String?
+  referrer    String?
 
   // Identity / Contact
   firstName      String? @map("first_name")
@@ -99,7 +99,7 @@ model Lead {
   address2 String? @map("address_2")
   city     String?
   state    String?
-  states   Json?     @map("states") // string[] of all selected states
+  states   Json?   @map("states") // string[] of all selected states
   zip      String?
   country  String?
 
@@ -110,7 +110,7 @@ model Lead {
   estimatedClaimValue Decimal? @map("estimated_claim_value") @db.Decimal(12, 2)
   accountVolume       String?  @map("account_volume")
   accountVolumeNum    Int?     @map("account_volume_num") // derived numeric copy for filtering/sorting
-  avgRentNum          Int?     @map("avg_rent_num")       // avg rent/unit, derived from raw intake payload
+  avgRentNum          Int?     @map("avg_rent_num") // avg rent/unit, derived from raw intake payload
   serviceRequested    String?  @map("service_requested")
   notesFromForm       String?  @map("notes_from_form") @db.Text
   urgency             String?
@@ -121,15 +121,15 @@ model Lead {
   rawPayloadJson Json? @map("raw_payload_json")
 
   // Internal / Derived
-  status            LeadStatus  @default(NEW)
+  status            LeadStatus @default(NEW)
   score             Int?
-  qualityTier       String? @map("quality_tier")
-  recommendedAction String?      @map("recommended_action")
-  scoreReasons      Json?        @map("score_reasons")
-  lastActivityAt    DateTime?    @map("last_activity_at")
+  qualityTier       String?    @map("quality_tier")
+  recommendedAction String?    @map("recommended_action")
+  scoreReasons      Json?      @map("score_reasons")
+  lastActivityAt    DateTime?  @map("last_activity_at")
 
   // Read/Unread
-  isRead Boolean @default(false) @map("is_read")
+  isRead            Boolean @default(false) @map("is_read")
   // Lead was created from an abandoned (incomplete) form session
   fromAbandonedForm Boolean @default(false) @map("from_abandoned_form")
   // Experiment variants the prospect saw in the intake form ({experiment_key: variant_key})
@@ -158,25 +158,26 @@ model Lead {
   mergedAt         DateTime? @map("merged_at")
 
   // Relations
-  assignedUserId      String?          @map("assigned_user_id")
-  assignedUser        User?            @relation("AssignedUser", fields: [assignedUserId], references: [id])
-  recommendedReferralId String?        @map("recommended_referral_id")
+  assignedUserId        String?          @map("assigned_user_id")
+  assignedUser          User?            @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  recommendedReferralId String?          @map("recommended_referral_id")
   recommendedReferral   ReferralPartner? @relation("RecommendedReferral", fields: [recommendedReferralId], references: [id])
-  duplicateOfLeadId   String?          @map("duplicate_of_lead_id")
-  duplicateOfLead     Lead?            @relation("DuplicateLeads", fields: [duplicateOfLeadId], references: [id])
-  duplicateLeads      Lead[]           @relation("DuplicateLeads")
+  duplicateOfLeadId     String?          @map("duplicate_of_lead_id")
+  duplicateOfLead       Lead?            @relation("DuplicateLeads", fields: [duplicateOfLeadId], references: [id])
+  duplicateLeads        Lead[]           @relation("DuplicateLeads")
 
-  events          LeadEvent[]
-  notes           LeadNote[]
-  crmExports      CrmExport[]
-  notifications   Notification[]
-  followUpReminders FollowUpReminder[]
-  assignmentLogs  AssignmentLog[]
-  mergeHistoryPrimary   MergeHistory[] @relation("MergePrimary")
-  mergeHistoryDuplicate MergeHistory[] @relation("MergeDuplicate")
+  events                LeadEvent[]
+  notes                 LeadNote[]
+  crmExports            CrmExport[]
+  notifications         Notification[]
+  followUpReminders     FollowUpReminder[]
+  assignmentLogs        AssignmentLog[]
+  mergeHistoryPrimary   MergeHistory[]       @relation("MergePrimary")
+  mergeHistoryDuplicate MergeHistory[]       @relation("MergeDuplicate")
   outcome               LeadOutcome?
   ingestionQueue        IngestionQueue[]
   recaptureEnrollment   RecaptureEnrollment?
+  contacts              LeadContact[]
 
   @@index([status])
   @@index([qualityTier])
@@ -192,15 +193,42 @@ model Lead {
   @@map("leads")
 }
 
+// Other people at the same company worth talking to.
+//
+// The lead's own name, email and phone stay the primary contact, because that
+// is who filled in the form and who every email, referral and export already
+// points at. These are the extras a rep picks up on a call: an owner, an office
+// manager, the person who actually handles the ledger.
+model LeadContact {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  name           String
+  title          String?
+  email          String?
+  phone          String?
+  alternatePhone String? @map("alternate_phone")
+  notes          String? @db.Text
+
+  leadId      String  @map("lead_id")
+  lead        Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdById String? @map("created_by_id")
+  createdBy   User?   @relation("LeadContactCreator", fields: [createdById], references: [id])
+
+  @@index([leadId])
+  @@map("lead_contacts")
+}
+
 model LeadEvent {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")
 
-  eventType    String @map("event_type")
+  eventType     String @map("event_type")
   eventDataJson Json?  @map("event_data_json")
 
-  leadId String @map("lead_id")
-  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId String  @map("lead_id")
+  lead   Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   userId String? @map("user_id")
   user   User?   @relation(fields: [userId], references: [id])
 
@@ -226,11 +254,11 @@ model LeadNote {
 }
 
 model ScoringRule {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
-  description String?  @db.Text
-  enabled     Boolean  @default(true)
-  priority    Int      @default(0)
+  description String? @db.Text
+  enabled     Boolean @default(true)
+  priority    Int     @default(0)
 
   conditionsJson Json @map("conditions_json")
   outcomesJson   Json @map("outcomes_json")
@@ -246,16 +274,16 @@ model ReferralPartner {
   name   String
   active Boolean @default(true)
 
-  contactName String? @map("contact_name")
-  email       String?
-  emails      Json?   @map("emails") // string[] for multiple emails
-  phone       String?
-  website     String?
-  customFields Json?  @map("custom_fields") // Record<string, unknown>
+  contactName  String? @map("contact_name")
+  email        String?
+  emails       Json?   @map("emails") // string[] for multiple emails
+  phone        String?
+  website      String?
+  customFields Json?   @map("custom_fields") // Record<string, unknown>
 
-  statesServedJson      Json? @map("states_served_json")
-  industriesServedJson  Json? @map("industries_served_json")
-  specialtiesJson       Json? @map("specialties_json")
+  statesServedJson       Json? @map("states_served_json")
+  industriesServedJson   Json? @map("industries_served_json")
+  specialtiesJson        Json? @map("specialties_json")
   preferredLeadTypesJson Json? @map("preferred_lead_types_json")
 
   minimumClaimSize Decimal? @map("minimum_claim_size") @db.Decimal(12, 2)
@@ -271,10 +299,10 @@ model ReferralPartner {
   commissionStructure String? @map("commission_structure")
 
   // Account Requirements
-  minimumAccounts     Int?     @map("minimum_accounts")
-  minimumTotalBalance Decimal? @map("minimum_total_balance") @db.Decimal(12, 2)
-  avgAccountAgePref   String?  @map("avg_account_age_preference")
-  accountTypesAccepted String? @map("account_types_accepted")
+  minimumAccounts      Int?     @map("minimum_accounts")
+  minimumTotalBalance  Decimal? @map("minimum_total_balance") @db.Decimal(12, 2)
+  avgAccountAgePref    String?  @map("avg_account_age_preference")
+  accountTypesAccepted String?  @map("account_types_accepted")
 
   // Service Details
   collectionMethods  String? @map("collection_methods")
@@ -291,7 +319,7 @@ model ReferralPartner {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  recommendedLeads Lead[] @relation("RecommendedReferral")
+  recommendedLeads Lead[]        @relation("RecommendedReferral")
   outcomes         LeadOutcome[] @relation("OutcomeReferral")
 
   @@map("referral_partners")
@@ -321,8 +349,8 @@ model EmailTemplate {
   emailTypeId String?    @map("email_type_id")
   emailType   EmailType? @relation(fields: [emailTypeId], references: [id])
 
-  subjectTemplate String @map("subject_template")
-  bodyTemplate    String @map("body_template") @db.Text
+  subjectTemplate String  @map("subject_template")
+  bodyTemplate    String  @map("body_template") @db.Text
   active          Boolean @default(true)
 
   createdByUserId String? @map("created_by_user_id")
@@ -359,13 +387,13 @@ model SavedView {
 }
 
 model CrmExport {
-  id         String  @id @default(cuid())
-  systemName String  @map("system_name")
-  status     String  // pending, success, failed
+  id         String @id @default(cuid())
+  systemName String @map("system_name")
+  status     String // pending, success, failed
 
-  payloadJson  Json?    @map("payload_json")
-  externalId   String?  @map("external_id")
-  errorMessage String?  @map("error_message")
+  payloadJson  Json?   @map("payload_json")
+  externalId   String? @map("external_id")
+  errorMessage String? @map("error_message")
 
   attemptedAt DateTime  @default(now()) @map("attempted_at")
   completedAt DateTime? @map("completed_at")
@@ -392,7 +420,7 @@ model CustomStatus {
   id        String   @id @default(cuid())
   name      String
   color     String
-  type      String   // "status" or "tier"
+  type      String // "status" or "tier"
   sortOrder Int      @default(0) @map("sort_order")
   isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
@@ -431,11 +459,11 @@ model PushSubscription {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")
 
-  userId    String @map("user_id")
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   endpoint  String
-  keysJson  Json   @map("keys_json")
+  keysJson  Json    @map("keys_json")
   userAgent String? @map("user_agent")
   active    Boolean @default(true)
 
@@ -447,13 +475,13 @@ model NotificationPreference {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  userId           String @map("user_id")
-  user             User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  notificationType    String  @map("notification_type")
-  browserPushEnabled  Boolean @default(true) @map("browser_push_enabled")
-  inAppEnabled        Boolean @default(true) @map("in_app_enabled")
-  soundEnabled        Boolean @default(true) @map("sound_enabled")
+  notificationType   String  @map("notification_type")
+  browserPushEnabled Boolean @default(true) @map("browser_push_enabled")
+  inAppEnabled       Boolean @default(true) @map("in_app_enabled")
+  soundEnabled       Boolean @default(true) @map("sound_enabled")
 
   @@unique([userId, notificationType])
   @@map("notification_preferences")
@@ -464,8 +492,8 @@ model SoundPreference {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  userId        String  @unique @map("user_id")
-  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   soundsEnabled Boolean @default(true) @map("sounds_enabled")
   volume        Int     @default(70)
@@ -517,12 +545,12 @@ model AssignmentLog {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")
 
-  leadId          String  @map("lead_id")
-  lead            Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  fromUserId      String? @map("from_user_id")
-  toUserId        String? @map("to_user_id")
-  assignedByUserId String @map("assigned_by_user_id")
-  reason          String?
+  leadId           String  @map("lead_id")
+  lead             Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromUserId       String? @map("from_user_id")
+  toUserId         String? @map("to_user_id")
+  assignedByUserId String  @map("assigned_by_user_id")
+  reason           String?
 
   @@index([leadId])
   @@map("assignment_log")
@@ -534,14 +562,14 @@ model FollowUpReminder {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")
 
-  leadId     String @map("lead_id")
-  lead       Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  userId     String @map("user_id")
-  user       User   @relation(fields: [userId], references: [id])
+  leadId String @map("lead_id")
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
 
-  reminderAt  DateTime @map("reminder_at")
+  reminderAt  DateTime  @map("reminder_at")
   note        String?
-  completed   Boolean  @default(false)
+  completed   Boolean   @default(false)
   completedAt DateTime? @map("completed_at")
   notifiedAt  DateTime? @map("notified_at")
 
@@ -589,20 +617,20 @@ model SystemConfig {
 // One enrollment per lead; the recapture cron advances currentStep until a
 // stop condition fires (completion, reply/contact, unsubscribe, 3 sends).
 model RecaptureEnrollment {
-  id              String    @id @default(cuid())
-  leadId          String    @unique @map("lead_id")
-  lead            Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  sessionId       String?   @map("session_id")
-  email           String
-  resumeToken     String    @unique @map("resume_token")
-  status          String    @default("active") // active, converted, stopped, exhausted
-  stopReason      String?   @map("stop_reason")
-  currentStep     Int       @default(0) @map("current_step") // emails sent so far
-  nextSendAt      DateTime? @map("next_send_at")
-  lastSentAt      DateTime? @map("last_sent_at")
-  abandonedStep   String?   @map("abandoned_step")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(cuid())
+  leadId        String    @unique @map("lead_id")
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sessionId     String?   @map("session_id")
+  email         String
+  resumeToken   String    @unique @map("resume_token")
+  status        String    @default("active") // active, converted, stopped, exhausted
+  stopReason    String?   @map("stop_reason")
+  currentStep   Int       @default(0) @map("current_step") // emails sent so far
+  nextSendAt    DateTime? @map("next_send_at")
+  lastSentAt    DateTime? @map("last_sent_at")
+  abandonedStep String?   @map("abandoned_step")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   @@index([status, nextSendAt])
   @@index([email])
@@ -614,8 +642,8 @@ model RecaptureEnrollment {
 model EmailSuppression {
   id        String   @id @default(cuid())
   email     String   @unique
-  reason    String   // unsubscribed, bounced, complained, manual
-  source    String?  // what triggered it (confirmation, recapture, resend_webhook)
+  reason    String // unsubscribed, bounced, complained, manual
+  source    String? // what triggered it (confirmation, recapture, resend_webhook)
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("email_suppressions")
@@ -630,21 +658,21 @@ model LeadOutcome {
   leadId String @unique @map("lead_id")
   lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
-  outcomeType    String  @map("outcome_type") // won, lost, disqualified, referred_out
-  reason         String   // kept for backward compat: first selected reason
-  reasons        String[] @default([]) // all selected reasons (multi-select)
-  reasonDetail   String? @map("reason_detail") @db.Text
-  competitor     String?
-  couldHaveWon   String? @map("could_have_won") // yes, maybe, no
-  estimatedValue Decimal? @map("estimated_value") @db.Decimal(12, 2)
+  outcomeType            String   @map("outcome_type") // won, lost, disqualified, referred_out
+  reason                 String // kept for backward compat: first selected reason
+  reasons                String[] @default([]) // all selected reasons (multi-select)
+  reasonDetail           String?  @map("reason_detail") @db.Text
+  competitor             String?
+  couldHaveWon           String?  @map("could_have_won") // yes, maybe, no
+  estimatedValue         Decimal? @map("estimated_value") @db.Decimal(12, 2)
   estimatedAnnualRevenue Decimal? @map("estimated_annual_revenue") @db.Decimal(12, 2)
-  accountVolume  Int?    @map("account_volume")
+  accountVolume          Int?     @map("account_volume")
 
   referralPartnerId String?          @map("referral_partner_id")
   referralPartner   ReferralPartner? @relation("OutcomeReferral", fields: [referralPartnerId], references: [id])
 
-  notes          String? @db.Text
-  outcomeDate    DateTime @map("outcome_date")
+  notes       String?  @db.Text
+  outcomeDate DateTime @map("outcome_date")
 
   recordedByUserId String @map("recorded_by_user_id")
   recordedByUser   User   @relation("RecordedOutcomes", fields: [recordedByUserId], references: [id])
@@ -667,27 +695,27 @@ model OutcomeReasonConfig {
 // ===== Zero-Loss Ingestion Pipeline =====
 
 model IngestionQueue {
-  id            String    @id @default(cuid())
-  submissionId  String    @unique @map("submission_id")
-  sessionId     String?   @map("session_id")
-  status        String    @default("received") // received, partial, processing, completed, failed, duplicate
-  isPartial     Boolean   @default(false) @map("is_partial")
-  partialStep   String?   @map("partial_step")
-  rawPayload    Json      @map("raw_payload")
-  leadId        String?   @map("lead_id")
-  lead          Lead?     @relation(fields: [leadId], references: [id])
-  receiptId     String?   @map("receipt_id")
-  formVersion   String?   @map("form_version")
-  sourceIp      String?   @map("source_ip")
-  errorMessage  String?   @map("error_message") @db.Text
-  retryCount    Int       @default(0) @map("retry_count")
+  id              String    @id @default(cuid())
+  submissionId    String    @unique @map("submission_id")
+  sessionId       String?   @map("session_id")
+  status          String    @default("received") // received, partial, processing, completed, failed, duplicate
+  isPartial       Boolean   @default(false) @map("is_partial")
+  partialStep     String?   @map("partial_step")
+  rawPayload      Json      @map("raw_payload")
+  leadId          String?   @map("lead_id")
+  lead            Lead?     @relation(fields: [leadId], references: [id])
+  receiptId       String?   @map("receipt_id")
+  formVersion     String?   @map("form_version")
+  sourceIp        String?   @map("source_ip")
+  errorMessage    String?   @map("error_message") @db.Text
+  retryCount      Int       @default(0) @map("retry_count")
   lastHeartbeatAt DateTime? @map("last_heartbeat_at")
   formOpenedAt    DateTime? @map("form_opened_at")
   userAgent       String?   @map("user_agent")
-  receivedAt    DateTime  @default(now()) @map("received_at")
-  processedAt   DateTime? @map("processed_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  receivedAt      DateTime  @default(now()) @map("received_at")
+  processedAt     DateTime? @map("processed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   @@index([sessionId])
   @@index([status])
@@ -719,45 +747,44 @@ model ReconciliationLog {
   @@map("reconciliation_logs")
 }
 
-
 // ===== Intake form flow tracking + experiments =====
 
 // One row per visitor session in the intake form (same session id the form
 // uses for partials/heartbeats). Updated by every event batch.
 model FormSession {
-  id            String   @id @default(cuid())
-  sessionId     String   @unique @map("session_id")
-  startedAt     DateTime @default(now()) @map("started_at")
-  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
-  formVersion   String?  @map("form_version")
-  variantsJson  Json?    @map("variants_json")
-  utmSource     String?  @map("utm_source")
-  utmMedium     String?  @map("utm_medium")
-  utmCampaign   String?  @map("utm_campaign")
-  referrer      String?
-  sourcePage    String?  @map("source_page")
-  device        String?
-  timezone      String?
-  geoCity       String?  @map("geo_city")
-  geoRegion     String?  @map("geo_region")
-  geoCountry    String?  @map("geo_country")
-  ip            String?
-  furthestStep  String?  @map("furthest_step")
-  furthestIndex Int      @default(0) @map("furthest_index")
-  reachedContact Boolean @default(false) @map("reached_contact")
-  outcome       String   @default("open") // open | completed | abandoned
-  leadId        String?  @map("lead_id")
-  eventCount    Int      @default(0) @map("event_count")
+  id             String    @id @default(cuid())
+  sessionId      String    @unique @map("session_id")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at")
+  formVersion    String?   @map("form_version")
+  variantsJson   Json?     @map("variants_json")
+  utmSource      String?   @map("utm_source")
+  utmMedium      String?   @map("utm_medium")
+  utmCampaign    String?   @map("utm_campaign")
+  referrer       String?
+  sourcePage     String?   @map("source_page")
+  device         String?
+  timezone       String?
+  geoCity        String?   @map("geo_city")
+  geoRegion      String?   @map("geo_region")
+  geoCountry     String?   @map("geo_country")
+  ip             String?
+  furthestStep   String?   @map("furthest_step")
+  furthestIndex  Int       @default(0) @map("furthest_index")
+  reachedContact Boolean   @default(false) @map("reached_contact")
+  outcome        String    @default("open") // open | completed | abandoned
+  leadId         String?   @map("lead_id")
+  eventCount     Int       @default(0) @map("event_count")
   // What the visitor has typed so far, refreshed with each batch, so staff can
   // see a form in progress. Cleared of blanks by the events route.
-  answersJson   Json?     @map("answers_json")
-  answersAt     DateTime? @map("answers_at")
+  answersJson    Json?     @map("answers_json")
+  answersAt      DateTime? @map("answers_at")
   // How many times they came back after leaving the form open and going quiet.
-  returnCount   Int       @default(0) @map("return_count")
+  returnCount    Int       @default(0) @map("return_count")
   // What kind of connection they are on (VPN, datacenter, phone network),
   // looked up once per session so staff know what they are calling into.
-  ipType        String?   @map("ip_type")
-  ipIsp         String?   @map("ip_isp")
+  ipType         String?   @map("ip_type")
+  ipIsp          String?   @map("ip_isp")
 
   @@index([startedAt])
   @@index([outcome])
@@ -770,7 +797,7 @@ model FormEvent {
   id        String   @id @default(cuid())
   sessionId String   @map("session_id")
   at        DateTime
-  type      String   // view | step_enter | step_exit | pitch_view | submit | abandon | resume | validation_error
+  type      String // view | step_enter | step_exit | pitch_view | submit | abandon | resume | validation_error
   step      String?
   elapsedMs Int?     @map("elapsed_ms")
   metaJson  Json?    @map("meta_json")

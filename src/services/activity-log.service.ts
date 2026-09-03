@@ -29,6 +29,9 @@ export type EventType =
   | "follow_up_completed"
   | "lead_data_received"
   | "lead_edited"
+  | "contact_added"
+  | "contact_updated"
+  | "contact_removed"
   | "onboarding_profile_created";
 
 export async function logEvent(

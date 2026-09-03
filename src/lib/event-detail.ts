@@ -35,6 +35,9 @@ export const eventLabels: Record<string, string> = {
   follow_up_due: "Follow-up due",
   lead_data_received: "Submission data received",
   interaction_logged: "Interaction logged",
+  contact_added: "Contact added",
+  contact_updated: "Contact updated",
+  contact_removed: "Contact removed",
   onboarding_deleted: "Onboarding portal deleted",
   lead_edited: "Lead edited",
   leads_merged: "Leads merged",
@@ -110,6 +113,11 @@ export function formatEventDetail(event: EventDetailInput): string | null {
   }
   if (event.eventType === "onboarding_portal_deleted") {
     return "Deleted in the onboarding tool; its progress was removed from this lead";
+  }
+  if (event.eventType === "contact_added" || event.eventType === "contact_updated" || event.eventType === "contact_removed") {
+    const d = data as { name?: string; title?: string | null };
+    if (!d.name) return null;
+    return d.title ? `${d.name}, ${d.title}` : d.name;
   }
   if (event.eventType === "interaction_logged") {
     const d = data as { kind?: string; outcomeLabel?: string; note?: string | null };

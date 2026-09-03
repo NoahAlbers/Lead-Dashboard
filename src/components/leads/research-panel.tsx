@@ -5,6 +5,7 @@ import { ExternalLink, Sparkles, Globe } from "lucide-react";
 import { autoResearchLead } from "@/actions/research.actions";
 import type { AutoResearchResult } from "@/services/research.service";
 import { EnrichmentButtons } from "@/components/leads/enrichment-buttons";
+import { LocationMap } from "@/components/leads/location-map";
 import { toast } from "@/components/ui/use-toast";
 
 interface ResearchPanelProps {
@@ -23,6 +24,10 @@ interface ResearchPanelProps {
     siteDescription?: string | null;
     profiles?: Array<{ kind: string; url: string }>;
     fetchedAt?: string;
+    address?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+    geoPrecision?: "address" | "area" | null;
   } | null;
 }
 
@@ -52,6 +57,10 @@ export function ResearchPanel({
             siteDescription: res.siteDescription,
             profiles: res.profiles,
             fetchedAt: new Date().toISOString(),
+            address: res.address,
+            lat: res.lat,
+            lng: res.lng,
+            geoPrecision: res.geoPrecision,
           });
           const found = res.profiles?.length ?? 0;
           toast({
@@ -140,6 +149,20 @@ export function ResearchPanel({
         <p className="text-xs text-emerald-600 mt-2">Research completed</p>
       ) : (
         <p className="text-xs text-muted-foreground mt-2">Not yet researched</p>
+      )}
+
+      {/* Where the address we found actually is. Last thing in the panel,
+          because it is the payoff of everything above it. */}
+      {typeof research?.lat === "number" && typeof research?.lng === "number" && (
+        <div className="mt-2">
+          <LocationMap
+            lat={research.lat}
+            lng={research.lng}
+            address={research.address ?? null}
+            label={companyName ?? fullName ?? null}
+            precision={research.geoPrecision ?? "address"}
+          />
+        </div>
       )}
     </div>
   );

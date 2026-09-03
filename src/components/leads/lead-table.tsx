@@ -57,6 +57,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { LeadStatus } from "@prisma/client";
 import { getStateColor } from "@/lib/state-colors";
+import { fitStateLabels, stateAbbreviation, stateFullName } from "@/lib/state-labels";
 import { SlaBadge } from "@/components/leads/sla-badge";
 import { AgingBadge } from "@/components/leads/aging-badge";
 import { AssignDropdown } from "@/components/leads/assign-dropdown";
@@ -506,19 +507,33 @@ export function LeadTable({ leads, total, page, pageSize, totalPages, sortField,
         // Prefer the states JSON array, fall back to single state string
         const statesArr = row.states && row.states.length > 0 ? row.states : (row.state ? row.state.split(",").map((x) => x.trim()).filter(Boolean) : []);
         if (statesArr.length === 0) return "—";
-        if (statesArr.length === 1) {
-          const cls = stateClassifications[statesArr[0].toUpperCase()] ?? "unknown";
-          const colors = getStateColor(cls);
-          return <span title={statesArr[0]} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colors.bg} ${colors.text}`}>{statesArr[0]}</span>;
-        }
+        // Spelled out while the column is wide enough, abbreviated once it is
+        // not. The full name stays in the tooltip either way.
+        const width = colWidths.state ?? DEFAULT_COLUMN_WIDTHS.state;
+        const { labels } = fitStateLabels(statesArr, width);
         return (
           <div className="flex flex-wrap gap-0.5">
-            {statesArr.slice(0, 3).map((x, i) => {
-              const cls = stateClassifications[x.toUpperCase()] ?? "unknown";
+            {labels.map((label, i) => {
+              const cls = stateClassifications[stateAbbreviation(statesArr[i])] ?? stateClassifications[statesArr[i].toUpperCase()] ?? "unknown";
               const colors = getStateColor(cls);
-              return <span key={i} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colors.bg} ${colors.text}`}>{x}</span>;
+              return (
+                <span
+                  key={i}
+                  title={stateFullName(statesArr[i])}
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${colors.bg} ${colors.text}`}
+                >
+                  {label}
+                </span>
+              );
             })}
-            {statesArr.length > 3 && <span className="text-[10px] text-muted-foreground">+{statesArr.length - 3}</span>}
+            {statesArr.length > labels.length && (
+              <span
+                className="text-[10px] text-muted-foreground"
+                title={statesArr.slice(labels.length).map(stateFullName).join(", ")}
+              >
+                +{statesArr.length - labels.length}
+              </span>
+            )}
           </div>
         );
       }

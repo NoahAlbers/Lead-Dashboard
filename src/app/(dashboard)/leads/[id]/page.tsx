@@ -34,7 +34,19 @@ import { AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { LocalTime } from "@/components/shared/local-time";
-import { LocationMap } from "@/components/leads/location-map";
+import { EditableField } from "@/components/leads/editable-field";
+import { ContactTabs } from "@/components/leads/contact-tabs";
+import { US_STATE_NAMES } from "@/lib/state-labels";
+import {
+  PROPERTY_TYPE_OPTIONS,
+  RENTAL_TYPE_OPTIONS,
+  DEBT_TYPE_OPTIONS,
+  LISTING_SITE_OPTIONS,
+  PM_SOFTWARE_OPTIONS,
+  OWNERSHIP_OPTIONS,
+  DEBTS_NOW_OPTIONS,
+  PRIOR_AGENCY_OPTIONS,
+} from "@/lib/intake-options";
 
 const EST_TZ = "America/New_York";
 
@@ -49,6 +61,31 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
     <div className="flex justify-between py-1 text-[13px]">
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="font-medium text-right max-w-[60%]">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * A form answer stacked under its label, so an editor has room to open up
+ * underneath without shoving the label around. Always drawn, even when empty,
+ * because an unanswered question is exactly the one somebody wants to fill in.
+ */
+function IntakeRow({
+  label,
+  sub,
+  className,
+  children,
+}: {
+  label: string;
+  sub?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`py-1 text-[13px] ${className ?? ""}`}>
+      <p className="text-xs text-muted-foreground mb-1">{label}</p>
+      <div className="font-medium">{children}</div>
+      {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
 }
@@ -70,15 +107,18 @@ function ContactRow({
   value,
   sub,
   muted,
+  alwaysShow,
   children,
 }: {
   label: string;
   value?: string | null;
   sub?: string;
   muted?: boolean;
+  /** Keep the row even with nothing in it, for fields you can fill in place. */
+  alwaysShow?: boolean;
   children?: React.ReactNode;
 }) {
-  if (!children && !value) return null;
+  if (!children && !value && !alwaysShow) return null;
   return (
     <div className="py-1.5 text-[13px]">
       <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
@@ -175,7 +215,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
   const { id } = await params;
   const session = await auth();
 
-  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome, recapture, followUps] = await Promise.all([
+  const [lead, notes, events, stateClassMap, tierColorMap, slaInfo, outcome, recapture, followUps, extraContacts] = await Promise.all([
     getLead(id),
     getLeadNotes(id),
     getLeadEvents(id),
@@ -185,6 +225,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     getOutcome(id),
     prisma.recaptureEnrollment.findUnique({ where: { leadId: id } }),
     getLeadFollowUps(id),
+    prisma.leadContact.findMany({ where: { leadId: id }, orderBy: { createdAt: "asc" } }),
   ]);
 
   if (!lead) {
@@ -410,130 +451,272 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
           {/* Contact Information */}
           <CompactCard title="Contact Information">
+            <ContactTabs
+              leadId={lead.id}
+              primaryLabel={lead.fullName ?? "Primary"}
+              contacts={extraContacts.map((c) => ({
+                id: c.id,
+                name: c.name,
+                title: c.title,
+                email: c.email,
+                phone: c.phone,
+                alternatePhone: c.alternatePhone,
+                notes: c.notes,
+              }))}
+            >
             <div className="divide-y divide-border/60">
-              <ContactRow label="Name" value={lead.fullName} />
+              <ContactRow label="Name" alwaysShow>
+                <EditableField
+                  leadId={lead.id}
+                  field="fullName"
+                  target="lead"
+                  value={lead.fullName}
+                  copyValue={lead.fullName}
+                  copyLabel="name"
+                  placeholder="Their name"
+                />
+              </ContactRow>
               <ContactRow
                 label="Company"
-                value={lead.companyName ?? (intakeFields?.noCompany ? "Independent owner" : null)}
                 sub={lead.companyName && intakeFields?.noCompany ? "Independent owner" : undefined}
-              />
-              {lead.email && (
-                <ContactRow label="Email">
-                  <span className="group inline-flex items-center max-w-full">
-                    <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline break-all">
-                      {lead.email}
-                    </a>
-                    <CopyButton value={lead.email} label="email" />
-                  </span>
-                </ContactRow>
-              )}
-              {lead.phone && (
-                <ContactRow label="Phone" sub={phoneAreaLocation(lead.phone) ?? undefined}>
-                  <span className="group inline-flex items-center">
-                    <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
-                      {lead.phone}
-                    </a>
-                    <CopyButton value={lead.phone} label="phone" />
-                  </span>
-                </ContactRow>
-              )}
-              {lead.alternatePhone && (
-                <ContactRow label="Alt. Phone" sub={phoneAreaLocation(lead.alternatePhone) ?? undefined}>
-                  <a href={`tel:${lead.alternatePhone}`} className="font-medium text-primary hover:underline">
-                    {lead.alternatePhone}
-                  </a>
-                </ContactRow>
-              )}
-              {intakeFields?.companyWebsite && !intakeFields?.noWebsite ? (
-                <ContactRow label="Website">
-                  <a
-                    href={intakeFields.companyWebsite.startsWith("http") ? intakeFields.companyWebsite : `https://${intakeFields.companyWebsite}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-primary hover:underline break-all inline-flex items-center gap-1"
-                  >
-                    {intakeFields.companyWebsite.replace(/^https?:\/\/(www\.)?/, "")}
-                    <ExternalLink className="h-3 w-3 shrink-0" />
-                  </a>
-                </ContactRow>
-              ) : intakeFields?.noWebsite ? (
-                <ContactRow label="Website" value="No website" muted />
-              ) : null}
-              {displayStates && (
-                <div className="py-2">
-                  <p className="text-xs text-muted-foreground mb-1.5">States</p>
-                  <TagList items={displayStates} stateClassMap={stateClassMap} />
-                </div>
-              )}
+                alwaysShow
+              >
+                <EditableField
+                  leadId={lead.id}
+                  field="companyName"
+                  target="lead"
+                  value={lead.companyName}
+                  copyValue={lead.companyName}
+                  copyLabel="company name"
+                  placeholder="Company name"
+                  emptyLabel={intakeFields?.noCompany ? "Independent owner" : "Not given"}
+                />
+              </ContactRow>
+              <ContactRow label="Email" alwaysShow>
+                <EditableField
+                  leadId={lead.id}
+                  field="email"
+                  target="lead"
+                  value={lead.email}
+                  copyValue={lead.email}
+                  copyLabel="email"
+                  placeholder="name@company.com"
+                  display={
+                    lead.email ? (
+                      <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline break-all">
+                        {lead.email}
+                      </a>
+                    ) : undefined
+                  }
+                />
+              </ContactRow>
+              <ContactRow label="Phone" sub={lead.phone ? phoneAreaLocation(lead.phone) ?? undefined : undefined} alwaysShow>
+                <EditableField
+                  leadId={lead.id}
+                  field="phone"
+                  target="lead"
+                  value={lead.phone}
+                  copyValue={lead.phone}
+                  copyLabel="phone"
+                  placeholder="(555) 555-5555"
+                  display={
+                    lead.phone ? (
+                      <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
+                        {lead.phone}
+                      </a>
+                    ) : undefined
+                  }
+                />
+              </ContactRow>
+              <ContactRow
+                label="Alt. Phone"
+                sub={lead.alternatePhone ? phoneAreaLocation(lead.alternatePhone) ?? undefined : undefined}
+                alwaysShow
+              >
+                <EditableField
+                  leadId={lead.id}
+                  field="alternatePhone"
+                  target="lead"
+                  value={lead.alternatePhone}
+                  copyValue={lead.alternatePhone}
+                  copyLabel="alternate phone"
+                  placeholder="(555) 555-5555"
+                  display={
+                    lead.alternatePhone ? (
+                      <a href={`tel:${lead.alternatePhone}`} className="font-medium text-primary hover:underline">
+                        {lead.alternatePhone}
+                      </a>
+                    ) : undefined
+                  }
+                />
+              </ContactRow>
+              <ContactRow label="Website" alwaysShow>
+                <EditableField
+                  leadId={lead.id}
+                  field="companyWebsite"
+                  target="intake"
+                  value={intakeFields?.companyWebsite}
+                  copyValue={intakeFields?.companyWebsite}
+                  copyLabel="website"
+                  placeholder="company.com"
+                  emptyLabel={intakeFields?.noWebsite ? "No website" : "Not given"}
+                  display={
+                    intakeFields?.companyWebsite ? (
+                      <a
+                        href={intakeFields.companyWebsite.startsWith("http") ? intakeFields.companyWebsite : `https://${intakeFields.companyWebsite}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-primary hover:underline break-all inline-flex items-center gap-1"
+                      >
+                        {intakeFields.companyWebsite.replace(/^https?:\/\/(www\.)?/, "")}
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    ) : undefined
+                  }
+                />
+              </ContactRow>
+              <ContactRow label="States" alwaysShow>
+                <EditableField
+                  leadId={lead.id}
+                  field="states"
+                  target="intake"
+                  kind="multiselect"
+                  options={US_STATE_NAMES}
+                  value={intakeFields?.states ?? (displayStates ? displayStates.split(",").map((x) => x.trim()) : [])}
+                  emptyLabel="None given"
+                  display={displayStates ? <TagList items={displayStates} stateClassMap={stateClassMap} /> : undefined}
+                />
+              </ContactRow>
             </div>
+            </ContactTabs>
           </CompactCard>
 
-          {/* Where they are, once research has found and placed an address. */}
-          {typeof latestAutoResearch?.lat === "number" && typeof latestAutoResearch?.lng === "number" && (
-            <LocationMap
-              lat={latestAutoResearch.lat}
-              lng={latestAutoResearch.lng}
-              address={latestAutoResearch.address ?? null}
-              label={lead.companyName ?? lead.fullName ?? null}
-              precision={latestAutoResearch.geoPrecision ?? "address"}
-            />
-          )}
-
           {/* Portfolio Details (intake form only) */}
-          {isIntakeForm && intakeFields && !!(intakeFields.totalUnits || intakeFields.avgRent || intakeFields.ownershipType || intakeFields.rentalTypes?.length || intakeFields.propertyTypes?.length || intakeFields.listingSites?.length || intakeFields.pmSoftware?.length) && (
+          {isIntakeForm && intakeFields && (
             <CompactCard title="Portfolio Details">
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-                <InfoRow label="Total Units" value={intakeFields.totalUnits} />
+                <IntakeRow label="Total Units">
+                  <EditableField
+                    leadId={lead.id}
+                    field="totalUnits"
+                    target="intake"
+                    value={intakeFields.totalUnits}
+                    placeholder="How many units"
+                  />
+                </IntakeRow>
                 <InfoRow label="Avg Rent / Unit" value={intakeFields.avgRent ? `$${intakeFields.avgRent.toLocaleString()}/mo` : undefined} />
-                <InfoRow label="Ownership" value={
-                  intakeFields.ownershipType
-                    ? intakeFields.ownershipType + (
-                        intakeFields.ownershipType === "We own and manage for others" && intakeFields.ownPercent != null
-                          ? ` (${intakeFields.ownPercent}% own / ${100 - intakeFields.ownPercent}% manage)`
-                          : ""
-                      )
-                    : undefined
-                } />
-                {intakeFields.rentalTypes && intakeFields.rentalTypes.length > 0 && (
-                  <div className="py-1">
-                    <p className="text-xs text-muted-foreground mb-1">Rental Types</p>
-                    <TagList items={intakeFields.rentalTypes.join(", ")} />
-                  </div>
-                )}
-                {intakeFields.propertyTypes && intakeFields.propertyTypes.length > 0 && (
-                  <div className="py-1">
-                    <p className="text-xs text-muted-foreground mb-1">Property Types</p>
-                    <TagList items={intakeFields.propertyTypes.join(", ")} />
-                  </div>
-                )}
-                {intakeFields.listingSites && intakeFields.listingSites.length > 0 && (
-                  <div className="py-1">
-                    <p className="text-xs text-muted-foreground mb-1">Listing Sites</p>
-                    <TagList items={intakeFields.listingSites.join(", ")} customItems={intakeFields.customListing} />
-                  </div>
-                )}
-                {intakeFields.pmSoftware && intakeFields.pmSoftware.length > 0 && (
-                  <div className="py-1">
-                    <p className="text-xs text-muted-foreground mb-1">PM Software</p>
-                    <TagList items={intakeFields.pmSoftware.join(", ")} customItems={intakeFields.customPM} />
-                  </div>
-                )}
+                <IntakeRow
+                  label="Ownership"
+                  sub={
+                    intakeFields.ownershipType === "We own and manage for others" && intakeFields.ownPercent != null
+                      ? `${intakeFields.ownPercent}% own / ${100 - intakeFields.ownPercent}% manage`
+                      : undefined
+                  }
+                >
+                  <EditableField
+                    leadId={lead.id}
+                    field="ownershipType"
+                    target="intake"
+                    kind="select"
+                    options={OWNERSHIP_OPTIONS}
+                    value={intakeFields.ownershipType}
+                  />
+                </IntakeRow>
+                <IntakeRow label="Rental Types">
+                  <EditableField
+                    leadId={lead.id}
+                    field="rentalTypes"
+                    target="intake"
+                    kind="multiselect"
+                    options={RENTAL_TYPE_OPTIONS}
+                    value={intakeFields.rentalTypes ?? []}
+                    display={intakeFields.rentalTypes?.length ? <TagList items={intakeFields.rentalTypes.join(", ")} /> : undefined}
+                  />
+                </IntakeRow>
+                <IntakeRow label="Property Types">
+                  <EditableField
+                    leadId={lead.id}
+                    field="propertyTypes"
+                    target="intake"
+                    kind="multiselect"
+                    options={PROPERTY_TYPE_OPTIONS}
+                    value={intakeFields.propertyTypes ?? []}
+                    display={intakeFields.propertyTypes?.length ? <TagList items={intakeFields.propertyTypes.join(", ")} /> : undefined}
+                  />
+                </IntakeRow>
+                <IntakeRow label="Listing Sites">
+                  <EditableField
+                    leadId={lead.id}
+                    field="listingSites"
+                    target="intake"
+                    kind="multiselect"
+                    options={LISTING_SITE_OPTIONS}
+                    value={intakeFields.listingSites ?? []}
+                    display={
+                      intakeFields.listingSites?.length
+                        ? <TagList items={intakeFields.listingSites.join(", ")} customItems={intakeFields.customListing} />
+                        : undefined
+                    }
+                  />
+                </IntakeRow>
+                <IntakeRow label="PM Software">
+                  <EditableField
+                    leadId={lead.id}
+                    field="pmSoftware"
+                    target="intake"
+                    kind="multiselect"
+                    options={PM_SOFTWARE_OPTIONS}
+                    value={intakeFields.pmSoftware ?? []}
+                    display={
+                      intakeFields.pmSoftware?.length
+                        ? <TagList items={intakeFields.pmSoftware.join(", ")} customItems={intakeFields.customPM} />
+                        : undefined
+                    }
+                  />
+                </IntakeRow>
               </div>
             </CompactCard>
           )}
 
           {/* Collections Readiness (intake form only) */}
-          {isIntakeForm && intakeFields && (intakeFields.debtTypes?.length || intakeFields.debtsNow || intakeFields.priorAgency || intakeFields.comments) && (
+          {isIntakeForm && intakeFields && (
             <CompactCard title="Collections Readiness">
               <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-                {intakeFields.debtTypes && intakeFields.debtTypes.length > 0 && (
-                  <div className="py-1 sm:col-span-2">
-                    <p className="text-xs text-muted-foreground mb-1">Debt Types</p>
-                    <TagList items={intakeFields.debtTypes.join(", ")} customItems={intakeFields.customDebtType} />
-                  </div>
-                )}
-                <InfoRow label="Debts Ready Now" value={intakeFields.debtsNow} />
-                <InfoRow label="Prior Agency Experience" value={intakeFields.priorAgency} />
+                <IntakeRow label="Debt Types" className="sm:col-span-2">
+                  <EditableField
+                    leadId={lead.id}
+                    field="debtTypes"
+                    target="intake"
+                    kind="multiselect"
+                    options={DEBT_TYPE_OPTIONS}
+                    value={intakeFields.debtTypes ?? []}
+                    display={
+                      intakeFields.debtTypes?.length
+                        ? <TagList items={intakeFields.debtTypes.join(", ")} customItems={intakeFields.customDebtType} />
+                        : undefined
+                    }
+                  />
+                </IntakeRow>
+                <IntakeRow label="Debts Ready Now">
+                  <EditableField
+                    leadId={lead.id}
+                    field="debtsNow"
+                    target="intake"
+                    kind="select"
+                    options={DEBTS_NOW_OPTIONS}
+                    value={intakeFields.debtsNow}
+                  />
+                </IntakeRow>
+                <IntakeRow label="Prior Agency Experience">
+                  <EditableField
+                    leadId={lead.id}
+                    field="priorAgency"
+                    target="intake"
+                    kind="select"
+                    options={PRIOR_AGENCY_OPTIONS}
+                    value={intakeFields.priorAgency}
+                  />
+                </IntakeRow>
               </div>
               {intakeFields.comments ? (
                 <div className="mt-2 pt-2 border-t">
@@ -576,7 +759,21 @@ export default async function LeadDetailPage({ params }: PageProps) {
                 <ContactRow label="Form variant" value={Object.entries(lead.formVariants as Record<string, string>).map(([k, v]) => `${k}: ${v}`).join(", ")} />
               )}
               <ContactRow label="Urgency" value={lead.urgency} />
-              <ContactRow label="Location / IP" value={intakeFields?.location ?? "Not captured"} muted={!intakeFields?.location} />
+              <ContactRow label="Location / IP" alwaysShow>
+                {intakeFields?.location ? (
+                  <span className="group inline-flex items-center max-w-full">
+                    <span className="min-w-0 break-words">{intakeFields.location}</span>
+                    {/* Copy the address itself when there is one in there; a
+                        rep pasting into a lookup wants the IP, not the city. */}
+                    <CopyButton
+                      value={intakeFields.location.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b|\b[0-9a-f:]{6,}\b/i)?.[0] ?? intakeFields.location}
+                      label="IP"
+                    />
+                  </span>
+                ) : (
+                  <span className="italic text-muted-foreground">Not captured</span>
+                )}
+              </ContactRow>
               <ContactRow label="IP type" value={formSession?.ipType ?? "Not checked"} muted={!formSession?.ipType} />
               {(intakeFields?.timezone || formSession?.timezone) ? (
                 <ContactRow label="Their time">
