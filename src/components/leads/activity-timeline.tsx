@@ -24,6 +24,7 @@ import {
   Search,
   StickyNote,
   UserCheck,
+  UserPlus,
   UserCog,
   Users,
   type LucideIcon,
@@ -95,6 +96,7 @@ const SYSTEM_EVENTS = new Set(["lead_created", "score_calculated", "duplicate_fl
 
 function eventCategory(eventType: string): Exclude<FilterKey, "all" | "notes"> {
   if (eventType === "note_added") return "team";
+  if (eventType.startsWith("contact_")) return "team";
   if (eventType === "interaction_logged") return "team";
   if (eventType.includes("email")) return "emails";
   if (PROSPECT_EVENTS.has(eventType)) return "prospect";
@@ -142,6 +144,9 @@ const TONE_STYLES: Record<Tone, { dot: string; card: string }> = {
 /** Icon, tone, and the plain sentence shown when the icon is hovered. */
 const EVENT_STYLE: Record<string, { icon: LucideIcon; tone: Tone; hint: string }> = {
   interaction_logged: { icon: Phone, tone: "contact", hint: "A call or email somebody on the team logged by hand" },
+  contact_added: { icon: UserPlus, tone: "quiet", hint: "Another person at this account was added" },
+  contact_updated: { icon: UserPlus, tone: "quiet", hint: "Details for one of the extra contacts were changed" },
+  contact_removed: { icon: UserPlus, tone: "quiet", hint: "One of the extra contacts was removed" },
   first_contact_recorded: { icon: UserCheck, tone: "contact", hint: "The first time anyone reached this person" },
   email_reply_received: { icon: MailOpen, tone: "contact", hint: "The prospect wrote back" },
   quick_log: { icon: CircleDot, tone: "contact", hint: "A quick action somebody logged from the lead page" },

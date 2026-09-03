@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
-import { Mail, Phone, Handshake, CheckCircle, ThumbsUp, ThumbsDown, Download, MessageSquare, Copy, Merge, Printer, FileSignature, ChevronDown, ChevronRight } from "lucide-react";
+import { Mail, Phone, Handshake, CheckCircle, ThumbsUp, ThumbsDown, Download, MessageSquare, Copy, Merge, Printer, FileSignature, ChevronDown, ChevronRight, UserPlus } from "lucide-react";
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { OnboardingDialog } from "@/components/leads/onboarding-dialog";
 import { LogInteractionDialog } from "@/components/leads/log-interaction-dialog";
 import type { InteractionKind } from "@/lib/interactions";
 import { OPEN_ONBOARDING_EMAIL_EVENT } from "@/components/leads/onboarding-panel";
+import { ADD_CONTACT_EVENT } from "@/components/leads/contact-tabs";
 import type { MgmtType } from "@/actions/onboarding.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";
 import { exportLeadsCsv } from "@/actions/export.actions";
@@ -322,6 +323,14 @@ export function LeadActions({
         >
           <FileSignature className="h-4 w-4 text-blue-500" />
           Start Onboarding
+        </button>
+        <button
+          onClick={() => window.dispatchEvent(new Event(ADD_CONTACT_EVENT))}
+          className={actionBtn}
+          title="Add somebody else at this account"
+        >
+          <UserPlus className="h-4 w-4 text-primary" />
+          Add Another Contact
         </button>
         <button
           onClick={() => handleQuickLog("duplicate_found", "Marked as Duplicate")}
