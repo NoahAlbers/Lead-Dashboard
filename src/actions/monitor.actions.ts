@@ -438,9 +438,10 @@ export async function promotePartialToLead(
 
   const updated = await prisma.ingestionQueue.findUnique({ where: { id: queueId } });
   if (!updated || updated.status !== "completed" || !updated.leadId) {
-    const reason = (updated?.errorMessage ?? "").startsWith("Validation failed")
+    const message = updated?.errorMessage ?? "";
+    const reason = /^(Validation failed|Skipped)/.test(message)
       ? "There is no email or phone anywhere in this session, so there is nobody to contact."
-      : updated?.errorMessage ?? "The pipeline could not create a lead from this session.";
+      : message || "The pipeline could not create a lead from this session.";
     return { success: false, error: reason };
   }
 
