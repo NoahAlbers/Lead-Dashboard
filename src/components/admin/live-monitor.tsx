@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, useCallback } from "react";
 import Link from "next/link";
 import {
-  getActiveSessions,
+  getLiveFormSessions,
   getRecentSessions,
   getRecentCompletions,
   getAbandonedSessions,
@@ -16,7 +16,8 @@ import {
 import { TierBadge, ScoreBadge } from "@/components/shared/status-badge";
 import { toast } from "@/components/ui/use-toast";
 
-type ActiveSession = Awaited<ReturnType<typeof getActiveSessions>>[number];
+type LiveSessions = Awaited<ReturnType<typeof getLiveFormSessions>>;
+type LiveSession = LiveSessions["live"][number];
 type RecentSession = Awaited<ReturnType<typeof getRecentSessions>>[number];
 type RecentCompletion = Awaited<ReturnType<typeof getRecentCompletions>>[number];
 type AbandonedSession = Awaited<
@@ -47,22 +48,6 @@ function leftAgo(isoString: string): string {
   return `left ${Math.floor(hours / 24)}d ago`;
 }
 
-function StatusDot({ status }: { status: "active" | "idle" | "abandoned" }) {
-  const colors = {
-    active: "bg-green-500",
-    idle: "bg-yellow-500",
-    abandoned: "bg-gray-400",
-  };
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className={`inline-block h-2 w-2 rounded-full ${colors[status]}`}
-      />
-      <span className="capitalize text-xs">{status}</span>
-    </span>
-  );
-}
-
 function HealthCard({
   label,
   value,
@@ -88,8 +73,100 @@ function HealthCard({
   );
 }
 
+/** One person on the form right now: where they are, who they are, and how to reach them. */
+function LiveSessionCard({ s }: { s: LiveSession }) {
+  const stale = s.secondsSinceSeen > 45;
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`inline-block h-2 w-2 rounded-full ${stale ? "bg-yellow-500" : "bg-green-500 animate-pulse"}`} />
+            <p className="font-semibold">
+              {s.name ?? <span className="text-muted-foreground">Anonymous visitor</span>}
+            </p>
+            {s.company && <span className="truncate text-sm text-muted-foreground">{s.company}</span>}
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            On the form {s.minutesOnForm} min · seen {s.secondsSinceSeen < 10 ? "just now" : `${s.secondsSinceSeen}s ago`}
+            {s.localTime && ` · their time ${s.localTime}`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {s.phone && (
+            <a href={`tel:${s.phone.replace(/[^0-9+]/g, "")}`} className="rounded-md bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700">
+              Call {s.phone}
+            </a>
+          )}
+          {s.email && (
+            <a href={`mailto:${s.email}`} className="rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
+              Email
+            </a>
+          )}
+          {s.leadId && (
+            <Link href={`/leads/${s.leadId}`} className="rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
+              Open lead
+            </Link>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="flex items-baseline justify-between text-xs">
+          <span className="font-medium">{s.stepLabel}</span>
+          <span className="text-muted-foreground">{s.progressPct}% through</span>
+        </div>
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${Math.max(3, s.progressPct)}%` }} />
+        </div>
+      </div>
+
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
+        <div>
+          <dt className="text-muted-foreground">Device</dt>
+          <dd>{s.device} · {s.browser}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Location</dt>
+          <dd>{s.location ?? "Unknown"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Timezone</dt>
+          <dd className="truncate" title={s.timezone ?? undefined}>{s.timezone ?? "Unknown"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">IP</dt>
+          <dd className="font-mono">{s.ip ?? "Unknown"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Source</dt>
+          <dd className="truncate" title={s.source ?? undefined}>{s.utm ?? s.source ?? "Direct"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Session</dt>
+          <dd className="font-mono">{s.shortId}</dd>
+        </div>
+      </dl>
+
+      {s.variants.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {s.variants.map((v) => (
+            <span key={v.key} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700" title={v.key}>
+              {v.value}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {!s.phone && !s.email && (
+        <p className="mt-2 text-[11px] text-muted-foreground">No contact details yet; they reach the contact step shortly.</p>
+      )}
+    </div>
+  );
+}
+
 export function LiveMonitor() {
-  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [liveSessions, setLiveSessions] = useState<LiveSessions>({ live: [], justLeft: [] });
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [completions, setCompletions] = useState<RecentCompletion[]>([]);
   const [abandoned, setAbandoned] = useState<AbandonedSession[]>([]);
@@ -105,7 +182,7 @@ export function LiveMonitor() {
     startTransition(async () => {
       try {
         const [sessions, recent, comps, aband, hlth, failures, suspects] = await Promise.all([
-          getActiveSessions(),
+          getLiveFormSessions(),
           getRecentSessions(),
           getRecentCompletions(),
           getAbandonedSessions(),
@@ -113,7 +190,7 @@ export function LiveMonitor() {
           getClientReportedFailures(),
           getAuthSuspectSubmissions(),
         ]);
-        setActiveSessions(sessions);
+        setLiveSessions(sessions);
         setRecentSessions(recent);
         setCompletions(comps);
         setAbandoned(aband);
@@ -127,11 +204,26 @@ export function LiveMonitor() {
     });
   }, []);
 
+  const fetchLive = useCallback(async () => {
+    try {
+      setLiveSessions(await getLiveFormSessions());
+    } catch (err) {
+      console.error("Live session refresh failed:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAll();
     const interval = setInterval(fetchAll, 10000);
     return () => clearInterval(interval);
   }, [fetchAll]);
+
+  // Anyone on the form right now is the one thing worth watching closely: the
+  // form pings every fifteen seconds, so poll a little faster than that.
+  useEffect(() => {
+    const interval = setInterval(fetchLive, 5000);
+    return () => clearInterval(interval);
+  }, [fetchLive]);
 
   const handlePromote = async (queueId: string) => {
     setPromotingId(queueId);
@@ -362,112 +454,72 @@ export function LiveMonitor() {
 
       {/* Active Form Sessions */}
       <div>
-        <h2 className="text-lg font-semibold mb-3">Active Form Sessions</h2>
-        {activeSessions.length === 0 ? (
-          recentSessions.length === 0 ? (
-            <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-              No active sessions
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border bg-card">
-              <div className="flex items-center justify-between border-b px-3 py-2">
-                <p className="text-sm font-medium">Recent sessions</p>
-                <p className="text-xs text-muted-foreground">
-                  No one is on the form right now. Last {recentSessions.length} partial sessions.
-                </p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="text-left p-3 font-medium">Session</th>
-                      <th className="text-left p-3 font-medium">Name / Email</th>
-                      <th className="text-left p-3 font-medium">Step Reached</th>
-                      <th className="text-left p-3 font-medium">Left</th>
-                      <th className="text-left p-3 font-medium">Device</th>
-                      <th className="text-left p-3 font-medium">Outcome</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentSessions.map((r) => (
-                      <tr key={r.id} className="border-b last:border-0">
-                        <td className="p-3 font-mono text-xs">{r.sessionId}</td>
-                        <td className="p-3">
-                          <div>{r.name ?? <span className="text-muted-foreground">Anonymous</span>}</div>
-                          {r.email && (
-                            <div className="text-xs text-muted-foreground">{r.email}</div>
-                          )}
-                        </td>
-                        <td className="p-3">
-                          <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-medium">
-                            {r.step}
-                          </span>
-                        </td>
-                        <td className="p-3 text-xs text-muted-foreground">
-                          {leftAgo(r.lastActiveAt)}
-                        </td>
-                        <td className="p-3 text-xs text-muted-foreground">
-                          {r.device ?? "Unknown"}
-                        </td>
-                        <td className="p-3">
-                          {r.leadId ? (
-                            <Link
-                              href={`/leads/${r.leadId}`}
-                              className="text-blue-600 hover:underline text-xs"
-                            >
-                              Became a lead
-                            </Link>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              {r.status === "partial" ? "Not converted" : r.status.replace(/_/g, " ")}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">On the form right now</h2>
+          <p className="text-xs text-muted-foreground">
+            {liveSessions.live.length > 0
+              ? `${liveSessions.live.length} live · refreshes every 5 seconds`
+              : "Refreshes every 5 seconds"}
+          </p>
+        </div>
+
+        {liveSessions.live.length === 0 ? (
+          <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+            Nobody is filling out the form at the moment.
+          </div>
         ) : (
-          <div className="rounded-lg border border-border overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="text-left p-3 font-medium">Session</th>
-                  <th className="text-left p-3 font-medium">Name</th>
-                  <th className="text-left p-3 font-medium">Company</th>
-                  <th className="text-left p-3 font-medium">Email</th>
-                  <th className="text-left p-3 font-medium">Current Step</th>
-                  <th className="text-left p-3 font-medium">Time on Form</th>
-                  <th className="text-left p-3 font-medium">Started</th>
-                  <th className="text-left p-3 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeSessions.map((s) => (
-                  <tr key={s.id} className="border-b last:border-0">
-                    <td className="p-3 font-mono text-xs">{s.sessionId}</td>
-                    <td className="p-3">{s.name}</td>
-                    <td className="p-3">{s.company}</td>
-                    <td className="p-3">{s.email}</td>
-                    <td className="p-3">
-                      <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs font-medium">
-                        {s.currentStep}
-                      </span>
-                    </td>
-                    <td className="p-3">{s.timeOnForm}m</td>
-                    <td className="p-3 text-xs text-muted-foreground">
-                      {timeAgo(s.startedAt)}
-                    </td>
-                    <td className="p-3">
-                      <StatusDot status={s.status} />
-                    </td>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {liveSessions.live.map((s) => (
+              <LiveSessionCard key={s.sessionId} s={s} />
+            ))}
+          </div>
+        )}
+
+        {liveSessions.justLeft.length > 0 && (
+          <div className="mt-4 rounded-lg border border-border bg-card">
+            <div className="flex items-center justify-between border-b px-3 py-2">
+              <p className="text-sm font-medium">Left in the last half hour</p>
+              <p className="text-xs text-muted-foreground">{liveSessions.justLeft.length} sessions</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+                    <th className="p-2.5 text-left font-medium">Who</th>
+                    <th className="p-2.5 text-left font-medium">Reached</th>
+                    <th className="p-2.5 text-left font-medium">Device</th>
+                    <th className="p-2.5 text-left font-medium">Where</th>
+                    <th className="p-2.5 text-left font-medium">Last seen</th>
+                    <th className="p-2.5 text-left font-medium">Outcome</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {liveSessions.justLeft.map((s) => (
+                    <tr key={s.sessionId} className="border-b last:border-0">
+                      <td className="p-2.5">
+                        <div>{s.name ?? <span className="text-muted-foreground">Anonymous</span>}</div>
+                        {s.email && <div className="text-xs text-muted-foreground">{s.email}</div>}
+                      </td>
+                      <td className="p-2.5">
+                        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{s.stepLabel}</span>
+                      </td>
+                      <td className="p-2.5 text-xs text-muted-foreground">{s.device} · {s.browser}</td>
+                      <td className="p-2.5 text-xs text-muted-foreground">{s.location ?? "Unknown"}</td>
+                      <td className="p-2.5 text-xs text-muted-foreground">{leftAgo(s.lastSeenAt)}</td>
+                      <td className="p-2.5 text-xs">
+                        {s.leadId ? (
+                          <Link href={`/leads/${s.leadId}`} className="text-blue-600 hover:underline">Became a lead</Link>
+                        ) : s.outcome === "completed" ? (
+                          <span className="text-emerald-600">Submitted</span>
+                        ) : (
+                          <span className="text-muted-foreground">Did not finish</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

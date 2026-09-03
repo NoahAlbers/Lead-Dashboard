@@ -4,78 +4,156 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { processIngestionItem } from "@/services/ingestion-pipeline.service";
 import { revalidatePath } from "next/cache";
+import { parseDeviceString, deviceFromUserAgent, geoLabel } from "@/lib/form-device";
+import { FORM_STEPS, stepLabel } from "@/lib/form-steps";
 
-export async function getActiveSessions() {
+/**
+ * Who is on the intake form right now.
+ *
+ * Built on form_sessions, which the form refreshes every fifteen seconds with
+ * a ping, so "last seen" is real rather than the moment a partial row happened
+ * to be written. Anyone quiet for longer than LIVE_WINDOW has left, and shows
+ * in `justLeft` instead. Contact details come from the partial submissions the
+ * form saves once someone gets past the contact step, which is what makes
+ * calling a visitor mid-form possible.
+ */
+const LIVE_WINDOW_MS = 90 * 1000;
+const JUST_LEFT_MS = 30 * 60 * 1000;
+
+export interface LiveFormSession {
+  sessionId: string;
+  shortId: string;
+  step: string;
+  stepLabel: string;
+  progressPct: number;
+  startedAt: string;
+  lastSeenAt: string;
+  secondsSinceSeen: number;
+  minutesOnForm: number;
+  eventCount: number;
+  outcome: string;
+  reachedContact: boolean;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  device: string;
+  browser: string;
+  os: string;
+  location: string | null;
+  timezone: string | null;
+  localTime: string | null;
+  ip: string | null;
+  variants: Array<{ key: string; value: string }>;
+  source: string | null;
+  utm: string | null;
+  leadId: string | null;
+}
+
+export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; justLeft: LiveFormSession[] }> {
   const session = await auth();
   if (!session || !["ADMIN", "MANAGER"].includes(session.user.role))
     throw new Error("Unauthorized");
 
-  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
-
-  const sessions = await prisma.ingestionQueue.findMany({
-    where: {
-      isPartial: true,
-      status: "partial",
-      receivedAt: { gte: fifteenMinAgo },
-    },
-    orderBy: { receivedAt: "desc" },
+  const now = Date.now();
+  const rows = await prisma.formSession.findMany({
+    where: { lastSeenAt: { gte: new Date(now - JUST_LEFT_MS) } },
+    orderBy: { lastSeenAt: "desc" },
+    take: 60,
     select: {
-      id: true,
-      sessionId: true,
-      partialStep: true,
-      rawPayload: true,
-      receivedAt: true,
-      lastHeartbeatAt: true,
-      formOpenedAt: true,
-      sourceIp: true,
-      userAgent: true,
+      sessionId: true, startedAt: true, lastSeenAt: true, furthestStep: true, furthestIndex: true,
+      device: true, timezone: true, geoCity: true, geoRegion: true, geoCountry: true, ip: true,
+      variantsJson: true, referrer: true, sourcePage: true, utmSource: true, utmMedium: true, utmCampaign: true,
+      outcome: true, reachedContact: true, eventCount: true, leadId: true,
     },
   });
+  if (rows.length === 0) return { live: [], justLeft: [] };
 
-  return sessions.map((s) => {
-    const raw = s.rawPayload as Record<string, unknown>;
-    const fields = (raw?.fields ?? raw) as Record<string, unknown>;
-    const lastActive = s.lastHeartbeatAt ?? s.receivedAt;
-    const minutesSinceActive =
-      (Date.now() - new Date(lastActive).getTime()) / 60000;
-
-    return {
-      id: s.id,
-      sessionId: s.sessionId?.slice(0, 8) ?? "unknown",
-      name: String(
-        fields?.fullName ?? fields?.full_name ?? fields?.name ?? "\u2014"
-      ),
-      company: String(
-        fields?.companyName ??
-          fields?.company_name ??
-          fields?.company ??
-          "\u2014"
-      ),
-      email: String(fields?.email ?? "\u2014"),
-      currentStep: s.partialStep ?? "unknown",
-      timeOnForm: Math.round(
-        (Date.now() -
-          new Date(s.formOpenedAt ?? s.receivedAt).getTime()) /
-          60000
-      ),
-      startedAt: (s.formOpenedAt ?? s.receivedAt).toISOString(),
-      status:
-        minutesSinceActive < 2
-          ? ("active" as const)
-          : minutesSinceActive < 5
-            ? ("idle" as const)
-            : ("abandoned" as const),
-    };
+  // Contact details for these visitors, newest partial per session.
+  const ids = rows.map((r) => r.sessionId);
+  const partials = await prisma.ingestionQueue.findMany({
+    where: { sessionId: { in: ids } },
+    orderBy: { receivedAt: "desc" },
+    select: { sessionId: true, rawPayload: true, leadId: true },
   });
-}
+  const detailsBySession = new Map<string, { name: string | null; email: string | null; phone: string | null; company: string | null; leadId: string | null }>();
+  for (const p of partials) {
+    if (!p.sessionId) continue;
+    const raw = p.rawPayload as Record<string, unknown> | null;
+    const fields = ((raw?.fields ?? raw) ?? {}) as Record<string, unknown>;
+    const str = (...keys: string[]): string | null => {
+      for (const k of keys) {
+        const v = fields[k];
+        if (typeof v === "string" && v.trim() !== "") return v.trim();
+      }
+      return null;
+    };
+    const prev = detailsBySession.get(p.sessionId);
+    detailsBySession.set(p.sessionId, {
+      // Newest row wins, but never overwrite a value with a blank one.
+      name: prev?.name ?? str("full_name", "fullName", "name"),
+      email: prev?.email ?? str("email"),
+      phone: prev?.phone ?? str("phone"),
+      company: prev?.company ?? str("company_name", "companyName", "company"),
+      leadId: prev?.leadId ?? p.leadId ?? null,
+    });
+  }
 
-/** Best-effort device label from a user agent string. */
-function deviceFromUserAgent(ua: string | null): string | null {
-  if (!ua) return null;
-  if (/iPad|Tablet/i.test(ua)) return "Tablet";
-  if (/iPhone|Android.*Mobile|Mobile/i.test(ua)) return "Mobile";
-  if (/Windows|Macintosh|Linux|CrOS/i.test(ua)) return "Desktop";
-  return null;
+  const lastStepIndex = Math.max(1, FORM_STEPS.length - 1);
+  const map = (r: (typeof rows)[number]): LiveFormSession => {
+    const parts = parseDeviceString(r.device);
+    const seen = r.lastSeenAt.getTime();
+    const details = detailsBySession.get(r.sessionId);
+    const variantsRaw = (r.variantsJson ?? {}) as Record<string, unknown>;
+    const utm = [r.utmSource, r.utmMedium, r.utmCampaign].filter(Boolean).join(" / ") || null;
+    let localTime: string | null = null;
+    if (r.timezone) {
+      try {
+        localTime = new Date().toLocaleTimeString("en-US", { timeZone: r.timezone, hour: "numeric", minute: "2-digit" });
+      } catch { localTime = null; }
+    }
+    return {
+      sessionId: r.sessionId,
+      shortId: r.sessionId.slice(0, 8),
+      step: r.furthestStep ?? "intro",
+      stepLabel: stepLabel(r.furthestStep),
+      progressPct: Math.min(100, Math.round((Math.max(0, r.furthestIndex) / lastStepIndex) * 100)),
+      startedAt: r.startedAt.toISOString(),
+      lastSeenAt: r.lastSeenAt.toISOString(),
+      secondsSinceSeen: Math.max(0, Math.round((now - seen) / 1000)),
+      minutesOnForm: Math.max(0, Math.round((seen - r.startedAt.getTime()) / 60000)),
+      eventCount: r.eventCount,
+      outcome: r.outcome,
+      reachedContact: r.reachedContact,
+      name: details?.name ?? null,
+      email: details?.email ?? null,
+      phone: details?.phone ?? null,
+      company: details?.company ?? null,
+      device: parts.device,
+      browser: parts.browser,
+      os: parts.os,
+      location: geoLabel(r.geoCity, r.geoRegion, r.geoCountry),
+      timezone: r.timezone,
+      localTime,
+      ip: r.ip,
+      variants: Object.entries(variantsRaw)
+        .filter(([, v]) => typeof v === "string")
+        .map(([key, v]) => ({ key, value: String(v) })),
+      source: r.referrer ?? r.sourcePage ?? null,
+      utm,
+      leadId: r.leadId ?? details?.leadId ?? null,
+    };
+  };
+
+  const live: LiveFormSession[] = [];
+  const justLeft: LiveFormSession[] = [];
+  for (const r of rows) {
+    const item = map(r);
+    // Someone who submitted is finished, however recently they pinged.
+    if (item.secondsSinceSeen * 1000 <= LIVE_WINDOW_MS && r.outcome !== "completed") live.push(item);
+    else justLeft.push(item);
+  }
+  return { live, justLeft: justLeft.slice(0, 12) };
 }
 
 /**
@@ -134,7 +212,7 @@ export async function getRecentSessions() {
       email: String(fields?.email ?? "") || null,
       step: r.partialStep ?? "unknown",
       lastActiveAt: new Date(lastActive).toISOString(),
-      device: deviceFromUserAgent(r.userAgent),
+      device: deviceFromUserAgent(r.userAgent).device,
       leadId: r.leadId ?? (r.sessionId ? leadBySession.get(r.sessionId) ?? null : null),
     };
   });
