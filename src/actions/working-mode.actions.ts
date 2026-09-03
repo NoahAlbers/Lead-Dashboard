@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { logEvent } from "@/services/activity-log.service";
 import type { LeadStatus } from "@prisma/client";
+import { stopRecaptureForLead } from "@/services/recapture.service";
 
 const ACTIVE_STATUSES: LeadStatus[] = ["NEW", "REVIEWED", "CONTACTED", "FOLLOW_UP_NEEDED", "QUALIFIED"];
 
@@ -107,6 +108,11 @@ export async function recordDisposition(
 
     await prisma.lead.update({ where: { id: leadId }, data: updateData });
     await logEvent(leadId, "status_changed", { from: lead.status, to: newStatus, disposition }, session.user.id);
+    // Working a lead by hand ends any automated chasing immediately, rather
+    // than waiting for the next queue run to notice.
+    if (!["NEW", "REVIEWED"].includes(newStatus)) {
+      stopRecaptureForLead(leadId, `disposition_${disposition}`).catch(() => {});
+    }
   }
 
   // Log the disposition event

@@ -110,6 +110,11 @@ export async function enrollAbandonedLead(
 
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead?.email) return;
+  // Somebody already called, emailed or referred them: no automated chasing.
+  if (lead.firstContactAt || !["NEW", "REVIEWED"].includes(lead.status)) {
+    logger.info("RECAPTURE", "Skipping enrollment, lead already worked", { leadId, status: lead.status });
+    return;
+  }
   const email = lead.email.trim().toLowerCase();
 
   if (await isEmailSuppressed(email)) return;
@@ -295,6 +300,13 @@ export async function processRecaptureQueue(): Promise<{ due: number; sent: numb
       }
       if (!["NEW", "REVIEWED"].includes(e.lead.status)) {
         await stopEnrollment(e.id, `lead_status_${e.lead.status.toLowerCase()}`);
+        stopped++;
+        continue;
+      }
+      // Somebody has spoken to them or handed them to a partner. Whatever the
+      // status says, we are not chasing them by email any more.
+      if (e.lead.firstContactAt) {
+        await stopEnrollment(e.id, "already_contacted");
         stopped++;
         continue;
       }

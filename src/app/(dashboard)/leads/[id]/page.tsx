@@ -33,6 +33,7 @@ import { getLeadFollowUps } from "@/actions/follow-up.actions";
 import { AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { LocalTime } from "@/components/shared/local-time";
 
 const EST_TZ = "America/New_York";
 
@@ -212,6 +213,14 @@ export default async function LeadDetailPage({ params }: PageProps) {
   // (calling revalidatePath during server render crashes the page)
 
   const activePartners = await getActivePartners();
+
+  // The tracked form session behind this lead, for the connection details the
+  // intake payload does not carry (what kind of address they came in on).
+  const formSession = await prisma.formSession.findFirst({
+    where: { leadId: id },
+    orderBy: { lastSeenAt: "desc" },
+    select: { ipType: true, ipIsp: true, timezone: true, returnCount: true },
+  });
 
   const allTemplates = await prisma.emailTemplate.findMany({
     where: { active: true },
@@ -552,7 +561,20 @@ export default async function LeadDetailPage({ params }: PageProps) {
               )}
               <ContactRow label="Urgency" value={lead.urgency} />
               <ContactRow label="Location / IP" value={intakeFields?.location ?? "Not captured"} muted={!intakeFields?.location} />
-              <ContactRow label="Timezone" value={intakeFields?.timezone ?? "Not captured"} muted={!intakeFields?.timezone} />
+              <ContactRow label="IP type" value={formSession?.ipType ?? "Not checked"} muted={!formSession?.ipType} />
+              {(intakeFields?.timezone || formSession?.timezone) ? (
+                <ContactRow label="Their time">
+                  <LocalTime timezone={formSession?.timezone ?? intakeFields?.timezone ?? null} />
+                </ContactRow>
+              ) : (
+                <ContactRow label="Their time" value="Not captured" muted />
+              )}
+              {formSession && formSession.returnCount > 0 && (
+                <ContactRow
+                  label="Returns"
+                  value={`Came back ${formSession.returnCount === 1 ? "once" : `${formSession.returnCount} times`} while filling the form`}
+                />
+              )}
               <ContactRow label="Device" value={intakeFields?.device} />
               <ContactRow label="Referrer" value={lead.referrer} />
               <ContactRow label="UTM Source" value={lead.utmSource} />

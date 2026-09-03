@@ -43,8 +43,9 @@ export interface LiveFormSession {
   os: string;
   location: string | null;
   timezone: string | null;
-  localTime: string | null;
   ip: string | null;
+  ipType: string | null;
+  ipIsp: string | null;
   variants: Array<{ key: string; value: string }>;
   source: string | null;
   utm: string | null;
@@ -71,7 +72,7 @@ export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; 
       device: true, timezone: true, geoCity: true, geoRegion: true, geoCountry: true, ip: true,
       variantsJson: true, referrer: true, sourcePage: true, utmSource: true, utmMedium: true, utmCampaign: true,
       outcome: true, reachedContact: true, eventCount: true, leadId: true,
-      answersJson: true, answersAt: true, returnCount: true,
+      answersJson: true, answersAt: true, returnCount: true, ipType: true, ipIsp: true,
     },
   });
   if (rows.length === 0) return { live: [], justLeft: [] };
@@ -117,12 +118,6 @@ export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; 
     const answered = (key: string): string | null => answers.find((a) => a.key === key)?.value ?? null;
     const variantsRaw = (r.variantsJson ?? {}) as Record<string, unknown>;
     const utm = [r.utmSource, r.utmMedium, r.utmCampaign].filter(Boolean).join(" / ") || null;
-    let localTime: string | null = null;
-    if (r.timezone) {
-      try {
-        localTime = new Date().toLocaleTimeString("en-US", { timeZone: r.timezone, hour: "numeric", minute: "2-digit" });
-      } catch { localTime = null; }
-    }
     return {
       sessionId: r.sessionId,
       shortId: r.sessionId.slice(0, 8),
@@ -145,8 +140,9 @@ export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; 
       os: parts.os,
       location: geoLabel(r.geoCity, r.geoRegion, r.geoCountry),
       timezone: r.timezone,
-      localTime,
       ip: r.ip,
+      ipType: r.ipType,
+      ipIsp: r.ipIsp,
       variants: Object.entries(variantsRaw)
         .filter(([, v]) => typeof v === "string")
         .map(([key, v]) => ({ key, value: String(v) })),

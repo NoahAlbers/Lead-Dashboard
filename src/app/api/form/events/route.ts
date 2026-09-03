@@ -4,6 +4,7 @@ import { formCorsHeaders, formPreflight } from "@/lib/form-cors";
 import { serverGeoFromHeaders } from "@/lib/request-geo";
 import { sanitizeAnswers } from "@/lib/form-answers";
 import { Prisma } from "@prisma/client";
+import { lookupIpIntel } from "@/lib/ip-intel";
 import { logger } from "@/lib/logger";
 
 // Batched flow events from the intake form. Creates or updates the visitor's
@@ -81,6 +82,24 @@ export async function POST(req: NextRequest) {
 
   const existing = await prisma.formSession.findUnique({ where: { sessionId } });
 
+  // What kind of connection they are on. Looked up once per session, and only
+  // after checking whether another session from the same address already
+  // answered the question, so a busy hour stays inside the provider's limits.
+  let ipIntel: { ipType: string; ipIsp: string | null } | null = null;
+  if (geo?.ip && !existing?.ipType) {
+    const known = await prisma.formSession.findFirst({
+      where: { ip: geo.ip, ipType: { not: null } },
+      orderBy: { lastSeenAt: "desc" },
+      select: { ipType: true, ipIsp: true },
+    });
+    if (known?.ipType) {
+      ipIntel = { ipType: known.ipType, ipIsp: known.ipIsp };
+    } else {
+      const looked = await lookupIpIntel(geo.ip);
+      if (looked) ipIntel = { ipType: looked.type, ipIsp: looked.isp };
+    }
+  }
+
   // Someone who goes quiet and comes back is the same visit, not a new one.
   // A gap longer than this counts as a return and is worth showing on screen.
   const RETURN_GAP_MS = 5 * 60 * 1000;
@@ -110,6 +129,7 @@ export async function POST(req: NextRequest) {
     eventCount: { increment: storedEvents.length },
     ...(answers ? { answersJson: answers as Prisma.InputJsonValue, answersAt: now } : {}),
     ...(isReturn ? { returnCount: { increment: 1 } } : {}),
+    ...(ipIntel ? { ipType: ipIntel.ipType, ipIsp: ipIntel.ipIsp } : {}),
   };
 
   await prisma.formSession.upsert({
