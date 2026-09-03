@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { listExperiments } from "@/actions/experiment.actions";
 import { ExperimentsManager } from "@/components/admin/experiments-manager";
+import { FormAnalytics } from "@/components/admin/form-analytics";
 
 export default async function ExperimentsPage() {
   const session = await auth();
@@ -32,6 +33,9 @@ export default async function ExperimentsPage() {
           endedAt: e.endedAt?.toISOString() ?? null,
         }))}
       />
+      <div className="border-t pt-6">
+        <FormAnalytics />
+      </div>
     </div>
   );
 }
