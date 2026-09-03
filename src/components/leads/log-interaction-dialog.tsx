@@ -16,12 +16,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/use-toast";
-import {
-  logInteraction,
-  CALL_OUTCOMES,
-  EMAIL_OUTCOMES,
-  type InteractionKind,
-} from "@/actions/interaction.actions";
+import { logInteraction } from "@/actions/interaction.actions";
+import { CALL_OUTCOMES, EMAIL_OUTCOMES, type InteractionKind } from "@/lib/interactions";
 
 interface LogInteractionDialogProps {
   open: boolean;

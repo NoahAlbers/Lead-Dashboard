@@ -12,30 +12,7 @@ import { logEvent } from "@/services/activity-log.service";
 import { stopRecaptureForLead } from "@/services/recapture.service";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
-
-export type InteractionKind = "call" | "email";
-
-/** What happened, and whether it means we actually reached the person. */
-export const CALL_OUTCOMES = [
-  { value: "spoke", label: "Spoke with them", reached: true },
-  { value: "voicemail", label: "Left a voicemail", reached: false },
-  { value: "no_answer", label: "No answer", reached: false },
-  { value: "callback", label: "They asked to be called back", reached: true },
-  { value: "wrong_number", label: "Wrong or bad number", reached: false },
-] as const;
-
-export const EMAIL_OUTCOMES = [
-  { value: "sent", label: "Sent them an email", reached: true },
-  { value: "replied", label: "They replied", reached: true },
-  { value: "bounced", label: "It bounced", reached: false },
-  { value: "no_reply", label: "No reply yet", reached: false },
-] as const;
-
-function outcomeMeta(kind: InteractionKind, value: string) {
-  const list: ReadonlyArray<{ value: string; label: string; reached: boolean }> =
-    kind === "call" ? CALL_OUTCOMES : EMAIL_OUTCOMES;
-  return list.find((o) => o.value === value) ?? null;
-}
+import { outcomeMeta, type InteractionKind } from "@/lib/interactions";
 
 export interface LogInteractionInput {
   kind: InteractionKind;

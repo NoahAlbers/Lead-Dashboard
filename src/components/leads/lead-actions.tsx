@@ -5,7 +5,7 @@ import { Mail, Phone, Handshake, CheckCircle, ThumbsUp, ThumbsDown, Download, Me
 import { updateLeadStatus } from "@/actions/lead.actions";
 import { OnboardingDialog } from "@/components/leads/onboarding-dialog";
 import { LogInteractionDialog } from "@/components/leads/log-interaction-dialog";
-import type { InteractionKind } from "@/actions/interaction.actions";
+import type { InteractionKind } from "@/lib/interactions";
 import { OPEN_ONBOARDING_EMAIL_EVENT } from "@/components/leads/onboarding-panel";
 import type { MgmtType } from "@/actions/onboarding.actions";
 import { logQuickAction, addNote } from "@/actions/note.actions";

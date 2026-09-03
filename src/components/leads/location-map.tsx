@@ -64,10 +64,15 @@ export function LocationMap({ lat, lng, address, label }: LocationMapProps) {
   const pointY = (y - originY) * TILE_PX;
 
   const tiles: Array<{ key: string; url: string; left: number; top: number }> = [];
+  const visibleTop = pointY - MAP_HEIGHT / 2;
+  const visibleBottom = pointY + MAP_HEIGHT / 2;
   for (let row = 0; row < ROWS; row++) {
     const ty = originY + row;
     // Off the top or bottom of the world: no tile exists, leave the gap.
     if (ty < 0 || ty >= n) continue;
+    // The card is much shorter than it is wide, so a row of the grid usually
+    // falls outside it entirely. No sense asking for tiles nobody will see.
+    if (row * TILE_PX > visibleBottom || (row + 1) * TILE_PX < visibleTop) continue;
     for (let col = 0; col < COLS; col++) {
       const tx = ((originX + col) % n + n) % n;
       tiles.push({
@@ -95,8 +100,13 @@ export function LocationMap({ lat, lng, address, label }: LocationMapProps) {
         className="group relative block w-full overflow-hidden bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         style={{ height: MAP_HEIGHT }}
       >
+        {/* Raster tiles are loud next to the CRM's palette, so they get pulled
+            back a little. The second filter is scoped to an explicit .dark
+            ancestor rather than the OS setting: the app is light only today,
+            and inverting the map for anyone whose laptop is in dark mode would
+            look like a bug. If a dark theme lands, the map comes with it. */}
         <div
-          className="absolute [filter:saturate(0.7)_contrast(0.92)_brightness(1.03)] dark:[filter:invert(0.92)_hue-rotate(180deg)_saturate(0.6)_brightness(1.05)]"
+          className="absolute [filter:saturate(0.7)_contrast(0.92)_brightness(1.03)] [.dark_&]:[filter:invert(0.92)_hue-rotate(180deg)_saturate(0.6)_brightness(1.05)]"
           style={{
             left: "50%",
             top: "50%",
