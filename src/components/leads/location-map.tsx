@@ -26,6 +26,8 @@ interface LocationMapProps {
   lng: number;
   address?: string | null;
   label?: string | null;
+  /** "area" when we could only place the town, so the pin is not the building. */
+  precision?: "address" | "area";
 }
 
 /** Web mercator tile coordinates, fractional so we know where inside the tile
@@ -41,7 +43,7 @@ function project(lat: number, lng: number, zoom: number) {
   };
 }
 
-export function LocationMap({ lat, lng, address, label }: LocationMapProps) {
+export function LocationMap({ lat, lng, address, label, precision = "address" }: LocationMapProps) {
   // Bad or missing coordinates should just mean no card, not a broken one.
   if (
     !Number.isFinite(lat) ||
@@ -85,10 +87,13 @@ export function LocationMap({ lat, lng, address, label }: LocationMapProps) {
   }
 
   // Google's documented Maps URL form. zoom 16 lands close enough to see the
-  // building and its lot, which is the point of switching to satellite.
+  // building and its lot, which is the point of switching to satellite. When
+  // all we placed was the town, dropping to 13 keeps the view honest instead
+  // of flying down onto whatever happens to sit at the town centre.
+  const exact = precision === "address";
   const googleMapsUrl =
     "https://www.google.com/maps/@?api=1&map_action=map" +
-    `&center=${encodeURIComponent(`${lat},${lng}`)}&zoom=16&basemap=satellite`;
+    `&center=${encodeURIComponent(`${lat},${lng}`)}&zoom=${exact ? 16 : 13}&basemap=satellite`;
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
@@ -142,10 +147,20 @@ export function LocationMap({ lat, lng, address, label }: LocationMapProps) {
         {/* Softens the tiles into the card and keeps the marker readable. */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent to-card/25" />
 
-        {/* The marker, sitting exactly where the tiles were centred. */}
+        {/* The marker, sitting exactly where the tiles were centred. A town
+            level hit gets a wider, softer halo and no hard dot, so it reads as
+            a neighbourhood rather than a doorstep. */}
         <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <span className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20" />
-          <span className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary ring-2 ring-primary-foreground shadow" />
+          <span
+            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20 ${
+              exact ? "h-7 w-7" : "h-12 w-12"
+            }`}
+          />
+          <span
+            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow ${
+              exact ? "h-3.5 w-3.5 ring-2 ring-primary-foreground" : "h-2 w-2 opacity-70"
+            }`}
+          />
         </div>
 
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -161,7 +176,14 @@ export function LocationMap({ lat, lng, address, label }: LocationMapProps) {
         {address && (
           <p className="flex items-start gap-1 text-[11px] text-muted-foreground leading-snug">
             <MapPin className="h-3 w-3 shrink-0 mt-px" />
-            <span>{address}</span>
+            <span>
+              {address}
+              {!exact && (
+                <span className="block text-[10px] italic">
+                  Placed by town, not by street number
+                </span>
+              )}
+            </span>
           </p>
         )}
         <p className="text-[10px] text-muted-foreground">

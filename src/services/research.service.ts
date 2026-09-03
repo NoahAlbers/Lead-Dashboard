@@ -38,6 +38,7 @@ export interface AutoResearchResult {
   addressParts?: AddressParts | null;
   lat?: number | null;
   lng?: number | null;
+  geoPrecision?: "address" | "area" | null;
 }
 
 const PROFILE_HOSTS: Array<{ kind: string; match: RegExp }> = [
@@ -327,7 +328,7 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
   // Where they actually are. We geocode once, here, and keep the coordinates on
   // the event so the lead page can draw the map without ever calling out again.
   const found = extractAddress(html);
-  const geo = found ? await geocodeAddress(found.line) : null;
+  const geo = found ? await geocodeAddress(found.line, found.parts) : null;
 
   const payload = {
     domain,
@@ -338,6 +339,8 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
     addressParts: found?.parts ?? null,
     lat: geo?.lat ?? null,
     lng: geo?.lng ?? null,
+    // "area" means we could only place the town, not the building.
+    geoPrecision: geo?.precision ?? null,
     fetchedAt: new Date().toISOString(),
     automatic: userId == null,
   };

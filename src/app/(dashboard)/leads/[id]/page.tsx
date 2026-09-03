@@ -301,6 +301,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
       address?: string | null;
       lat?: number | null;
       lng?: number | null;
+      geoPrecision?: "address" | "area" | null;
     } | null;
     return d ?? null;
   })();
@@ -474,6 +475,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
               lng={latestAutoResearch.lng}
               address={latestAutoResearch.address ?? null}
               label={lead.companyName ?? lead.fullName ?? null}
+              precision={latestAutoResearch.geoPrecision ?? "address"}
             />
           )}
 
