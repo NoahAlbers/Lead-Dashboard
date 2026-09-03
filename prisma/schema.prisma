@@ -754,6 +754,10 @@ model FormSession {
   answersAt     DateTime? @map("answers_at")
   // How many times they came back after leaving the form open and going quiet.
   returnCount   Int       @default(0) @map("return_count")
+  // What kind of connection they are on (VPN, datacenter, phone network),
+  // looked up once per session so staff know what they are calling into.
+  ipType        String?   @map("ip_type")
+  ipIsp         String?   @map("ip_isp")
 
   @@index([startedAt])
   @@index([outcome])

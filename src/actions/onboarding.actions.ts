@@ -97,6 +97,9 @@ export async function createOnboardingProfile(leadId: string, input: OnboardingI
       },
     });
     await prisma.lead.update({ where: { id: leadId }, data: { lastActivityAt: new Date() } });
+    // They are being onboarded personally now, so stop any recapture sequence.
+    const { stopRecaptureForLead } = await import("@/services/recapture.service");
+    await stopRecaptureForLead(leadId, "onboarding_started").catch(() => {});
 
     revalidatePath(`/leads/${leadId}`);
     return { success: true, portalUrl, emailed: input.sendEmail };

@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState, useTransition, useCallback } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { LocalTime } from "@/components/shared/local-time";
 import {
   getLiveFormSessions,
   getRecentSessions,
@@ -126,7 +127,7 @@ function LiveSessionCard({ s }: { s: LiveSession }) {
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
             On the form {s.minutesOnForm} min · seen {s.secondsSinceSeen < 10 ? "just now" : `${s.secondsSinceSeen}s ago`}
-            {s.localTime && ` · their time ${s.localTime}`}
+
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -168,12 +169,22 @@ function LiveSessionCard({ s }: { s: LiveSession }) {
           <dd>{s.location ?? "Unknown"}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Timezone</dt>
-          <dd className="truncate" title={s.timezone ?? undefined}>{s.timezone ?? "Unknown"}</dd>
+          <dt className="text-muted-foreground">Their time</dt>
+          <dd className="truncate"><LocalTime timezone={s.timezone} /></dd>
         </div>
         <div>
           <dt className="text-muted-foreground">IP</dt>
           <dd className="font-mono">{s.ip ?? "Unknown"}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">IP type</dt>
+          <dd className="truncate" title={s.ipIsp ?? undefined}>
+            {s.ipType ? (
+              <span className={s.ipType === "Residential or business" ? "" : "font-medium text-amber-700"}>{s.ipType}</span>
+            ) : (
+              <span className="text-muted-foreground">Not checked</span>
+            )}
+          </dd>
         </div>
         <div>
           <dt className="text-muted-foreground">Source</dt>
