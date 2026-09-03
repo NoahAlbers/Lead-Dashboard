@@ -6,6 +6,7 @@ import { processIngestionItem } from "@/services/ingestion-pipeline.service";
 import { revalidatePath } from "next/cache";
 import { parseDeviceString, deviceFromUserAgent, geoLabel } from "@/lib/form-device";
 import { FORM_STEPS, stepLabel } from "@/lib/form-steps";
+import { answerEntries, type AnswerEntry } from "@/lib/form-answers";
 
 /**
  * Who is on the intake form right now.
@@ -48,6 +49,11 @@ export interface LiveFormSession {
   source: string | null;
   utm: string | null;
   leadId: string | null;
+  /** Everything typed into the form so far, newest snapshot, ready to render. */
+  answers: AnswerEntry[];
+  answersAt: string | null;
+  /** How many times they left the form and came back. */
+  returnCount: number;
 }
 
 export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; justLeft: LiveFormSession[] }> {
@@ -65,6 +71,7 @@ export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; 
       device: true, timezone: true, geoCity: true, geoRegion: true, geoCountry: true, ip: true,
       variantsJson: true, referrer: true, sourcePage: true, utmSource: true, utmMedium: true, utmCampaign: true,
       outcome: true, reachedContact: true, eventCount: true, leadId: true,
+      answersJson: true, answersAt: true, returnCount: true,
     },
   });
   if (rows.length === 0) return { live: [], justLeft: [] };
@@ -104,6 +111,10 @@ export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; 
     const parts = parseDeviceString(r.device);
     const seen = r.lastSeenAt.getTime();
     const details = detailsBySession.get(r.sessionId);
+    // The live snapshot beats the saved partial: it arrives as they type,
+    // while a partial is only written once they pass certain steps.
+    const answers = answerEntries(r.answersJson);
+    const answered = (key: string): string | null => answers.find((a) => a.key === key)?.value ?? null;
     const variantsRaw = (r.variantsJson ?? {}) as Record<string, unknown>;
     const utm = [r.utmSource, r.utmMedium, r.utmCampaign].filter(Boolean).join(" / ") || null;
     let localTime: string | null = null;
@@ -125,10 +136,10 @@ export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; 
       eventCount: r.eventCount,
       outcome: r.outcome,
       reachedContact: r.reachedContact,
-      name: details?.name ?? null,
-      email: details?.email ?? null,
-      phone: details?.phone ?? null,
-      company: details?.company ?? null,
+      name: answered("fullName") ?? details?.name ?? null,
+      email: answered("email") ?? details?.email ?? null,
+      phone: answered("phone") ?? details?.phone ?? null,
+      company: answered("companyName") ?? details?.company ?? null,
       device: parts.device,
       browser: parts.browser,
       os: parts.os,
@@ -142,6 +153,9 @@ export async function getLiveFormSessions(): Promise<{ live: LiveFormSession[]; 
       source: r.referrer ?? r.sourcePage ?? null,
       utm,
       leadId: r.leadId ?? details?.leadId ?? null,
+      answers,
+      answersAt: r.answersAt?.toISOString() ?? null,
+      returnCount: r.returnCount,
     };
   };
 

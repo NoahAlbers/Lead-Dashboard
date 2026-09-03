@@ -1,12 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import {
   getFormAnalytics,
+  getGroupDrilldown,
+  getStepDrilldown,
   type AnalyticsFilters,
   type BreakdownRow,
   type FormAnalytics as AnalyticsData,
+  type GroupDrilldown,
+  type StepDrilldown,
+  type StepStat,
 } from "@/actions/form-analytics.actions";
 
 const inputCls = "h-9 rounded-md border border-input bg-card px-3 text-sm";
@@ -17,6 +22,18 @@ const numberFormat = new Intl.NumberFormat("en-US");
 const num = (n: number) => numberFormat.format(n);
 /** Rates arrive as fractions; on screen they get one decimal and a % sign. */
 const pct = (fraction: number) => `${(fraction * 100).toFixed(1)}%`;
+/** These arrive already in percentage points. */
+const pts = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)} pts`;
+
+/** The ways a single step can be split open. */
+const STEP_DIMENSIONS: Array<{ key: string; label: string }> = [
+  { key: "device", label: "Device" },
+  { key: "browser", label: "Browser" },
+  { key: "os", label: "OS" },
+  { key: "country", label: "Country" },
+  { key: "variant", label: "Experiment variant" },
+  { key: "utmSource", label: "UTM source" },
+];
 
 type SortKey = "sessions" | "completionRate" | "contactRate" | "leads";
 
@@ -79,8 +96,282 @@ function FilterSelect({
   );
 }
 
-/** Step-by-step funnel with a bar per step and an expandable "who left here" line. */
-function StepFunnel({ data }: { data: AnalyticsData }) {
+/** The little pill row that picks which way to slice a drill-down. */
+function DimensionPicker({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ key: string; label: string }>;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] text-muted-foreground">Split by</span>
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
+            o.key === value ? "bg-muted" : "hover:bg-muted/50"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Bar for one group's drop rate, with a tick where the step average sits. */
+function DropRateBar({ value, average, scale, worse }: { value: number; average: number; scale: number; worse: boolean }) {
+  const width = Math.min(100, Math.max(2, (value / scale) * 100));
+  const mark = Math.min(100, Math.max(0, (average / scale) * 100));
+  return (
+    <span className="relative block w-full">
+      <span className="block h-2 w-full overflow-hidden rounded-full bg-muted">
+        <span className={`block h-full rounded-full ${worse ? "bg-amber-500" : "bg-primary/60"}`} style={{ width: `${width}%` }} />
+      </span>
+      <span
+        className="absolute inset-y-0 w-px bg-foreground/50"
+        style={{ left: `${mark}%` }}
+        title={`Step average ${pct(average)}`}
+      />
+    </span>
+  );
+}
+
+/** One step opened up: who reached it, who carried on, split by a dimension. */
+function StepDrilldownPanel({ step, filters }: { step: StepStat; filters: AnalyticsFilters }) {
+  const [dimension, setDimension] = useState("device");
+  const [drill, setDrill] = useState<StepDrilldown | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let alive = true;
+    setStatus("loading");
+    getStepDrilldown(step.key, dimension, filters)
+      .then((result) => {
+        if (!alive) return;
+        setDrill(result);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (alive) setStatus("error");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [step.key, dimension, filters]);
+
+  const scale = useMemo(() => {
+    if (!drill) return 1;
+    return Math.max(0.02, drill.dropRate, ...drill.rows.map((r) => r.dropRate));
+  }, [drill]);
+
+  return (
+    <div className="space-y-2 border-t bg-muted/20 px-2.5 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <DimensionPicker value={dimension} onChange={setDimension} options={STEP_DIMENSIONS} />
+        {status === "loading" && <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
+
+      {status === "error" && <p className="text-xs text-red-600">Could not load this step. Try opening it again.</p>}
+
+      {status !== "error" && drill && drill.reached === 0 && (
+        <p className="text-xs text-muted-foreground">No sessions reached this step in this range.</p>
+      )}
+
+      {status !== "error" && drill && drill.reached > 0 && drill.rows.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          None of the {num(drill.reached)} sessions that reached this step carry a value for{" "}
+          {drill.dimensionLabel.toLowerCase()}.
+        </p>
+      )}
+
+      {status !== "error" && drill && drill.rows.length > 0 && (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {num(drill.reached)} reached {drill.stepLabel}, {num(drill.continued)} carried on
+            {drill.nextStepLabel ? ` toward ${drill.nextStepLabel}` : ""}, and {num(drill.dropped)} stopped here (
+            {pct(drill.dropRate)}).
+          </p>
+          <div className="overflow-x-auto rounded-md border bg-card">
+            <table className="w-full min-w-[620px] text-xs">
+              <thead className="bg-muted/50 text-muted-foreground">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-medium">{drill.dimensionLabel}</th>
+                  <th className="w-20 px-2 py-1.5 text-right font-medium">Reached</th>
+                  <th className="w-20 px-2 py-1.5 text-right font-medium">Continued</th>
+                  <th className="w-20 px-2 py-1.5 text-right font-medium">Dropped</th>
+                  <th className="w-20 px-2 py-1.5 text-right font-medium">Drop rate</th>
+                  <th className="w-40 px-2 py-1.5 text-left font-medium">vs step average</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drill.rows.map((r) => (
+                  <tr key={r.value} className={`border-t ${r.worseThanAverage ? "bg-amber-50" : ""}`}>
+                    <td className="px-2 py-1.5 font-medium">
+                      <span className={r.worseThanAverage ? "text-amber-800" : ""}>{r.value}</span>
+                      {r.worseThanAverage && (
+                        <span className="ml-1.5 whitespace-nowrap text-[10px] font-normal text-amber-700">
+                          worse than average
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{num(r.reached)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{num(r.continued)}</td>
+                    <td className={`px-2 py-1.5 text-right tabular-nums ${r.dropped > 0 ? "text-red-600" : "text-muted-foreground/50"}`}>
+                      {num(r.dropped)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{pct(r.dropRate)}</td>
+                    <td className="px-2 py-1.5">
+                      <span className="flex items-center gap-2">
+                        <DropRateBar value={r.dropRate} average={drill.dropRate} scale={scale} worse={r.worseThanAverage} />
+                        <span
+                          className={`w-16 shrink-0 text-right tabular-nums ${
+                            r.dropRateVsStep > 0 ? "text-red-600" : r.dropRateVsStep < 0 ? "text-emerald-600" : "text-muted-foreground"
+                          }`}
+                        >
+                          {pts(r.dropRateVsStep)}
+                        </span>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            The tick on each bar is the step average of {pct(drill.dropRate)}. Amber rows drop at least 10 points harder
+            than that on 20 sessions or more.
+            {drill.unassigned > 0
+              ? ` ${num(drill.unassigned)} sessions carry no ${drill.dimensionLabel.toLowerCase()} value and sit outside this table.`
+              : ""}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One breakdown row opened up: where that group left, and how it splits again. */
+function GroupDrilldownPanel({
+  dimension,
+  value,
+  filters,
+}: {
+  dimension: string;
+  value: string;
+  filters: AnalyticsFilters;
+}) {
+  const [drill, setDrill] = useState<GroupDrilldown | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let alive = true;
+    setStatus("loading");
+    getGroupDrilldown(dimension, value, filters)
+      .then((result) => {
+        if (!alive) return;
+        setDrill(result);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (alive) setStatus("error");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [dimension, value, filters]);
+
+  if (status === "loading") {
+    return (
+      <p className="flex items-center gap-1.5 px-3 py-2.5 text-xs text-muted-foreground">
+        <RefreshCw className="h-3 w-3 animate-spin" /> Loading {value}.
+      </p>
+    );
+  }
+  if (status === "error" || !drill) {
+    return <p className="px-3 py-2.5 text-xs text-red-600">Could not load {value}. Try opening it again.</p>;
+  }
+  if (drill.sessions === 0) {
+    return <p className="px-3 py-2.5 text-xs text-muted-foreground">No sessions in this group for the current filters.</p>;
+  }
+
+  return (
+    <div className="grid gap-4 px-3 py-3 lg:grid-cols-2">
+      <div className="space-y-1.5">
+        <p className="text-[11px] font-medium text-muted-foreground">Top drop-off steps for {drill.value}</p>
+        {drill.topDropSteps.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nobody in this group left mid-form.</p>
+        ) : (
+          <ul className="space-y-1 text-xs">
+            {drill.topDropSteps.map((s) => (
+              <li key={s.key} className="flex items-baseline justify-between gap-2 rounded-md bg-card px-2 py-1.5">
+                <span className="truncate">
+                  <span className="font-medium">{s.label}</span>
+                  {s.pitch && (
+                    <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">pitch</span>
+                  )}
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  <span className="font-medium text-red-600">{num(s.dropped)}</span> left, {pct(s.dropRate)} of who got
+                  there, {pct(s.shareOfDrops)} of this group
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[11px] text-muted-foreground">
+          {num(drill.sessions)} sessions, {pct(drill.completionRate)} completed, {pct(drill.contactRate)} gave contact,{" "}
+          {num(drill.leads)} became leads.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-[11px] font-medium text-muted-foreground">
+          {drill.value} split by {drill.nestedLabel.toLowerCase()}
+        </p>
+        {drill.nestedRows.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No {drill.nestedLabel.toLowerCase()} value was recorded for this group.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-md border bg-card">
+            <table className="w-full min-w-[320px] text-xs">
+              <thead className="bg-muted/50 text-muted-foreground">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-medium">{drill.nestedLabel}</th>
+                  <th className="px-2 py-1.5 text-right font-medium">Sessions</th>
+                  <th className="px-2 py-1.5 text-right font-medium">Completion</th>
+                  <th className="px-2 py-1.5 text-right font-medium">Gave contact</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drill.nestedRows.map((r) => (
+                  <tr key={r.value} className="border-t">
+                    <td className="px-2 py-1.5 font-medium">{r.value}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{num(r.sessions)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">
+                      {pct(r.completionRate)} <span className="text-muted-foreground">({num(r.completed)})</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{pct(r.contactRate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Step-by-step funnel with a bar per step and a full drill-down when opened. */
+function StepFunnel({ data, filters }: { data: AnalyticsData; filters: AnalyticsFilters }) {
   const [open, setOpen] = useState<string | null>(null);
   const steps = data.steps;
   const first = steps[0]?.reached ?? 0;
@@ -98,8 +389,29 @@ function StepFunnel({ data }: { data: AnalyticsData }) {
 
   return (
     <div className="space-y-1">
+      <div className="mb-1 hidden border-b bg-card px-2.5 pb-1.5 text-[10px] font-medium text-muted-foreground sm:flex sm:items-center sm:gap-3">
+        <span className="w-48 shrink-0 pl-5">Step</span>
+        <span className="min-w-0 flex-1">Share of everyone who started</span>
+        <span className="flex shrink-0 items-center gap-3">
+          <span className="w-16 text-right" title="Sessions that got at least this far">
+            Reached
+          </span>
+          <span className="w-16 text-right" title="Sessions that carried on past this step">
+            Continued
+          </span>
+          <span className="w-16 text-right" title="Sessions that stopped here">
+            Dropped
+          </span>
+          <span className="w-16 text-right" title="Dropped over reached">
+            Drop rate
+          </span>
+          <span className="w-16 text-right" title="Median time spent on this step">
+            Median time
+          </span>
+        </span>
+      </div>
+
       {steps.map((s) => {
-        const worst = data.worstSteps.find((w) => w.key === s.key);
         const isOpen = open === s.key;
         const barTone =
           s.dropRate >= redFrom && s.dropRate > 0
@@ -123,39 +435,34 @@ function StepFunnel({ data }: { data: AnalyticsData }) {
                   <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">pitch</span>
                 )}
               </span>
-              <span className="h-2.5 w-full flex-1 overflow-hidden rounded-full bg-muted">
+              <span className="h-2.5 w-full min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                 <span
                   className={`block h-full rounded-full ${barTone}`}
                   style={{ width: `${Math.max(2, (s.reached / max) * 100)}%` }}
                 />
               </span>
               <span className="flex shrink-0 items-center gap-3 tabular-nums sm:justify-end">
-                <span className="w-14 text-right" title="Reached this step">
+                <span className="w-16 text-right" title="Reached this step">
                   {num(s.reached)}
                 </span>
+                <span className="w-16 text-right text-muted-foreground" title="Carried on past this step">
+                  {num(s.completedStep)}
+                </span>
                 <span
-                  className={`w-14 text-right ${s.dropped > 0 ? "text-red-600" : "text-muted-foreground/50"}`}
+                  className={`w-16 text-right ${s.dropped > 0 ? "text-red-600" : "text-muted-foreground/50"}`}
                   title="Left here"
                 >
-                  {s.dropped > 0 ? `-${num(s.dropped)}` : "0"}
+                  {num(s.dropped)}
                 </span>
-                <span className="w-14 text-right text-muted-foreground" title="Drop rate">
+                <span className="w-16 text-right text-muted-foreground" title="Drop rate">
                   {pct(s.dropRate)}
                 </span>
-                <span className="w-14 text-right text-muted-foreground" title="Median time on step">
+                <span className="w-16 text-right text-muted-foreground" title="Median time on step">
                   {s.medianDwellSec != null ? `${num(s.medianDwellSec)}s` : "Unknown"}
                 </span>
               </span>
             </button>
-            {isOpen && (
-              <p className="border-t px-2.5 py-2 text-xs text-muted-foreground">
-                {s.dropped === 0
-                  ? "Nobody left on this step."
-                  : worst && worst.topCombos.length > 0
-                    ? `Left here: ${worst.topCombos.map((c) => `${c.combo} (${num(c.count)})`).join(", ")}.`
-                    : "No device detail recorded for the people who left here."}
-              </p>
-            )}
+            {isOpen && <StepDrilldownPanel step={s} filters={filters} />}
           </div>
         );
       })}
@@ -163,10 +470,11 @@ function StepFunnel({ data }: { data: AnalyticsData }) {
   );
 }
 
-/** Tabbed breakdown tables with sortable columns. */
-function Breakdowns({ data }: { data: AnalyticsData }) {
+/** Tabbed breakdown tables with sortable columns and expandable rows. */
+function Breakdowns({ data, filters }: { data: AnalyticsData; filters: AnalyticsFilters }) {
   const [tab, setTab] = useState(0);
   const [sort, setSort] = useState<SortState>({ key: "sessions", dir: "desc" });
+  const [openRow, setOpenRow] = useState<string | null>(null);
   const current = data.breakdowns[Math.min(tab, data.breakdowns.length - 1)];
 
   const rows = useMemo(() => {
@@ -190,7 +498,10 @@ function Breakdowns({ data }: { data: AnalyticsData }) {
           <button
             key={b.dimension}
             type="button"
-            onClick={() => setTab(i)}
+            onClick={() => {
+              setTab(i);
+              setOpenRow(null);
+            }}
             className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${i === tab ? "bg-muted" : "hover:bg-muted/50"}`}
           >
             {b.label}
@@ -226,29 +537,54 @@ function Breakdowns({ data }: { data: AnalyticsData }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.value} className="border-t">
-                  <td className="px-2 py-1.5 font-medium">{r.value}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{num(r.sessions)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    {pct(r.completionRate)} <span className="text-muted-foreground">({num(r.completed)})</span>
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    {pct(r.contactRate)} <span className="text-muted-foreground">({num(r.reachedContact)})</span>
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{num(r.leads)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    <Uplift value={r.upliftVsAverage} />
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const isOpen = openRow === r.value;
+                return (
+                  <Fragment key={r.value}>
+                    <tr
+                      className="cursor-pointer border-t hover:bg-muted/40"
+                      onClick={() => setOpenRow(isOpen ? null : r.value)}
+                    >
+                      <td className="px-2 py-1.5 font-medium">
+                        <span className="flex items-center gap-1.5">
+                          {isOpen ? (
+                            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          )}
+                          {r.value}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{num(r.sessions)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {pct(r.completionRate)} <span className="text-muted-foreground">({num(r.completed)})</span>
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        {pct(r.contactRate)} <span className="text-muted-foreground">({num(r.reachedContact)})</span>
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{num(r.leads)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">
+                        <Uplift value={r.upliftVsAverage} />
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="border-t bg-muted/20">
+                        <td colSpan={6} className="p-0">
+                          <GroupDrilldownPanel dimension={current.dimension} value={r.value} filters={filters} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">
         Rows are capped at the twelve biggest values; everything else is folded into Other. The last column is completion
-        rate against the overall {pct(data.totals.completionRate)}, in percentage points.
+        rate against the overall {pct(data.totals.completionRate)}, in percentage points. Click any row to see where that
+        group left the form.
       </p>
     </div>
   );
@@ -378,12 +714,12 @@ export function FormAnalytics() {
                 <div>
                   <h3 className="font-semibold">Step funnel</h3>
                   <p className="text-xs text-muted-foreground">
-                    Everyone who reached each step, how many left there, and the median time they spent on it. Click a
-                    step to see who left. {num(data.totals.abandoned)} sessions were abandoned and {num(data.totals.stillOpen)} are
-                    still open.
+                    Everyone who reached each step, how many carried on, how many left there, and the median time they
+                    spent on it. Open a step to see the same numbers split by device, browser, country and more.{" "}
+                    {num(data.totals.abandoned)} sessions were abandoned and {num(data.totals.stillOpen)} are still open.
                   </p>
                 </div>
-                <StepFunnel data={data} />
+                <StepFunnel data={data} filters={filters} />
               </div>
 
               <div className="rounded-lg border bg-card p-5 space-y-3">
@@ -420,10 +756,11 @@ export function FormAnalytics() {
                 <div>
                   <h3 className="font-semibold">Breakdowns</h3>
                   <p className="text-xs text-muted-foreground">
-                    The same sessions split by who they were and where they came from. Click a column heading to sort.
+                    The same sessions split by who they were and where they came from. Click a column heading to sort, or
+                    a row to open it up.
                   </p>
                 </div>
-                <Breakdowns data={data} />
+                <Breakdowns data={data} filters={filters} />
               </div>
             </>
           )}

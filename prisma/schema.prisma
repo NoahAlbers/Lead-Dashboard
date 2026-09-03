@@ -748,6 +748,12 @@ model FormSession {
   outcome       String   @default("open") // open | completed | abandoned
   leadId        String?  @map("lead_id")
   eventCount    Int      @default(0) @map("event_count")
+  // What the visitor has typed so far, refreshed with each batch, so staff can
+  // see a form in progress. Cleared of blanks by the events route.
+  answersJson   Json?     @map("answers_json")
+  answersAt     DateTime? @map("answers_at")
+  // How many times they came back after leaving the form open and going quiet.
+  returnCount   Int       @default(0) @map("return_count")
 
   @@index([startedAt])
   @@index([outcome])

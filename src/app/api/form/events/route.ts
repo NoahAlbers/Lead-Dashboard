@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { formCorsHeaders, formPreflight } from "@/lib/form-cors";
 import { serverGeoFromHeaders } from "@/lib/request-geo";
+import { sanitizeAnswers } from "@/lib/form-answers";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
 // Batched flow events from the intake form. Creates or updates the visitor's
@@ -51,6 +53,9 @@ export async function POST(req: NextRequest) {
   const geo = serverGeoFromHeaders(req.headers);
   const utm = (ctx.utm ?? {}) as Record<string, string | undefined>;
   const variants = (ctx.variants && typeof ctx.variants === "object") ? (ctx.variants as Record<string, string>) : null;
+  // What they have typed so far. Blank snapshots are ignored so an early batch
+  // never wipes out answers a later one already recorded.
+  const answers = sanitizeAnswers(ctx.answers);
 
   // Furthest step reached in this batch
   let furthestStep: string | null = null;
@@ -75,8 +80,16 @@ export async function POST(req: NextRequest) {
   }
 
   const existing = await prisma.formSession.findUnique({ where: { sessionId } });
+
+  // Someone who goes quiet and comes back is the same visit, not a new one.
+  // A gap longer than this counts as a return and is worth showing on screen.
+  const RETURN_GAP_MS = 5 * 60 * 1000;
+  const now = new Date();
+  const gapMs = existing ? now.getTime() - existing.lastSeenAt.getTime() : 0;
+  const isReturn = !!existing && gapMs > RETURN_GAP_MS && existing.outcome !== "completed";
+
   const data = {
-    lastSeenAt: new Date(),
+    lastSeenAt: now,
     formVersion: typeof body.form_version === "string" ? body.form_version : existing?.formVersion ?? null,
     variantsJson: variants ?? existing?.variantsJson ?? undefined,
     utmSource: utm.utm_source ?? existing?.utmSource ?? null,
@@ -95,13 +108,36 @@ export async function POST(req: NextRequest) {
     // Completed sticks; abandoned only if not already completed.
     ...(outcome === "completed" ? { outcome: "completed" } : outcome === "abandoned" && existing?.outcome !== "completed" ? { outcome: "abandoned" } : {}),
     eventCount: { increment: storedEvents.length },
+    ...(answers ? { answersJson: answers as Prisma.InputJsonValue, answersAt: now } : {}),
+    ...(isReturn ? { returnCount: { increment: 1 } } : {}),
   };
 
   await prisma.formSession.upsert({
     where: { sessionId },
-    create: { sessionId, ...data, eventCount: storedEvents.length, furthestStep: furthestStep ?? undefined, furthestIndex: Math.max(0, furthestIndex) },
+    create: {
+      sessionId,
+      ...data,
+      eventCount: storedEvents.length,
+      furthestStep: furthestStep ?? undefined,
+      furthestIndex: Math.max(0, furthestIndex),
+      returnCount: 0,
+    },
     update: data,
   });
+
+  // Record the return itself so the timeline of a session reads correctly.
+  if (isReturn) {
+    await prisma.formEvent.create({
+      data: {
+        sessionId,
+        at: now,
+        type: "returned",
+        step: furthestStep ?? existing?.furthestStep ?? null,
+        elapsedMs: null,
+        metaJson: { away_minutes: Math.round(gapMs / 60000) } as Prisma.InputJsonValue,
+      },
+    }).catch(() => {});
+  }
   if (storedEvents.length > 0) await prisma.formEvent.createMany({
     data: storedEvents.map((e) => ({
       sessionId,
