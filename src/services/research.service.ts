@@ -104,17 +104,51 @@ const STATE_CODES = new Set(Object.keys(STATE_ABBREV_TO_NAME));
 const STREET_SUFFIX =
   "Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct|Circle|Cir|Place|Pl|Parkway|Pkwy|Highway|Hwy|Terrace|Ter|Trail|Trl|Square|Sq|Loop|Route|Rte";
 
-const TEXT_ADDRESS = new RegExp(
+// Sites write the state either way, and a site that spells it out was being
+// skipped entirely.
+const STATE_NAMES = Object.values(STATE_ABBREV_TO_NAME)
+  .sort((a, b) => b.length - a.length)
+  .join("|");
+
+// What sits between the street line and the city varies with the markup: a
+// comma when it was written inline, a pipe or a bullet in a footer, or nothing
+// at all when the two were separate lines on the page.
+const LINE_BREAK = String.raw`\s*[,|\u2022\u00b7\u2013]?\s*`;
+
+/**
+ * A fresh matcher each time it is asked for.
+ *
+ * This used to be one shared global regex, which is a trap: `exec` leaves
+ * `lastIndex` pointing past the match it found, and `matchAll` starts from
+ * whatever `lastIndex` it inherits. One site with an embedded map would leave
+ * the offset set and the next site parsed in the same process would silently
+ * skip the beginning of its own page.
+ */
+const textAddressPattern = () => new RegExp(
   // number, up to a few street words, then a street type
   String.raw`(\d{1,6}[A-Za-z]?\s+(?:[A-Za-z0-9.'\-]+\s+){0,4}(?:${STREET_SUFFIX})\b\.?` +
     // an optional suite or unit tail
-    String.raw`(?:\s*,?\s*(?:Suite|Ste\.?|Unit|Apt\.?|Bldg\.?|#)\s*[A-Za-z0-9\-]+)?)` +
-    // , city
-    String.raw`\s*,\s*([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z.'\-]+){0,3})` +
-    // , ST ZIP
-    String.raw`\s*,?\s+([A-Z]{2})\s+(\d{5})(?:-\d{4})?\b`,
-  "g"
+    String.raw`(?:\s*,?\s*(?:Suite|Ste\.?|Unit|Apt\.?|Bldg\.?|Floor|#)\s*[A-Za-z0-9\-]+)?)` +
+    // city
+    LINE_BREAK +
+    String.raw`([A-Z][A-Za-z.'\-]*(?:\s+[A-Z][A-Za-z.'\-]+){0,3})` +
+    // state, abbreviated or spelled out, then the ZIP
+    LINE_BREAK +
+    String.raw`(${STATE_NAMES}|[A-Z]{2})\s*,?\s+(\d{5})(?:-\d{4})?\b`,
+  "g",
 );
+
+const STATE_NAME_TO_CODE = new Map(
+  Object.entries(STATE_ABBREV_TO_NAME).map(([code, name]) => [name.toLowerCase(), code]),
+);
+
+/** "PA" and "Pennsylvania" both come back as "PA"; anything else comes back null. */
+function normaliseState(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (STATE_CODES.has(trimmed.toUpperCase()) && trimmed.length === 2) return trimmed.toUpperCase();
+  return STATE_NAME_TO_CODE.get(trimmed.toLowerCase()) ?? null;
+}
 
 function tidy(value: unknown, max = 120): string | null {
   if (typeof value !== "string") return null;
@@ -215,22 +249,35 @@ function fromMicrodata(html: string): AddressParts | null {
 /** Visible page text, with a marker left behind wherever a footer or an
  * <address> block started so we can prefer matches that live there. */
 function toVisibleText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<(?:footer|address)\b[^>]*>/gi, " \u0001 ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/\s+/g, " ");
+  return (
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<(?:footer|address)\b[^>]*>/gi, " \u0001 ")
+      // An address in markup is nearly always several lines, and stripping the
+      // tags used to run them together: "219 N. Pitt Street Carlisle, PA 17013"
+      // is not something the pattern can read. A line break between two lines
+      // of an address is a comma when the address is written out, so that is
+      // what it becomes here.
+      .replace(/<br\s*\/?>/gi, ", ")
+      .replace(/<\/(?:p|div|li|td|th|h[1-6]|address|span|section)\s*>/gi, ", ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;|&#160;/gi, " ")
+      .replace(/\s+/g, " ")
+      // The substitutions above leave runs of commas wherever the markup was
+      // nested, which the pattern would trip over.
+      .replace(/\s*,(?:\s*,)+/g, ", ")
+      .replace(/\s+,/g, ",")
+  );
 }
 
 function fromPlainText(html: string): AddressParts | null {
   const text = toVisibleText(html);
   let best: { parts: AddressParts; score: number } | null = null;
 
-  for (const m of text.matchAll(TEXT_ADDRESS)) {
-    const region = m[3];
-    if (!STATE_CODES.has(region)) continue;
+  for (const m of text.matchAll(textAddressPattern())) {
+    const region = normaliseState(m[3]);
+    if (!region) continue;
 
     const parts: AddressParts = {
       street: tidy(m[1]),
@@ -315,13 +362,14 @@ function fromMapLink(html: string): AddressParts | null {
 
 /** Split one written-out address into its pieces, if it looks like one. */
 function parseAddressLine(line: string): AddressParts | null {
-  TEXT_ADDRESS.lastIndex = 0;
-  const m = TEXT_ADDRESS.exec(line);
-  if (!m || !STATE_CODES.has(m[3])) return null;
+  const m = textAddressPattern().exec(line);
+  if (!m) return null;
+  const region = normaliseState(m[3]);
+  if (!region) return null;
   const parts: AddressParts = {
     street: tidy(m[1]),
     city: tidy(m[2], 80),
-    region: m[3],
+    region,
     postalCode: m[4],
   };
   return isUsable(parts) ? parts : null;
