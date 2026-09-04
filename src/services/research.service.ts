@@ -54,6 +54,11 @@ export interface AutoResearchResult {
   logoSize?: number | null;
 }
 
+// How long the optional extras get before we stop and store what we have.
+// Ingestion does not wait for this run, so it has to finish while the function
+// is still alive rather than while the site is still interesting.
+const RESEARCH_BUDGET_MS = 20_000;
+
 const PROFILE_HOSTS: Array<{ kind: string; match: RegExp }> = [
   { kind: "LinkedIn", match: /linkedin\.com\/(company|in)\/[^/?#"']+/i },
   { kind: "Facebook", match: /facebook\.com\/(?!sharer|share|plugins)[^/?#"']+/i },
@@ -415,7 +420,7 @@ export function contactPageUrls(html: string, pageUrl: string): string[] {
   for (const path of ["/contact", "/contact-us", "/contact.html", "/locations", "/about"]) {
     add(path);
   }
-  return found.slice(0, 5);
+  return found.slice(0, 3);
 }
 
 /** The lead's street address, or null when the site never says. Never throws. */
@@ -526,8 +531,17 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
 
   const contactPages = home.kind === "html" ? contactPageUrls(html, home.url) : [];
 
+  // Ingestion starts this and does not wait for it, which on a serverless host
+  // means the run is living on borrowed time: once the response is sent the
+  // function can be frozen mid-flight and nothing gets written. Chasing every
+  // page and then rendering three of them would reliably outlive that, so the
+  // optional work stops when the budget does and we store what we have.
+  const deadline = Date.now() + RESEARCH_BUDGET_MS;
+  const timeLeft = () => Date.now() < deadline;
+
   if (!found) {
     for (const url of contactPages) {
+      if (!timeLeft()) break;
       const page = await fetchPage(url, { allowReader: false });
       if (!page) continue;
       const hit = extractAddress(page.body);
@@ -545,7 +559,8 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
   // only way to see it. Reserved for this point because it is slow and we have
   // already established the ordinary route found nothing.
   if (!found && home.kind === "html") {
-    for (const url of [home.url, ...contactPages.slice(0, 2)]) {
+    for (const url of [home.url, ...contactPages.slice(0, 1)]) {
+      if (!timeLeft()) break;
       const rendered = await fetchPage(url, { allowReader: true, readerOnly: true });
       if (!rendered) continue;
       const hit = extractAddress(rendered.body);
@@ -585,6 +600,7 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
     domain,
     from: addressFrom,
     pagesTried: 1 + contactPages.length,
+    ranOutOfTime: !timeLeft(),
   });
 
   // A directory listing comes with its own coordinates, so that path skips the
