@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/db";
 import { geocodeAddress } from "@/lib/geocode";
 import { fetchHomepage, fetchPage } from "@/lib/site-fetch";
+import { findPlaceAddress } from "@/lib/places-lookup";
 import {
   logoCandidates,
   manifestIcons,
@@ -556,13 +557,44 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
     }
   }
 
-  logger.info("RESEARCH", found ? "Address found" : "No address on the site", {
+  // Last resort, and the only one that costs anything: ask a business
+  // directory. Most small firms never publish an address on their own site but
+  // do keep a Google listing, so there is nothing left to parse and this is the
+  // only thing that answers. Off unless a key is configured.
+  let placeMatch = null;
+  if (!found) {
+    placeMatch = await findPlaceAddress(lead.companyName, {
+      city: lead.city,
+      region: lead.state,
+    });
+    if (placeMatch) {
+      found = {
+        line: placeMatch.formatted,
+        parts: {
+          street: placeMatch.street,
+          city: placeMatch.city,
+          region: placeMatch.region,
+          postalCode: placeMatch.postalCode,
+        },
+      };
+      addressFrom = "their Google listing";
+    }
+  }
+
+  logger.info("RESEARCH", found ? "Address found" : "No address anywhere", {
     domain,
     from: addressFrom,
     pagesTried: 1 + contactPages.length,
   });
 
-  const geo = found ? await geocodeAddress(found.line, found.parts) : null;
+  // A directory listing comes with its own coordinates, so that path skips the
+  // geocoder entirely.
+  const geo =
+    placeMatch && placeMatch.lat != null && placeMatch.lng != null
+      ? { lat: placeMatch.lat, lng: placeMatch.lng, precision: "address" as const }
+      : found
+        ? await geocodeAddress(found.line, found.parts)
+        : null;
 
   // Their own square logo, if they publish one better than a favicon.
   const logo = home.kind === "html" ? await findBestLogo(html, home.url) : null;
