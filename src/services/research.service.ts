@@ -134,8 +134,12 @@ const textAddressPattern = () => new RegExp(
     String.raw`([A-Z][A-Za-z.'\-]*(?:\s+[A-Z][A-Za-z.'\-]+){0,3})` +
     // state, abbreviated or spelled out, then the ZIP
     LINE_BREAK +
-    String.raw`(${STATE_NAMES}|[A-Z]{2})\s*,?\s+(\d{5})(?:-\d{4})?\b`,
-  "g",
+    String.raw`(${STATE_NAMES}|[A-Za-z]{2})\s*,?\s+(\d{5})(?:-\d{4})?\b`,
+  // Case insensitive, because plenty of footers are set in capitals and
+  // "394 BRUMBELOW RD." was being skipped for saying RD instead of Rd. A two
+  // letter state still has to be a real one, which normaliseState checks, so
+  // the looser match does not let ordinary words through.
+  "gi",
 );
 
 const STATE_NAME_TO_CODE = new Map(
