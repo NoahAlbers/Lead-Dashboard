@@ -118,9 +118,13 @@ export function logoCandidates(html: string, pageUrl: string): LogoCandidate[] {
     if (name === "msapplication-tileimage") {
       push(out, absolute(content, pageUrl), "tile image", 144, 120);
     } else if (name === "og:image" || name === "twitter:image") {
-      // Often a hero photo rather than a mark, so it sits below everything
-      // that is square by definition. Better than nothing.
-      push(out, absolute(content, pageUrl), "share image", null, 40);
+      // A share image is whatever the site wanted in a Facebook card: sometimes
+      // the logo, more often a hero photo, a staff portrait, or a wide white
+      // wordmark that disappears on a pale card. None of those belong in a
+      // 14 pixel square, so we take one only when the file says what it is.
+      if (/\b(logo|icon|mark|brand|badge)\b/i.test(decodeURIComponent(content))) {
+        push(out, absolute(content, pageUrl), "share image", null, 40);
+      }
     }
   }
 
