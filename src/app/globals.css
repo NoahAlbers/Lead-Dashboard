@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* The console is a light theme and has no dark palette. Tailwind v4 wires the
+   dark: variant to prefers-color-scheme by default, so on a machine set to dark
+   every dark: class in the app fired on its own: navy cards and near black dots
+   sitting in a page that was still white, with dark text on top of them. Tying
+   the variant to an explicit .dark class instead makes those classes inert until
+   there is a real dark theme to turn on. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-background: #F4F5F9;
   --color-foreground: #1A1A2E;
@@ -39,6 +47,11 @@
 @layer base {
   * {
     @apply border-border;
+  }
+  /* Says out loud that this is a light interface, so the browser stops giving
+     form controls, scrollbars and the page canvas its own dark treatment. */
+  :root {
+    color-scheme: light;
   }
   body {
     @apply bg-background text-foreground;

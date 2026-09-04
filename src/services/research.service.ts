@@ -7,6 +7,15 @@
 
 import { prisma } from "@/lib/db";
 import { geocodeAddress } from "@/lib/geocode";
+import { fetchHomepage, fetchPage } from "@/lib/site-fetch";
+import { findPlaceAddress } from "@/lib/places-lookup";
+import {
+  logoCandidates,
+  manifestIcons,
+  manifestUrl,
+  imageLoads,
+  type LogoCandidate,
+} from "@/lib/site-logo";
 import { leadWebDomain } from "@/lib/lead-domain";
 import { logger } from "@/lib/logger";
 import { STATE_ABBREV_TO_NAME } from "@/lib/us-states-extracted";
@@ -39,7 +48,16 @@ export interface AutoResearchResult {
   lat?: number | null;
   lng?: number | null;
   geoPrecision?: "address" | "area" | null;
+  addressFrom?: string | null;
+  logoUrl?: string | null;
+  logoSource?: string | null;
+  logoSize?: number | null;
 }
+
+// How long the optional extras get before we stop and store what we have.
+// Ingestion does not wait for this run, so it has to finish while the function
+// is still alive rather than while the site is still interesting.
+const RESEARCH_BUDGET_MS = 20_000;
 
 const PROFILE_HOSTS: Array<{ kind: string; match: RegExp }> = [
   { kind: "LinkedIn", match: /linkedin\.com\/(company|in)\/[^/?#"']+/i },
@@ -92,17 +110,55 @@ const STATE_CODES = new Set(Object.keys(STATE_ABBREV_TO_NAME));
 const STREET_SUFFIX =
   "Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct|Circle|Cir|Place|Pl|Parkway|Pkwy|Highway|Hwy|Terrace|Ter|Trail|Trl|Square|Sq|Loop|Route|Rte";
 
-const TEXT_ADDRESS = new RegExp(
+// Sites write the state either way, and a site that spells it out was being
+// skipped entirely.
+const STATE_NAMES = Object.values(STATE_ABBREV_TO_NAME)
+  .sort((a, b) => b.length - a.length)
+  .join("|");
+
+// What sits between the street line and the city varies with the markup: a
+// comma when it was written inline, a pipe or a bullet in a footer, or nothing
+// at all when the two were separate lines on the page.
+const LINE_BREAK = String.raw`\s*[,|\u2022\u00b7\u2013]?\s*`;
+
+/**
+ * A fresh matcher each time it is asked for.
+ *
+ * This used to be one shared global regex, which is a trap: `exec` leaves
+ * `lastIndex` pointing past the match it found, and `matchAll` starts from
+ * whatever `lastIndex` it inherits. One site with an embedded map would leave
+ * the offset set and the next site parsed in the same process would silently
+ * skip the beginning of its own page.
+ */
+const textAddressPattern = () => new RegExp(
   // number, up to a few street words, then a street type
   String.raw`(\d{1,6}[A-Za-z]?\s+(?:[A-Za-z0-9.'\-]+\s+){0,4}(?:${STREET_SUFFIX})\b\.?` +
     // an optional suite or unit tail
-    String.raw`(?:\s*,?\s*(?:Suite|Ste\.?|Unit|Apt\.?|Bldg\.?|#)\s*[A-Za-z0-9\-]+)?)` +
-    // , city
-    String.raw`\s*,\s*([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z.'\-]+){0,3})` +
-    // , ST ZIP
-    String.raw`\s*,?\s+([A-Z]{2})\s+(\d{5})(?:-\d{4})?\b`,
-  "g"
+    String.raw`(?:\s*,?\s*(?:Suite|Ste\.?|Unit|Apt\.?|Bldg\.?|Floor|#)\s*[A-Za-z0-9\-]+)?)` +
+    // city
+    LINE_BREAK +
+    String.raw`([A-Z][A-Za-z.'\-]*(?:\s+[A-Z][A-Za-z.'\-]+){0,3})` +
+    // state, abbreviated or spelled out, then the ZIP
+    LINE_BREAK +
+    String.raw`(${STATE_NAMES}|[A-Za-z]{2})\s*,?\s+(\d{5})(?:-\d{4})?\b`,
+  // Case insensitive, because plenty of footers are set in capitals and
+  // "394 BRUMBELOW RD." was being skipped for saying RD instead of Rd. A two
+  // letter state still has to be a real one, which normaliseState checks, so
+  // the looser match does not let ordinary words through.
+  "gi",
 );
+
+const STATE_NAME_TO_CODE = new Map(
+  Object.entries(STATE_ABBREV_TO_NAME).map(([code, name]) => [name.toLowerCase(), code]),
+);
+
+/** "PA" and "Pennsylvania" both come back as "PA"; anything else comes back null. */
+function normaliseState(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (STATE_CODES.has(trimmed.toUpperCase()) && trimmed.length === 2) return trimmed.toUpperCase();
+  return STATE_NAME_TO_CODE.get(trimmed.toLowerCase()) ?? null;
+}
 
 function tidy(value: unknown, max = 120): string | null {
   if (typeof value !== "string") return null;
@@ -203,22 +259,35 @@ function fromMicrodata(html: string): AddressParts | null {
 /** Visible page text, with a marker left behind wherever a footer or an
  * <address> block started so we can prefer matches that live there. */
 function toVisibleText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<(?:footer|address)\b[^>]*>/gi, " \u0001 ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/\s+/g, " ");
+  return (
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<(?:footer|address)\b[^>]*>/gi, " \u0001 ")
+      // An address in markup is nearly always several lines, and stripping the
+      // tags used to run them together: "219 N. Pitt Street Carlisle, PA 17013"
+      // is not something the pattern can read. A line break between two lines
+      // of an address is a comma when the address is written out, so that is
+      // what it becomes here.
+      .replace(/<br\s*\/?>/gi, ", ")
+      .replace(/<\/(?:p|div|li|td|th|h[1-6]|address|span|section)\s*>/gi, ", ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;|&#160;/gi, " ")
+      .replace(/\s+/g, " ")
+      // The substitutions above leave runs of commas wherever the markup was
+      // nested, which the pattern would trip over.
+      .replace(/\s*,(?:\s*,)+/g, ", ")
+      .replace(/\s+,/g, ",")
+  );
 }
 
 function fromPlainText(html: string): AddressParts | null {
   const text = toVisibleText(html);
   let best: { parts: AddressParts; score: number } | null = null;
 
-  for (const m of text.matchAll(TEXT_ADDRESS)) {
-    const region = m[3];
-    if (!STATE_CODES.has(region)) continue;
+  for (const m of text.matchAll(textAddressPattern())) {
+    const region = normaliseState(m[3]);
+    if (!region) continue;
 
     const parts: AddressParts = {
       street: tidy(m[1]),
@@ -240,10 +309,131 @@ function fromPlainText(html: string): AddressParts | null {
   return best?.parts ?? null;
 }
 
+/**
+ * Yoast and most WordPress business themes publish the address as Open Graph
+ * business tags, which nothing else here looks at.
+ */
+function fromOpenGraph(html: string): AddressParts | null {
+  const tag = (prop: string, max: number) => {
+    const re = new RegExp(
+      `<meta[^>]+(?:property|name)=["'](?:business:contact_data:|og:)${prop}["'][^>]+content=["']([^"']+)["']`,
+      "i",
+    );
+    const alt = new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:business:contact_data:|og:)${prop}["']`,
+      "i",
+    );
+    return tidy(html.match(re)?.[1] ?? html.match(alt)?.[1], max);
+  };
+  const parts: AddressParts = {
+    street: tag("street[_-]?address", 120),
+    city: tag("locality", 80),
+    region: tag("region", 40),
+    postalCode: tag("postal[_-]?code", 20),
+  };
+  return isUsable(parts) ? parts : null;
+}
+
+/**
+ * A site with a "find us" map is telling us the address in the map's own URL.
+ * Google writes it as a q= parameter or inside a /place/ path, and both survive
+ * being embedded in an iframe, which is where these usually live.
+ */
+function fromMapLink(html: string): AddressParts | null {
+  const urls = [
+    ...html.matchAll(/https?:\/\/(?:www\.)?google\.[a-z.]+\/maps[^"'\s<>]*/gi),
+    ...html.matchAll(/https?:\/\/maps\.google\.[a-z.]+\/[^"'\s<>]*/gi),
+  ].map((m) => m[0]);
+
+  for (const raw of urls) {
+    let text: string | null = null;
+    const place = raw.match(/\/place\/([^/?#]+)/i);
+    if (place) text = place[1];
+    if (!text) {
+      const q = raw.match(/[?&](?:q|daddr|destination)=([^&]+)/i);
+      if (q) text = q[1];
+    }
+    if (!text) continue;
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(text.replace(/\+/g, " "));
+    } catch {
+      continue;
+    }
+    // Maps writes spaces as plus signs in a path, so a place slug arrives as
+    // "1535+Cogswell+St,+Rockledge,+FL+32955".
+    const line = decodeEntities(decoded.replace(/\+/g, " ").replace(/\s+/g, " ")).trim();
+    const parts = parseAddressLine(line);
+    if (parts) return parts;
+  }
+  return null;
+}
+
+/** Split one written-out address into its pieces, if it looks like one. */
+function parseAddressLine(line: string): AddressParts | null {
+  const m = textAddressPattern().exec(line);
+  if (!m) return null;
+  const region = normaliseState(m[3]);
+  if (!region) return null;
+  const parts: AddressParts = {
+    street: tidy(m[1]),
+    city: tidy(m[2], 80),
+    region,
+    postalCode: m[4],
+  };
+  return isUsable(parts) ? parts : null;
+}
+
+/**
+ * Pages worth a second look when the homepage says nothing. Real links come
+ * first, since a site that links to /our-office knows its own layout better
+ * than we do; the conventional paths are the fallback.
+ */
+export function contactPageUrls(html: string, pageUrl: string): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const add = (href: string) => {
+    try {
+      const url = new URL(href, pageUrl);
+      // Stay on their site, and skip anything that is not a page.
+      if (url.hostname.replace(/^www\./, "") !== new URL(pageUrl).hostname.replace(/^www\./, "")) return;
+      url.hash = "";
+      const key = url.toString();
+      if (seen.has(key) || key === pageUrl) return;
+      seen.add(key);
+      found.push(key);
+    } catch {
+      // A malformed href is not worth a fuss.
+    }
+  };
+
+  for (const m of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]{0,120}?)<\/a>/gi)) {
+    const href = m[1];
+    const label = m[2].replace(/<[^>]+>/g, " ");
+    if (/contact|location|find[- ]us|visit|our[- ]office|about/i.test(`${href} ${label}`)) {
+      add(href);
+    }
+    if (found.length >= 4) break;
+  }
+
+  for (const path of ["/contact", "/contact-us", "/contact.html", "/locations", "/about"]) {
+    add(path);
+  }
+  return found.slice(0, 3);
+}
+
 /** The lead's street address, or null when the site never says. Never throws. */
 export function extractAddress(html: string): { line: string; parts: AddressParts } | null {
   try {
-    const parts = fromJsonLd(html) ?? fromMicrodata(html) ?? fromPlainText(html);
+    // Ordered by how much the site meant it: machine readable markup first,
+    // then a map it deliberately embedded, then whatever the page says out loud.
+    const parts =
+      fromJsonLd(html) ??
+      fromMicrodata(html) ??
+      fromOpenGraph(html) ??
+      fromMapLink(html) ??
+      fromPlainText(html);
     if (!parts) return null;
     const line = joinAddress(parts);
     return line === "" ? null : { line, parts };
@@ -253,30 +443,33 @@ export function extractAddress(html: string): { line: string; parts: AddressPart
   }
 }
 
-async function fetchSite(domain: string): Promise<string | null> {
-  // Only fetch plain public hostnames — never IPs or localhost.
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain) || /^\d+\.\d+\.\d+\.\d+$/.test(domain)) {
-    return null;
-  }
-  for (const url of [`https://${domain}`, `https://www.${domain}`]) {
+/**
+ * The best square logo the site publishes, verified to actually load.
+ *
+ * The manifest is fetched only when the page names one, and we try at most a
+ * few candidates before giving up, because a site that declares four broken
+ * icons should cost us four quick requests, not forty.
+ */
+async function findBestLogo(html: string, pageUrl: string): Promise<LogoCandidate | null> {
+  const candidates = logoCandidates(html, pageUrl);
+
+  const manifest = manifestUrl(html, pageUrl);
+  if (manifest) {
     try {
-      const res = await fetch(url, {
-        redirect: "follow",
-        signal: AbortSignal.timeout(8000),
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml",
-        },
+      const res = await fetch(manifest, {
+        signal: AbortSignal.timeout(5000),
+        headers: { Accept: "application/manifest+json,application/json,*/*;q=0.8" },
       });
-      if (!res.ok) continue;
-      const type = res.headers.get("content-type") ?? "";
-      if (!type.includes("html")) continue;
-      const text = await res.text();
-      return text.slice(0, 500_000);
+      if (res.ok) candidates.push(...manifestIcons(await res.json(), manifest));
     } catch {
-      continue;
+      // A missing or malformed manifest just means one fewer candidate.
     }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  for (const candidate of candidates.slice(0, 4)) {
+    if (await imageLoads(candidate.url)) return candidate;
   }
   return null;
 }
@@ -299,10 +492,15 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
     };
   }
 
-  const html = await fetchSite(domain);
-  if (!html) {
-    return { success: false, error: `Couldn't reach ${domain}. The site may be down or blocking robots.`, domain };
+  const home = await fetchHomepage(domain);
+  if (!home) {
+    return {
+      success: false,
+      error: `Couldn't reach ${domain}. The site is down, or it refused us even through the fallback reader.`,
+      domain,
+    };
   }
+  const html = home.body;
 
   const titleRaw = html.match(/<title[^>]*>([^<]{1,300})<\/title>/i)?.[1] ?? null;
   const siteTitle = titleRaw ? decodeEntities(titleRaw) : null;
@@ -325,10 +523,97 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
     }
   }
 
-  // Where they actually are. We geocode once, here, and keep the coordinates on
-  // the event so the lead page can draw the map without ever calling out again.
-  const found = extractAddress(html);
-  const geo = found ? await geocodeAddress(found.line, found.parts) : null;
+  // Where they actually are. Plenty of homepages never say, and put it on a
+  // contact page instead, so a homepage that comes up empty earns a short crawl
+  // of the pages it links to as contact or location. We stop at the first hit.
+  let found = extractAddress(html);
+  let addressFrom = found ? new URL(home.url).pathname || "/" : null;
+
+  const contactPages = home.kind === "html" ? contactPageUrls(html, home.url) : [];
+
+  // Ingestion starts this and does not wait for it, which on a serverless host
+  // means the run is living on borrowed time: once the response is sent the
+  // function can be frozen mid-flight and nothing gets written. Chasing every
+  // page and then rendering three of them would reliably outlive that, so the
+  // optional work stops when the budget does and we store what we have.
+  const deadline = Date.now() + RESEARCH_BUDGET_MS;
+  const timeLeft = () => Date.now() < deadline;
+
+  if (!found) {
+    for (const url of contactPages) {
+      if (!timeLeft()) break;
+      const page = await fetchPage(url, { allowReader: false });
+      if (!page) continue;
+      const hit = extractAddress(page.body);
+      if (hit) {
+        found = hit;
+        addressFrom = new URL(url).pathname || "/";
+        break;
+      }
+    }
+  }
+
+  // Site builders like Wix, Squarespace and Duda serve a near empty shell to
+  // anything that is not running JavaScript, so the address is simply not in
+  // the markup we were reading. The reader renders the page first, which is the
+  // only way to see it. Reserved for this point because it is slow and we have
+  // already established the ordinary route found nothing.
+  if (!found && home.kind === "html") {
+    for (const url of [home.url, ...contactPages.slice(0, 1)]) {
+      if (!timeLeft()) break;
+      const rendered = await fetchPage(url, { allowReader: true, readerOnly: true });
+      if (!rendered) continue;
+      const hit = extractAddress(rendered.body);
+      if (hit) {
+        found = hit;
+        addressFrom = `${new URL(url).pathname || "/"} (rendered)`;
+        break;
+      }
+    }
+  }
+
+  // Last resort, and the only one that costs anything: ask a business
+  // directory. Most small firms never publish an address on their own site but
+  // do keep a Google listing, so there is nothing left to parse and this is the
+  // only thing that answers. Off unless a key is configured.
+  let placeMatch = null;
+  if (!found) {
+    placeMatch = await findPlaceAddress(lead.companyName, {
+      city: lead.city,
+      region: lead.state,
+    });
+    if (placeMatch) {
+      found = {
+        line: placeMatch.formatted,
+        parts: {
+          street: placeMatch.street,
+          city: placeMatch.city,
+          region: placeMatch.region,
+          postalCode: placeMatch.postalCode,
+        },
+      };
+      addressFrom = "their Google listing";
+    }
+  }
+
+  logger.info("RESEARCH", found ? "Address found" : "No address anywhere", {
+    domain,
+    from: addressFrom,
+    pagesTried: 1 + contactPages.length,
+    ranOutOfTime: !timeLeft(),
+  });
+
+  // A directory listing comes with its own coordinates, so that path skips the
+  // geocoder entirely.
+  const geo =
+    placeMatch && placeMatch.lat != null && placeMatch.lng != null
+      ? { lat: placeMatch.lat, lng: placeMatch.lng, precision: "address" as const }
+      : found
+        ? await geocodeAddress(found.line, found.parts)
+        : null;
+
+  // Their own square logo, if they publish one better than a favicon.
+  const logo = home.kind === "html" ? await findBestLogo(html, home.url) : null;
 
   const payload = {
     domain,
@@ -337,10 +622,15 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
     profiles,
     address: found?.line ?? null,
     addressParts: found?.parts ?? null,
+    // Which page it came off, so an operator can go and look.
+    addressFrom,
     lat: geo?.lat ?? null,
     lng: geo?.lng ?? null,
     // "area" means we could only place the town, not the building.
     geoPrecision: geo?.precision ?? null,
+    logoUrl: logo?.url ?? null,
+    logoSource: logo?.source ?? null,
+    logoSize: logo?.size ?? null,
     fetchedAt: new Date().toISOString(),
     automatic: userId == null,
   };
