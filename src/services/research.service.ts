@@ -519,8 +519,10 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
   let found = extractAddress(html);
   let addressFrom = found ? new URL(home.url).pathname || "/" : null;
 
-  if (!found && home.kind === "html") {
-    for (const url of contactPageUrls(html, home.url)) {
+  const contactPages = home.kind === "html" ? contactPageUrls(html, home.url) : [];
+
+  if (!found) {
+    for (const url of contactPages) {
       const page = await fetchPage(url, { allowReader: false });
       if (!page) continue;
       const hit = extractAddress(page.body);
@@ -531,6 +533,30 @@ export async function runAutoResearch(leadId: string, userId: string | null): Pr
       }
     }
   }
+
+  // Site builders like Wix, Squarespace and Duda serve a near empty shell to
+  // anything that is not running JavaScript, so the address is simply not in
+  // the markup we were reading. The reader renders the page first, which is the
+  // only way to see it. Reserved for this point because it is slow and we have
+  // already established the ordinary route found nothing.
+  if (!found && home.kind === "html") {
+    for (const url of [home.url, ...contactPages.slice(0, 2)]) {
+      const rendered = await fetchPage(url, { allowReader: true, readerOnly: true });
+      if (!rendered) continue;
+      const hit = extractAddress(rendered.body);
+      if (hit) {
+        found = hit;
+        addressFrom = `${new URL(url).pathname || "/"} (rendered)`;
+        break;
+      }
+    }
+  }
+
+  logger.info("RESEARCH", found ? "Address found" : "No address on the site", {
+    domain,
+    from: addressFrom,
+    pagesTried: 1 + contactPages.length,
+  });
 
   const geo = found ? await geocodeAddress(found.line, found.parts) : null;
 

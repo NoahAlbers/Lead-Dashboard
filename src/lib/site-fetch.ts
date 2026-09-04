@@ -134,8 +134,16 @@ async function viaReader(url: string): Promise<FetchedPage | null> {
  */
 export async function fetchPage(
   url: string,
-  { allowReader = true }: { allowReader?: boolean } = {},
+  {
+    allowReader = true,
+    readerOnly = false,
+  }: { allowReader?: boolean; readerOnly?: boolean } = {},
 ): Promise<FetchedPage | null> {
+  // readerOnly is for a page we have already fetched as markup and found
+  // wanting: asking the same server the same question again would only get the
+  // same empty shell back.
+  if (readerOnly) return allowReader ? viaReader(url) : null;
+
   const asBrowser = await attempt(url, BROWSER_HEADERS);
   if (asBrowser) return asBrowser;
 
